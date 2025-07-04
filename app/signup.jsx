@@ -1,27 +1,28 @@
-// app/signup.jsx
 import { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, Alert
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { createUserWithEmailAndPassword } from "firebase/auth";
+import { auth } from "../firebase"; // adapte le chemin si besoin
 
 export default function SignUpScreen() {
   const router = useRouter();
   const [email,    setEmail   ] = useState('');
   const [password, setPassword] = useState('');
 
-  const handleSignUp = () => {
-    Alert.alert(
-      'Inscription',
-      `Email : ${email}\nMot de passe : ${password}`
-    );
-    // TODO → ici tu créeras l’utilisateur dans Firebase
-    router.replace('/'); // retourne à la page de connexion
+  const handleSignUp = async () => {
+    try {
+      await createUserWithEmailAndPassword(auth, email, password);
+      router.replace('/profile'); // Redirection vers la page de profil
+    } catch (error) {
+      Alert.alert("Erro no cadastro", error.message);
+    }
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Créer un compte</Text>
+      <Text style={styles.title}>Criar uma conta</Text>
 
       <TextInput
         style={styles.input}
@@ -34,23 +35,23 @@ export default function SignUpScreen() {
 
       <TextInput
         style={styles.input}
-        placeholder="Mot de passe"
+        placeholder="Senha"
         value={password}
         onChangeText={setPassword}
         secureTextEntry
       />
 
       <TouchableOpacity style={styles.button} onPress={handleSignUp}>
-        <Text style={styles.buttonText}>S’inscrire</Text>
+        <Text style={styles.buttonText}>Cadastrar</Text>
       </TouchableOpacity>
 
       <Text style={styles.link}>
-        Déjà un compte ?{' '}
+        Já tem conta?{' '}
         <Text
           style={styles.linkAction}
           onPress={() => router.back()}
         >
-          Se connecter
+          Entrar
         </Text>
       </Text>
     </View>
@@ -72,4 +73,3 @@ const styles = StyleSheet.create({
   link:      { textAlign:'center', color:'#444' },
   linkAction:{ color:'#28A745', fontWeight:'bold' }
 });
-// Compare this snippet from app/signup.jsx:
