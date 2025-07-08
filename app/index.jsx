@@ -1,26 +1,28 @@
-// app/index.jsx
 import { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, Alert
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { auth } from "../firebase";
 
 export default function LoginScreen() {
   const router = useRouter();
   const [email,    setEmail   ] = useState('');
   const [password, setPassword] = useState('');
 
-  const handleLogin = () => {
-    Alert.alert(
-      'Connexion',
-      `Email : ${email}\nMot de passe : ${password}`
-    );
-    // TODO → ici tu brancheras Firebase
+  const handleLogin = async () => {
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      router.replace('/home');
+    } catch (error) {
+      Alert.alert("Erro ao conectar", error.message);
+    }
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Connexion</Text>
+      <Text style={styles.title}>Entrar</Text>
 
       <TextInput
         style={styles.input}
@@ -33,23 +35,23 @@ export default function LoginScreen() {
 
       <TextInput
         style={styles.input}
-        placeholder="Mot de passe"
+        placeholder="Senha"
         value={password}
         onChangeText={setPassword}
         secureTextEntry
       />
 
       <TouchableOpacity style={styles.button} onPress={handleLogin}>
-        <Text style={styles.buttonText}>Se connecter</Text>
+        <Text style={styles.buttonText}>Entrar</Text>
       </TouchableOpacity>
 
       <Text style={styles.link}>
-        Pas encore de compte ?{' '}
+        Ainda não tem conta?{' '}
         <Text
           style={styles.linkAction}
           onPress={() => router.push('/signup')}
         >
-          Créer un compte
+          Criar conta
         </Text>
       </Text>
     </View>

@@ -14,6 +14,8 @@ export default function ProfileScreen() {
   const [endereco, setEndereco] = useState('');
   const [cidade, setCidade] = useState('');
   const [estado, setEstado] = useState('');
+  const [profissao, setProfissao] = useState('');
+  const [sexo, setSexo] = useState('');
 
   const validateCPF = (cpf) => {
     cpf = cpf.replace(/[^\d]+/g, '');
@@ -46,13 +48,15 @@ export default function ProfileScreen() {
       if (!user) throw new Error("Usuário não autenticado.");
       await setDoc(doc(db, "usuarios", user.uid), {
         nome,
-        dataNasc,
+        dataNascimento: dataNasc,
         cpf,
         celular,
         cep,
         endereco,
         cidade,
         estado,
+        profissao: profissao || null,
+        sexo: sexo || null,
         email: user.email,
         criadoEm: new Date().toISOString()
       });
@@ -67,43 +71,56 @@ export default function ProfileScreen() {
     <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
       <Text style={styles.title}>Complete seu perfil</Text>
 
+      {/* Champs OBLIGATOIRES */}
       <View style={styles.inputGroup}>
-        <Text style={styles.label}>Nome completo</Text>
+        <View style={styles.labelRow}>
+          <Text style={styles.label}>Nome completo</Text>
+          <Text style={styles.required}>(obrigatório)</Text>
+        </View>
         <TextInput
           style={styles.input}
-          placeholder="Nome completo (obrigatório)"
+          placeholder="Nome completo"
           value={nome}
           onChangeText={setNome}
         />
       </View>
 
       <View style={styles.inputGroup}>
-        <Text style={styles.label}>Data de nascimento</Text>
+        <View style={styles.labelRow}>
+          <Text style={styles.label}>Data de nascimento</Text>
+          <Text style={styles.required}>(obrigatório)</Text>
+        </View>
         <TextInput
           style={styles.input}
-          placeholder="dd/mm/aaaa (obrigatório)"
+          placeholder="dd/mm/aaaa"
           value={dataNasc}
           onChangeText={setDataNasc}
         />
       </View>
 
       <View style={styles.inputGroup}>
-        <Text style={styles.label}>CPF</Text>
+        <View style={styles.labelRow}>
+          <Text style={styles.label}>CPF</Text>
+          <Text style={styles.required}>(obrigatório)</Text>
+        </View>
         <TextInput
           style={styles.input}
-          placeholder="CPF (obrigatório)"
+          placeholder="CPF"
           value={cpf}
           onChangeText={setCpf}
-          keyboardType="numeric"
+          keyboardType="number-pad"
           maxLength={14}
         />
       </View>
 
       <View style={styles.inputGroup}>
-        <Text style={styles.label}>Celular/WhatsApp</Text>
+        <View style={styles.labelRow}>
+          <Text style={styles.label}>Celular/WhatsApp</Text>
+          <Text style={styles.required}>(obrigatório)</Text>
+        </View>
         <TextInput
           style={styles.input}
-          placeholder="Celular (obrigatório)"
+          placeholder="Celular"
           value={celular}
           onChangeText={setCelular}
           keyboardType="phone-pad"
@@ -111,10 +128,13 @@ export default function ProfileScreen() {
       </View>
 
       <View style={styles.inputGroup}>
-        <Text style={styles.label}>CEP</Text>
+        <View style={styles.labelRow}>
+          <Text style={styles.label}>CEP</Text>
+          <Text style={styles.required}>(obrigatório)</Text>
+        </View>
         <TextInput
           style={styles.input}
-          placeholder="CEP (obrigatório)"
+          placeholder="CEP"
           value={cep}
           onChangeText={setCep}
           keyboardType="numeric"
@@ -123,33 +143,71 @@ export default function ProfileScreen() {
       </View>
 
       <View style={styles.inputGroup}>
-        <Text style={styles.label}>Endereço</Text>
+        <View style={styles.labelRow}>
+          <Text style={styles.label}>Endereço</Text>
+          <Text style={styles.required}>(obrigatório)</Text>
+        </View>
         <TextInput
           style={styles.input}
-          placeholder="Endereço (obrigatório)"
+          placeholder="Endereço"
           value={endereco}
           onChangeText={setEndereco}
         />
       </View>
 
       <View style={styles.inputGroup}>
-        <Text style={styles.label}>Cidade</Text>
+        <View style={styles.labelRow}>
+          <Text style={styles.label}>Cidade</Text>
+          <Text style={styles.required}>(obrigatório)</Text>
+        </View>
         <TextInput
           style={styles.input}
-          placeholder="Cidade (obrigatório)"
+          placeholder="Cidade"
           value={cidade}
           onChangeText={setCidade}
         />
       </View>
 
       <View style={styles.inputGroup}>
-        <Text style={styles.label}>Estado (UF)</Text>
+        <View style={styles.labelRow}>
+          <Text style={styles.label}>Estado (UF)</Text>
+          <Text style={styles.required}>(obrigatório)</Text>
+        </View>
         <TextInput
           style={styles.input}
-          placeholder="UF (obrigatório)"
+          placeholder="UF"
           value={estado}
           onChangeText={setEstado}
           maxLength={2}
+          autoCapitalize="characters"
+        />
+      </View>
+
+      {/* Champs OPTIONNELS */}
+      <View style={styles.inputGroup}>
+        <View style={styles.labelRow}>
+          <Text style={styles.label}>Profissão</Text>
+          <Text style={styles.optional}>(opcional)</Text>
+        </View>
+        <TextInput
+          style={styles.input}
+          placeholder="Profissão"
+          value={profissao}
+          onChangeText={setProfissao}
+        />
+      </View>
+
+      <View style={styles.inputGroup}>
+        <View style={styles.labelRow}>
+          <Text style={styles.label}>Sexo</Text>
+          <Text style={styles.optional}>(opcional)</Text>
+        </View>
+        <TextInput
+          style={styles.input}
+          placeholder="Sexo (M/F/O)"
+          value={sexo}
+          onChangeText={setSexo}
+          maxLength={1}
           autoCapitalize="characters"
         />
       </View>
@@ -165,12 +223,14 @@ const styles = StyleSheet.create({
   container: { padding:24, backgroundColor:'#fff', flexGrow:1, justifyContent:'center' },
   title:     { fontSize:22, fontWeight:'bold', marginBottom:24, textAlign:'center' },
   inputGroup: { marginBottom: 14 },
-  label:     { fontWeight: 'bold', color: '#333', marginBottom: 4, marginLeft: 2 },
+  labelRow:  { flexDirection: 'row', alignItems: 'center', marginBottom: 2 },
+  label:     { fontWeight: 'bold', color: '#333', fontSize: 16 },
+  required:  { color: '#D20000', fontSize: 12, marginLeft: 6 },
+  optional:  { color: '#3399FF', fontSize: 12, marginLeft: 6 },
   input:     { borderWidth:1, borderColor:'#ccc', padding:12, borderRadius:6, fontSize:16, backgroundColor:'#fafafa' },
   button:    { backgroundColor:'#007AFF', padding:16, borderRadius:6, alignItems:'center', marginTop:24 },
   buttonText:{ color:'#fff', fontWeight:'bold', fontSize:18 }
 });
-// This code defines a profile screen for a React Native app using Expo Router and Firebase.
-// It includes fields for user information such as name, date of birth, CPF, phone number, address, city, and state.
-// The profile data is validated and saved to Firestore when the user clicks the "Save" button.
-// The screen also includes basic styling for a clean and user-friendly interface.    
+// Note: This code is a React Native screen for user profile management.
+// It includes input fields for personal information, validation for required fields, and saving the profile to Firebase Firestore.
+// The code uses hooks for state management and Firebase for backend operations.  
