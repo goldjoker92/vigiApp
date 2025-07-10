@@ -72,8 +72,8 @@ export default function HomeScreen() {
           <Text style={styles.infoValue}>{user?.email}</Text>
         </View>
 
-        <TouchableOpacity style={styles.signalBtn} onPress={() => router.push('/report')}>
-          <Text style={styles.signalBtnText}>➕ Sinalizar um problema</Text>
+        <TouchableOpacity style={styles.signalBtn} onPress={() => router.push('/alerts/public')}>
+          <Text style={styles.signalBtnText}>➕ Sinalizar</Text>
         </TouchableOpacity>
 
         <View style={styles.incidentsBlock}>
