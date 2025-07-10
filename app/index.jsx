@@ -1,14 +1,12 @@
 import { useState } from 'react';
-import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet, Alert
-} from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth } from "../firebase";
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { auth } from '../firebase';
 
 export default function LoginScreen() {
   const router = useRouter();
-  const [email,    setEmail   ] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
   const handleLogin = async () => {
@@ -16,7 +14,7 @@ export default function LoginScreen() {
       await signInWithEmailAndPassword(auth, email, password);
       router.replace('/home');
     } catch (error) {
-      Alert.alert("Erro ao conectar", error.message);
+      Alert.alert('Erro ao conectar', error.message);
     }
   };
 
@@ -47,10 +45,7 @@ export default function LoginScreen() {
 
       <Text style={styles.link}>
         Ainda não tem conta?{' '}
-        <Text
-          style={styles.linkAction}
-          onPress={() => router.push('/signup')}
-        >
+        <Text style={styles.linkAction} onPress={() => router.push('/signup')}>
           Criar conta
         </Text>
       </Text>
@@ -59,17 +54,23 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex:1, justifyContent:'center', padding:24, backgroundColor:'#fff' },
-  title:     { fontSize:24, fontWeight:'bold', marginBottom:24 },
-  input:     {
-    borderWidth:1, borderColor:'#ccc', padding:12,
-    borderRadius:6, marginBottom:16
+  container: { flex: 1, justifyContent: 'center', padding: 24, backgroundColor: '#fff' },
+  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 24 },
+  input: {
+    borderWidth: 1,
+    borderColor: '#ccc',
+    padding: 12,
+    borderRadius: 6,
+    marginBottom: 16,
   },
-  button:    {
-    backgroundColor:'#007AFF', padding:14,
-    borderRadius:6, alignItems:'center', marginBottom:16
+  button: {
+    backgroundColor: '#007AFF',
+    padding: 14,
+    borderRadius: 6,
+    alignItems: 'center',
+    marginBottom: 16,
   },
-  buttonText:{ color:'#fff', fontWeight:'bold' },
-  link:      { textAlign:'center', color:'#444' },
-  linkAction:{ color:'#007AFF', fontWeight:'bold' }
+  buttonText: { color: '#fff', fontWeight: 'bold' },
+  link: { textAlign: 'center', color: '#444' },
+  linkAction: { color: '#007AFF', fontWeight: 'bold' },
 });

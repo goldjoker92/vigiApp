@@ -1,8 +1,16 @@
 import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  ScrollView,
+} from 'react-native';
 import { useRouter } from 'expo-router';
-import { doc, setDoc } from "firebase/firestore";
-import { auth, db } from "../firebase";
+import { doc, setDoc } from 'firebase/firestore';
+import { auth, db } from '../firebase';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -21,7 +29,8 @@ export default function ProfileScreen() {
     cpf = cpf.replace(/[^\d]+/g, '');
     if (cpf.length !== 11) return false;
     if (/^(\d)\1+$/.test(cpf)) return false;
-    let sum = 0, rest;
+    let sum = 0,
+      rest;
     for (let i = 1; i <= 9; i++) sum += parseInt(cpf.substring(i - 1, i)) * (11 - i);
     rest = (sum * 10) % 11;
     if (rest === 10 || rest === 11) rest = 0;
@@ -36,17 +45,17 @@ export default function ProfileScreen() {
 
   const handleSave = async () => {
     if (!nome || !dataNasc || !cpf || !celular || !cep || !endereco || !cidade || !estado) {
-      Alert.alert("Preencha todos os campos obrigatórios.");
+      Alert.alert('Preencha todos os campos obrigatórios.');
       return;
     }
     if (!validateCPF(cpf)) {
-      Alert.alert("CPF inválido. Digite um CPF válido.");
+      Alert.alert('CPF inválido. Digite um CPF válido.');
       return;
     }
     try {
       const user = auth.currentUser;
-      if (!user) throw new Error("Usuário não autenticado.");
-      await setDoc(doc(db, "usuarios", user.uid), {
+      if (!user) throw new Error('Usuário não autenticado.');
+      await setDoc(doc(db, 'usuarios', user.uid), {
         nome,
         dataNascimento: dataNasc,
         cpf,
@@ -58,12 +67,12 @@ export default function ProfileScreen() {
         profissao: profissao || null,
         sexo: sexo || null,
         email: user.email,
-        criadoEm: new Date().toISOString()
+        criadoEm: new Date().toISOString(),
       });
-      Alert.alert("Perfil salvo com sucesso!");
+      Alert.alert('Perfil salvo com sucesso!');
       router.replace('/home');
     } catch (error) {
-      Alert.alert("Erro ao salvar perfil", error.message);
+      Alert.alert('Erro ao salvar perfil', error.message);
     }
   };
 
@@ -220,17 +229,30 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding:24, backgroundColor:'#fff', flexGrow:1, justifyContent:'center' },
-  title:     { fontSize:22, fontWeight:'bold', marginBottom:24, textAlign:'center' },
+  container: { padding: 24, backgroundColor: '#fff', flexGrow: 1, justifyContent: 'center' },
+  title: { fontSize: 22, fontWeight: 'bold', marginBottom: 24, textAlign: 'center' },
   inputGroup: { marginBottom: 14 },
-  labelRow:  { flexDirection: 'row', alignItems: 'center', marginBottom: 2 },
-  label:     { fontWeight: 'bold', color: '#333', fontSize: 16 },
-  required:  { color: '#D20000', fontSize: 12, marginLeft: 6 },
-  optional:  { color: '#3399FF', fontSize: 12, marginLeft: 6 },
-  input:     { borderWidth:1, borderColor:'#ccc', padding:12, borderRadius:6, fontSize:16, backgroundColor:'#fafafa' },
-  button:    { backgroundColor:'#007AFF', padding:16, borderRadius:6, alignItems:'center', marginTop:24 },
-  buttonText:{ color:'#fff', fontWeight:'bold', fontSize:18 }
+  labelRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 2 },
+  label: { fontWeight: 'bold', color: '#333', fontSize: 16 },
+  required: { color: '#D20000', fontSize: 12, marginLeft: 6 },
+  optional: { color: '#3399FF', fontSize: 12, marginLeft: 6 },
+  input: {
+    borderWidth: 1,
+    borderColor: '#ccc',
+    padding: 12,
+    borderRadius: 6,
+    fontSize: 16,
+    backgroundColor: '#fafafa',
+  },
+  button: {
+    backgroundColor: '#007AFF',
+    padding: 16,
+    borderRadius: 6,
+    alignItems: 'center',
+    marginTop: 24,
+  },
+  buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 18 },
 });
 // Note: This code is a React Native screen for user profile management.
 // It includes input fields for personal information, validation for required fields, and saving the profile to Firebase Firestore.
-// The code uses hooks for state management and Firebase for backend operations.  
+// The code uses hooks for state management and Firebase for backend operations.
