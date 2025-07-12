@@ -4,6 +4,7 @@ import { Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert } from
 import { useRouter } from 'expo-router';
 import { doc, setDoc } from "firebase/firestore";
 import { auth, db } from '../../firebase';
+import { loadUserProfile } from '../../utils/loadUserProfile';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -27,28 +28,19 @@ export default function ProfileScreen() {
       return;
     }
     try {
-      const user = auth.currentUser;
-      if (!user) throw new Error("Usuário não autenticado.");
-      await setDoc(doc(db, "usuarios", user.uid), {
-        nome,
-        apelido,
-        cpf,
-        dataNascimento,
-        endereco,
-        telefone,
-        estado,
-        cidade,
-        cep,
-        profissao,
-        sexo,
-        email: user.email,
-        criadoEm: new Date().toISOString()
-      });
-      Alert.alert("Perfil salvo com sucesso!");
-      router.replace('/(tabs)/home');
-    } catch (error) {
-      Alert.alert("Erro ao salvar perfil", error.message);
-    }
+    const user = auth.currentUser;
+    if (!user) throw new Error("Usuário não autenticado.");
+    await setDoc(doc(db, "usuarios", user.uid), {
+      nome, apelido, cpf, dataNascimento, endereco, telefone,
+      estado, cidade, cep, profissao, sexo, email: user.email,
+      criadoEm: new Date().toISOString()
+    });
+    await loadUserProfile(user.uid); // Charge Firestore → Zustand
+    Alert.alert("Perfil salvo com sucesso!");
+    router.replace('/(tabs)/home');
+  } catch (error) {
+    Alert.alert("Erro ao salvar perfil", error.message);
+  }
   };
 
   const Label = ({ text, obrigatorio }) => (

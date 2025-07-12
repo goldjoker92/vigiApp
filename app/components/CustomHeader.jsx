@@ -1,59 +1,95 @@
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { Menu } from 'lucide-react-native';
+import React from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { Bell, Search, Menu } from 'lucide-react-native';
 
-export default function CustomHeader({ user, onMenuPress }) {
+export default function CustomHeader({ notifs = 0, onMenuPress, onSearchPress, onNotifPress }) {
   return (
-    <View style={styles.header}>
-      <Text style={styles.title}>
-        Bem-vindo(a), <Text style={styles.name}>{user?.apelido || user?.nome || 'cidadão'}</Text>!
-      </Text>
-      <TouchableOpacity style={styles.burger} onPress={onMenuPress}>
-        <Menu size={28} color="#007AFF" />
-      </TouchableOpacity>
+    <View style={styles.headerContainer}>
+      {/* Logo */}
+      <Text style={styles.logoText}>VigiApp</Text>
+
+      {/* Actions */}
+      <View style={styles.actionsRow}>
+        {/* Notifications */}
+        <TouchableOpacity style={styles.iconWrapper} onPress={onNotifPress}>
+          <Bell size={25} color="#222" />
+          {notifs > 0 && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{notifs > 99 ? '99+' : notifs}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+
+        {/* Search */}
+        <TouchableOpacity style={styles.iconWrapper} onPress={onSearchPress}>
+          <Search size={25} color="#222" />
+        </TouchableOpacity>
+
+        {/* Menu burger */}
+        <TouchableOpacity style={styles.menuButton} onPress={onMenuPress}>
+          <Menu size={27} color="#222" />
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  header: {
-    position: 'absolute',
-    top: 18,
-    left: 0,
-    right: 0,
-    zIndex: 10,
-    backgroundColor: 'rgba(24,26,32,0.88)',
-    borderBottomLeftRadius: 22,
-    borderBottomRightRadius: 22,
-    height: 64,
+  headerContainer: {
+    paddingTop: Platform.OS === 'ios' ? 54 : 34,
+    paddingBottom: 10,
+    paddingHorizontal: 16,
+    backgroundColor: '#fff',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.09,
-    shadowRadius: 12,
-    elevation: 12,
-    paddingHorizontal: 20,
-    // Effet flottant
+    justifyContent: 'space-between',
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    elevation: 5,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
   },
-  title: {
-    color: '#fff',
-    fontSize: 19,
-    fontWeight: '600',
-    textAlign: 'center',
-    flex: 1,
+  logoText: {
+    fontSize: 25,
+    fontWeight: '800',
+    color: '#F12C2C',
+    letterSpacing: 0.2,
   },
-  name: {
-    color: '#00C859',
-    fontWeight: 'bold',
-    fontSize: 19,
+  actionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
-  burger: {
+  iconWrapper: {
+    marginHorizontal: 2,
+    position: 'relative',
+    padding: 8,
+  },
+  badge: {
     position: 'absolute',
-    right: 24,
-    top: 18,
-    backgroundColor: 'rgba(35,38,47,0.95)',
-    borderRadius: 16,
-    padding: 6,
-    zIndex: 20,
+    top: 4,
+    right: 2,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#F12C2C',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 3,
+    zIndex: 99,
+  },
+  badgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  menuButton: {
+    marginLeft: 5,
+    padding: 8,
+    borderRadius: 50,
+    backgroundColor: '#F6F8FA',
+    elevation: 2,
   }
 });
