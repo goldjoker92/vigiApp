@@ -1,4 +1,4 @@
-// store/user.js
+// store/users.js
 import { create } from 'zustand';
 
 export const useUserStore = create((set) => ({

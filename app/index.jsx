@@ -1,76 +1,47 @@
+// app/index.jsx
 import { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
-import { useRouter } from 'expo-router';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from '../firebase';
+import { useRouter } from 'expo-router';
 
 export default function LoginScreen() {
   const router = useRouter();
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [senha, setSenha] = useState('');
 
   const handleLogin = async () => {
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      router.replace('/home');
+      console.log('Tentando login pour', email);
+      await signInWithEmailAndPassword(auth, email, senha);
+      console.log('Login OK');
+      router.replace('/(tabs)/home'); // OU '/home' si tu utilises un layout simple
     } catch (error) {
-      Alert.alert('Erro ao conectar', error.message);
+      console.log('Erreur de login', error);
+      Alert.alert("Erro", error.message);
     }
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Entrar</Text>
-
-      <TextInput
-        style={styles.input}
-        placeholder="E-mail"
-        value={email}
-        onChangeText={setEmail}
-        keyboardType="email-address"
-        autoCapitalize="none"
-      />
-
-      <TextInput
-        style={styles.input}
-        placeholder="Senha"
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-      />
-
+      <Text style={styles.title}>Entrar no VigiApp</Text>
+      <TextInput style={styles.input} placeholder="E-mail" value={email} onChangeText={setEmail} autoCapitalize="none" />
+      <TextInput style={styles.input} placeholder="Senha" value={senha} onChangeText={setSenha} secureTextEntry />
       <TouchableOpacity style={styles.button} onPress={handleLogin}>
         <Text style={styles.buttonText}>Entrar</Text>
       </TouchableOpacity>
-
-      <Text style={styles.link}>
-        Ainda não tem conta?{' '}
-        <Text style={styles.linkAction} onPress={() => router.push('/signup')}>
-          Criar conta
-        </Text>
-      </Text>
+      <TouchableOpacity onPress={() => router.push('/auth/signup')}>
+        <Text style={styles.link}>Não tem conta? <Text style={styles.linkHighlight}>Cadastre-se</Text></Text>
+      </TouchableOpacity>
     </View>
   );
 }
-
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', padding: 24, backgroundColor: '#fff' },
-  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 24 },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    padding: 12,
-    borderRadius: 6,
-    marginBottom: 16,
-  },
-  button: {
-    backgroundColor: '#007AFF',
-    padding: 14,
-    borderRadius: 6,
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  buttonText: { color: '#fff', fontWeight: 'bold' },
-  link: { textAlign: 'center', color: '#444' },
-  linkAction: { color: '#007AFF', fontWeight: 'bold' },
+  container: { flex:1, justifyContent:'center', padding:24, backgroundColor:'#181A20' },
+  title: { fontSize:28, fontWeight:'bold', marginBottom:32, color:'#fff', textAlign:'center' },
+  input: { borderWidth:0, backgroundColor:'#23262F', color:'#fff', padding:14, borderRadius:8, marginBottom:18, fontSize:16 },
+  button: { backgroundColor:'#007AFF', padding:16, borderRadius:8, alignItems:'center', marginBottom:16 },
+  buttonText: { color:'#fff', fontWeight:'bold', fontSize:18 },
+  link: { color:'#aaa', textAlign:'center', fontSize:15 },
+  linkHighlight: { color:'#00C859', fontWeight:'bold' },
 });
