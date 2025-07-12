@@ -1,15 +1,19 @@
-// app/(tabs)/profile.jsx
 import { View, Text, StyleSheet } from 'react-native';
-import { auth } from '../../firebase';
+import { useUserStore } from '../../store/users';
 
 export default function ProfileScreen() {
-  const user = auth.currentUser;
+  const { user } = useUserStore();
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Meu Perfil</Text>
-      <Text style={styles.info}>Nome: {user?.displayName || 'Usuário'}</Text>
+      <Text style={styles.info}>Nome: {user?.nome || 'Usuário'}</Text>
+      <Text style={styles.info}>Apelido: {user?.apelido || '-'}</Text>
       <Text style={styles.info}>Email: {user?.email}</Text>
-      {/* Ajoute ici les infos récupérées du Firestore si tu veux */}
+      <Text style={styles.info}>Telefone: {user?.telefone || '-'}</Text>
+      <Text style={styles.info}>Cidade: {user?.cidade || '-'}</Text>
+      <Text style={styles.info}>CEP: {user?.cep || '-'}</Text>
+      {/* etc, ajoute les autres champs si tu veux */}
     </View>
   );
 }

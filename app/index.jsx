@@ -4,6 +4,8 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'reac
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from '../firebase';
 import { useRouter } from 'expo-router';
+import { useUserStore } from '../store/users';
+import { loadUserProfile } from '../utils/loadUserProfile';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -13,7 +15,8 @@ export default function LoginScreen() {
   const handleLogin = async () => {
     try {
       console.log('Tentando login pour', email);
-      await signInWithEmailAndPassword(auth, email, senha);
+      const cred = await signInWithEmailAndPassword(auth, email, senha);
+      await loadUserProfile(cred.user.uid); // Charge Firestore → Zustand
       console.log('Login OK');
       router.replace('/(tabs)/home'); // OU '/home' si tu utilises un layout simple
     } catch (error) {
