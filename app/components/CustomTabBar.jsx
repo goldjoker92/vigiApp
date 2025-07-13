@@ -33,9 +33,12 @@ export default function CustomTabBar({ state, descriptors, navigation }) {
         })}
       </View>
 
-      {/* BOUTON FLOTTANT - style Google Drive */}
+      {/* Bouton flottant Sinalizar */}
       <TouchableOpacity
-        style={styles.fab}
+        style={[
+          styles.fab,
+          { backgroundColor: state.index === 1 ? '#007AFF' : '#FF4444' } // <- couleur dynamique: bleu si tab "mapa" actif, rouge sinon
+        ]}
         activeOpacity={0.9}
         onPress={() => router.push('/report')}
       >
@@ -62,12 +65,10 @@ const styles = StyleSheet.create({
   },
   tabBtn: { alignItems: 'center', flex: 1, justifyContent: 'center' },
   tabLabel: { color: '#bbb', fontSize: 13, fontWeight: '600', marginTop: 2 },
-  // FAB = Floating Action Button
   fab: {
     position: 'absolute',
-    bottom: TAB_BAR_HEIGHT + 24, // <- **surélevé, NE CACHE PAS les icônes**
+    bottom: TAB_BAR_HEIGHT + 24,
     right: 26,
-    backgroundColor: '#FF4444',
     borderRadius: 16,
     paddingVertical: 13,
     paddingHorizontal: 22,
