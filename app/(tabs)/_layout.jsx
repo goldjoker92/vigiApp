@@ -6,6 +6,7 @@ import CustomHeader from '../components/CustomHeader';
 import SideDrawer from '../components/SideDrawer';
 import CustomTabBar from '../components/CustomTabBar';
 import { useUserStore } from '../../store/users';
+import { House, MapPinned, Star, User } from 'lucide-react-native';
 
 export default function TabsLayout() {
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -33,7 +34,36 @@ export default function TabsLayout() {
         screenOptions={{
           headerShown: false,
         }}
-      />
+      >
+        <Tabs.Screen
+          name="home"
+          options={{
+            tabBarLabel: 'Início',
+            tabBarIcon: ({ color }) => <House color={color} size={26} />,
+          }}
+        />
+        <Tabs.Screen
+          name="mapa"
+          options={{
+            tabBarLabel: 'Mapa',
+            tabBarIcon: ({ color }) => <MapPinned color={color} size={26} />,
+          }}
+        />
+        <Tabs.Screen
+          name="favoritos"
+          options={{
+            tabBarLabel: 'Favoritos',
+            tabBarIcon: ({ color }) => <Star color={color} size={26} />,
+          }}
+        />
+        <Tabs.Screen
+          name="profile"
+          options={{
+            tabBarLabel: 'Perfil',
+            tabBarIcon: ({ color }) => <User color={color} size={26} />,
+          }}
+        />
+      </Tabs>
     </View>
   );
 }
