@@ -1,12 +1,17 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform, Image } from 'react-native';
 import { Bell, Search, Menu } from 'lucide-react-native';
+import logoVigiApp from '../../assets/images/logoVigiApp.png';
 
 export default function CustomHeader({ notifs = 0, onMenuPress, onSearchPress, onNotifPress }) {
   return (
     <View style={styles.headerContainer}>
       {/* Logo */}
-      <Text style={styles.logoText}>VigiApp</Text>
+      <Image 
+      source={logoVigiApp} 
+      style={styles.logoImage}
+      resizeMode="contain" 
+      />
 
       {/* Actions */}
       <View style={styles.actionsRow}>
@@ -35,6 +40,12 @@ export default function CustomHeader({ notifs = 0, onMenuPress, onSearchPress, o
 }
 
 const styles = StyleSheet.create({
+  logoImage: {
+    width: 120,    // ajuste selon la taille voulue
+    height: 60,
+    marginLeft:-10,
+    padding: 5,
+  },
   headerContainer: {
     paddingTop: Platform.OS === 'ios' ? 54 : 34,
     paddingBottom: 10,
