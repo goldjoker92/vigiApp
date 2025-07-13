@@ -100,6 +100,19 @@ export default function ReportScreen() {
   return (
     <ScrollView contentContainerStyle={styles.scrollContainer}>
       <View style={styles.container}>
+        {/* Carte d'avertissement - en haut, dans une card rouge */}
+        <View style={styles.alertCard}>
+          <AlertTriangle color="#fff" size={26} style={{ marginRight: 12 }} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.alertTitle}>⚠️ Atenção!</Text>
+            <Text style={styles.alertMsg}>
+              Toda declaração feita no aplicativo envolve sua <Text style={{ fontWeight: "bold" }}>boa fé</Text> e <Text style={{ fontWeight: "bold" }}>responsabilidade</Text>.
+              {"\n"}Nunca substitua os serviços de emergência!
+              {"\n"}<Text style={{ fontWeight: "bold" }}>☎️ Ligue 190 (Polícia) ou 192 (Samu) em caso de risco ou emergência.</Text>
+            </Text>
+          </View>
+        </View>
+
         <Text style={styles.title}>
           <Bell color="#007AFF" size={22} style={{ marginRight: 5 }} />
           Sinalizar um evento público
@@ -213,6 +226,21 @@ export default function ReportScreen() {
 const styles = StyleSheet.create({
   scrollContainer: { paddingBottom: 36, backgroundColor: "#181A20" },
   container: { padding: 22, flex: 1, backgroundColor: "#181A20" },
+
+  alertCard: {
+    flexDirection: 'row',
+    backgroundColor: '#FF3B30',
+    padding: 18,
+    borderRadius: 16,
+    alignItems: 'center',
+    marginBottom: 19,
+    marginTop: 18,
+    shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 7,
+    elevation: 3,
+  },
+  alertTitle: { color: "#fff", fontSize: 17, fontWeight: 'bold', marginBottom: 2 },
+  alertMsg: { color: "#fff", fontSize: 15 },
+
   title: { fontSize: 22, fontWeight: "bold", marginBottom: 15, color: '#fff', flexDirection: "row", alignItems: "center" },
   categoriaGroup: { flexDirection: "row", flexWrap: "wrap", marginBottom: 16, gap: 6 },
   categoriaBtn: {
