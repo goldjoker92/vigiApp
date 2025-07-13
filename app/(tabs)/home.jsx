@@ -1,169 +1,134 @@
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, FlatList } from 'react-native';
-import { MapPin, User, Users, Sun, ShieldAlert, PlusCircle, BarChartBig, Phone } from 'lucide-react-native';
+import { View, Text, StyleSheet, ScrollView, Dimensions } from 'react-native';
+
+import AlertCard from '../components/AlertCard';
 import { useRouter } from 'expo-router';
 import { useUserStore } from '../../store/users';
+import QuickActions from '../components/QuickActions';
 
-
-
-
-function getGreeting() {
-  const now = new Date();
-  // Décale en fuseau Brésil (GMT-3)
-  const brTime = new Date(now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
-  const hour = brTime.getHours();
-  if (hour >= 6 && hour < 12) return "Bom dia";
-  if (hour >= 12 && hour < 18) return "Boa tarde";
-  return "Boa noite";
-}
+const BUTTON_WIDTH = (Dimensions.get('window').width - 48) / 4;
 
 export default function HomeScreen() {
-  const { user } = useUserStore();
-  const displayName = user?.apelido?.trim()
-    ? user.apelido
-    : user?.username?.trim()
-      ? user.username
-      : 'Cidadão';
-
   const router = useRouter();
+  const { user } = useUserStore();
 
-  const greeting = getGreeting();
+  // Greeting dynamique selon l’heure brésilienne
+  const horaBrasil = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', hour12: false, timeZone: 'America/Fortaleza' });
+  const hora = parseInt(horaBrasil, 10);
+  let greeting = 'Bom dia';
+  if (hora >= 12 && hora < 18) greeting = 'Boa tarde';
+  else if (hora >= 18 || hora < 6) greeting = 'Boa noite';
 
-  // Faux exemples d’alertes, tu pourras binder Firestore ou REST ici
-  const alertasRecentes = [
-    { id: '1', type: 'Roubo', place: 'Praça Central', date: 'Hoje 14:13', novo: true },
-    { id: '2', type: 'Incêndio', place: 'Rua das Flores', date: 'Ontem 21:40', novo: false },
-    { id: '3', type: 'Acidente', place: 'Avenida Brasil', date: 'Ontem 19:12', novo: true },
-  ];
-
-  // Faux stats
-  const stats = {
-    semana: 8,
-    mes: 27,
-    ativos: 36,
-    novos: 4,
-  };
+  // Apelido > username > fallback
+  const nome = user?.apelido || user?.username || 'Cidadão';
 
   return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.container}>
-      {/* Message d’accueil dynamique */}
-      <Text style={styles.greeting}>{greeting}, <Text style={styles.name}>{displayName} 👋</Text></Text>
+    <ScrollView contentContainerStyle={styles.scrollContainer}>
+      <View style={styles.container}>
+        <Text style={styles.greeting}>
+          {greeting}, <Text style={styles.username}>{nome}</Text> 👋
+        </Text>
 
-      {/* CARD MÉTÉO */}
-      <View style={[styles.card, styles.cardRow]}>
-        <Sun size={34} color="#FFCB05" style={{ marginRight: 12 }} />
-        <View>
-          <Text style={styles.cardTitle}>Tempo agora</Text>
-          <Text style={styles.cardInfo}>☀️ Ensolarado, 29°C</Text>
-          <Text style={styles.cardSmall}>Nenhum alerta de chuva forte</Text>
+        {/* Bloc météo simulé */}
+        <View style={styles.weatherCard}>
+          <Text style={styles.weatherTitle}>Tempo agora</Text>
+          <Text style={styles.weatherInfo}>☀️ Ensolarado, 29ºC</Text>
+          <Text style={styles.weatherSub}>Nenhum alerta de chuva forte</Text>
         </View>
-      </View>
 
-      {/* ALERTES RÉCENTES (scroll horizontal) */}
-      <Text style={styles.sectionTitle}>Alertas recentes perto de você</Text>
-      <FlatList
-        horizontal
-        data={alertasRecentes}
-        keyExtractor={item => item.id}
-        showsHorizontalScrollIndicator={false}
-        style={{ marginBottom: 14 }}
-        contentContainerStyle={{ gap: 14, paddingLeft: 3, paddingRight: 14 }}
-        renderItem={({ item }) => (
-          <View style={[styles.card, styles.alertCard]}>
-            <ShieldAlert size={24} color="#FF3B30" />
-            <View style={{ flex: 1, marginLeft: 10 }}>
-              <Text style={styles.alertType}>{item.type} {item.novo && <Text style={styles.badge}>Novo</Text>}</Text>
-              <Text style={styles.alertPlace}>{item.place}</Text>
-              <Text style={styles.alertDate}>{item.date}</Text>
-            </View>
-          </View>
-        )}
-      />
+        {/* Alertes récentes (horizontales) */}
+        <Text style={styles.sectionTitle}>Alertas recentes</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <AlertCard
+            title="Roubo"
+            badge="Novo"
+            subtitle="Praça Central Hoje 14:13"
+          />
+          <AlertCard
+            title="Incêndio"
+            badge="Novo"
+            subtitle="Rua das Flores Hoje 13:05"
+          />
+          {/* ... autres AlertCard */}
+        </ScrollView>
 
-      {/* Boutons rapides */}
-      <View style={styles.quickActions}>
-        <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/report')}>
-          <PlusCircle color="#fff" size={26} />
-          <Text style={styles.actionLabel}>Sinalizar</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/(tabs)/profile')}>
-          <User color="#fff" size={26} />
-          <Text style={styles.actionLabel}>Meu perfil</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBtn} onPress={() => {/* Ajoute map plus tard */}}>
-          <MapPin color="#fff" size={26} />
-          <Text style={styles.actionLabel}>Ver mapa</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBtn} onPress={() => {/* Ajoute ici un numéro d’urgence, ex: tel://190 */}}>
-          <Phone color="#fff" size={26} />
-          <Text style={styles.actionLabel}>Chamar ajuda</Text>
-        </TouchableOpacity>
-      </View>
+        {/* Actions principales */}
+        <QuickActions
+          onSinalizar={() => router.push('/(tabs)/report')}
+          onProfile={() => router.push('/(tabs)/profile')}
+          onMap={() => router.push('/(tabs)/map')}
+          onHelp={() => {/* Ouvre une modale ou appelle le SOS */}}
+  />
 
-      {/* Statistiques */}
-      <View style={styles.card}>
-        <BarChartBig size={20} color="#00C859" style={{ marginBottom: 6 }} />
-        <Text style={styles.cardTitle}>Estatísticas</Text>
-        <Text style={styles.statsText}>Esta semana: <Text style={styles.statsNumber}>{stats.semana}</Text> alertas</Text>
-        <Text style={styles.statsText}>Este mês: <Text style={styles.statsNumber}>{stats.mes}</Text> alertas</Text>
-        <Text style={styles.statsText}>Vizinhos ativos: <Text style={styles.statsNumber}>{stats.ativos}</Text></Text>
-        <Text style={styles.statsText}>Novos vizinhos: <Text style={styles.statsNumber}>{stats.novos}</Text></Text>
-      </View>
+        {/* Statistiques */}
+        <View style={styles.statsCard}>
+          <Text style={styles.statsTitle}>📊 Estatísticas</Text>
+          <Text style={styles.statsInfo}>Esta semana: <Text style={{ color: '#00C859', fontWeight: 'bold' }}>8</Text> alertas</Text>
+        </View>
 
-      {/* État communauté (exemple future) */}
-      <View style={[styles.card, styles.communityCard]}>
-        <Users size={24} color="#007AFF" style={{ marginRight: 9 }} />
-        <Text style={styles.cardTitle}>Comunidade ativa</Text>
-        <Text style={styles.cardSmall}>Participação crescente. Juntos somos mais fortes!</Text>
+        {/* Communauté */}
+        <View style={styles.communityCard}>
+          <Text style={styles.communityTitle}>Comunidade ativa</Text>
+          <Text style={styles.communityInfo}>Participantes: <Text style={{ color: '#00C859', fontWeight: 'bold' }}>163</Text></Text>
+        </View>
       </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: { backgroundColor: '#181A20' },
-  container: { flexGrow: 1, padding: 24, backgroundColor: '#181A20', justifyContent: 'flex-start' },
-  greeting:  { color: '#fff', fontSize: 24, fontWeight: 'bold', marginBottom: 14, marginTop: 18 },
-  name:      { color: '#00C859', fontWeight: 'bold' },
-
-  // Cards général
-  card: {
-    backgroundColor: '#22242A',
+  scrollContainer: { paddingBottom: 90, backgroundColor: '#181A20' },
+  container: { flex: 1, alignItems: 'center', padding: 18 },
+  greeting: { color: '#fff', fontSize: 27, fontWeight: '700', marginBottom: 18, marginTop: 5, alignSelf: 'flex-start' },
+  username: { color: '#00C859', fontWeight: '900' },
+  weatherCard: {
+    width: '100%',
+    backgroundColor: '#24262e',
     borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
+    padding: 18,
+    marginBottom: 14,
+    alignItems: 'flex-start'
+  },
+  weatherTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 6 },
+  weatherInfo: { color: '#ffe568', fontSize: 15, marginBottom: 3 },
+  weatherSub: { color: '#bbb', fontSize: 13 },
+  sectionTitle: { color: '#fff', fontSize: 19, fontWeight: 'bold', marginTop: 20, marginBottom: 12, alignSelf: 'flex-start' },
+  actionsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    shadowColor: '#000', shadowOpacity: 0.10, shadowRadius: 12, elevation: 2,
+    justifyContent: 'space-between',
+    width: '100%',
+    marginTop: 20,
+    marginBottom: 18,
+    gap: 6
   },
-  cardRow: { flexDirection: 'row', alignItems: 'center' },
-  cardTitle: { color: '#fff', fontSize: 16, fontWeight: '700', marginBottom: 3 },
-  cardInfo: { color: '#bbb', fontSize: 15, fontWeight: '600' },
-  cardSmall: { color: '#888', fontSize: 13, fontWeight: '400', marginTop: 3 },
-  sectionTitle: { color: '#bbb', fontSize: 17, fontWeight: '700', marginBottom: 7, marginLeft: 1 },
-
-  // Alertes récentes
-  alertCard: {
-    minWidth: 195, maxWidth: 235, backgroundColor: '#292B33',
-    flexDirection: 'row', alignItems: 'center', paddingVertical: 18, paddingHorizontal: 18,
-    borderRadius: 14, elevation: 1,
-  },
-  alertType: { color: '#fff', fontWeight: '700', fontSize: 15, marginBottom: 2 },
-  alertPlace: { color: '#00C859', fontWeight: 'bold', fontSize: 14 },
-  alertDate: { color: '#bbb', fontSize: 13, marginTop: 2 },
-  badge: { backgroundColor: '#FF3B30', color: '#fff', borderRadius: 9, paddingHorizontal: 7, marginLeft: 5, fontSize: 11, overflow: 'hidden', fontWeight: 'bold' },
-
-  // Actions rapides
-  quickActions: { flexDirection: 'row', justifyContent: 'space-between', gap: 9, marginBottom: 18 },
   actionBtn: {
-    flex: 1, backgroundColor: '#007AFF', borderRadius: 12, paddingVertical: 13, alignItems: 'center', justifyContent: 'center',
-    marginHorizontal: 4, elevation: 3, flexDirection: 'column'
+    backgroundColor: '#007AFF',
+    borderRadius: 14,
+    paddingVertical: 18,
+    paddingHorizontal: 0,
+    width: BUTTON_WIDTH,
+    alignItems: 'center',
+    marginHorizontal: 3,
+    elevation: 2,
   },
-  actionLabel: { color: '#fff', fontWeight: 'bold', fontSize: 13, marginTop: 4, letterSpacing: 0.1 },
-
-  // Stats
-  statsText: { color: '#bbb', fontSize: 15, marginBottom: 2 },
-  statsNumber: { color: '#00C859', fontWeight: 'bold', fontSize: 16 },
-
-  // Communauté
-  communityCard: { flexDirection: 'row', alignItems: 'center', gap: 10 }
+  actionText: { color: '#fff', fontWeight: 'bold', fontSize: 15, marginTop: 7, textAlign: 'center' },
+  statsCard: {
+    backgroundColor: '#202228',
+    borderRadius: 15,
+    padding: 16,
+    marginTop: 12,
+    width: '100%',
+    alignItems: 'flex-start'
+  },
+  statsTitle: { color: '#6cffe5', fontWeight: 'bold', fontSize: 17, marginBottom: 6 },
+  statsInfo: { color: '#eee', fontSize: 15 },
+  communityCard: {
+    backgroundColor: '#202228',
+    borderRadius: 15,
+    padding: 15,
+    marginTop: 13,
+    width: '100%',
+    alignItems: 'flex-start'
+  },
+  communityTitle: { color: '#6cffe5', fontWeight: 'bold', fontSize: 17, marginBottom: 6 },
+  communityInfo: { color: '#eee', fontSize: 15 },
 });
