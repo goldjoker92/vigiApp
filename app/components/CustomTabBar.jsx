@@ -1,11 +1,11 @@
 import { View, TouchableOpacity, Text, StyleSheet, Platform } from 'react-native';
-import { House, User, AlertCircle, MapPinned, Star } from 'lucide-react-native';
+import { House, User, AlertCircle, MapPinned, Users } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 
 const TABS = [
   { name: 'home', label: 'Início', icon: House },
   { name: 'mapa', label: 'Mapa', icon: MapPinned },
-  { name: 'favoritos', label: 'Favoritos', icon: Star },
+  { name: 'vizinhos', label: 'Vizinhos', icon: Users  },
   { name: 'profile', label: 'Perfil', icon: User }
 ];
 
