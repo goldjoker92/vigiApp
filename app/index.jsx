@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, Image, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { signInWithEmailAndPassword } from "firebase/auth";
@@ -10,14 +9,18 @@ export default function LoginScreen() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
+    setLoading(true);
     try {
       const cred = await signInWithEmailAndPassword(auth, email, senha);
       await loadUserProfile(cred.user.uid);
       router.replace('/(tabs)/home');
     } catch (error) {
       Alert.alert("Erro", error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -30,13 +33,27 @@ export default function LoginScreen() {
             style={styles.logo}
             resizeMode="contain"
           />
-          <TextInput style={styles.input} placeholder="E-mail" value={email} onChangeText={setEmail} autoCapitalize="none" />
-          <TextInput style={styles.input} placeholder="Senha" value={senha} onChangeText={setSenha} secureTextEntry />
+          <TextInput
+            style={styles.input}
+            placeholder="E-mail"
+            value={email}
+            onChangeText={setEmail}
+            autoCapitalize="none"
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="Senha"
+            value={senha}
+            onChangeText={setSenha}
+            secureTextEntry
+          />
           <TouchableOpacity style={styles.button} onPress={handleLogin}>
-            <Text style={styles.buttonText}>Entrar</Text>
+            <Text style={styles.buttonText}>{loading ? "Entrando..." : "Entrar"}</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => router.push('/auth/signup')}>
-            <Text style={styles.link}>Não tem conta? <Text style={styles.linkHighlight}>Cadastre-se</Text></Text>
+            <Text style={styles.link}>
+              Não tem conta? <Text style={styles.linkHighlight}>Cadastre-se</Text>
+            </Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -51,6 +68,6 @@ const styles = StyleSheet.create({
   input: { borderWidth:0, backgroundColor:'#23262F', color:'#fff', padding:14, borderRadius:8, marginBottom:10, fontSize:16 },
   button: { backgroundColor:'#007AFF', padding:16, borderRadius:8, alignItems:'center', marginBottom:16 },
   buttonText: { color:'#fff', fontWeight:'bold', fontSize:18 },
-  link: { color:'#aaa', textAlign:'center', fontSize:15 },
-  linkHighlight: { color:'#00C859', fontWeight:'bold' },
-});
+    link: { color:'#aaa', textAlign:'center', fontSize:15 },
+    linkHighlight: { color:'#00C859', fontWeight:'bold' }
+  });
