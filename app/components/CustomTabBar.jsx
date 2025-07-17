@@ -1,6 +1,9 @@
+import { useState } from 'react';
 import { View, TouchableOpacity, Text, StyleSheet, Platform } from 'react-native';
 import { House, User, AlertCircle, MapPinned, Users } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
+import { useUserStore } from '../../store/users';
+import SignalModal from '../components/SignalModal';
 
 const TABS = [
   { name: 'home', label: 'Início', icon: House },
@@ -11,6 +14,19 @@ const TABS = [
 
 export default function CustomTabBar({ state, descriptors, navigation }) {
   const router = useRouter();
+  const { groupId } = useUserStore();
+  const [showSignalModal, setShowSignalModal] = useState(false);
+
+  const handleSinalizar = () => {
+    if (groupId) setShowSignalModal(true);
+    else router.push('/report');
+  };
+  const handleModalSelect = (mode) => {
+    setShowSignalModal(false);
+    if (mode === 'public') router.push('/report');
+    if (mode === 'group') router.push('/report-group');
+  };
+
   return (
     <>
       <View style={styles.tabBar}>
@@ -25,9 +41,7 @@ export default function CustomTabBar({ state, descriptors, navigation }) {
               activeOpacity={0.7}
             >
               <Icon color={isFocused ? "#00C859" : "#bbb"} size={26} />
-              <Text style={[styles.tabLabel, isFocused && { color: '#00C859' }]}>
-                {tab.label}
-              </Text>
+              <Text style={[styles.tabLabel, isFocused && { color: '#00C859' }]}>{tab.label}</Text>
             </TouchableOpacity>
           );
         })}
@@ -37,20 +51,25 @@ export default function CustomTabBar({ state, descriptors, navigation }) {
       <TouchableOpacity
         style={[
           styles.fab,
-          { backgroundColor: state.index === 1 ? '#007AFF' : '#FF4444' } // <- couleur dynamique: bleu si tab "mapa" actif, rouge sinon
+          { backgroundColor: state.index === 1 ? '#007AFF' : '#FF4444' }
         ]}
         activeOpacity={0.9}
-        onPress={() => router.push('/report')}
+        onPress={handleSinalizar}
       >
         <AlertCircle color="#fff" size={32} />
         <Text style={styles.fabText}>Sinalizar</Text>
       </TouchableOpacity>
+
+      {/* Modale Signalement */}
+      <SignalModal
+        visible={showSignalModal}
+        onClose={() => setShowSignalModal(false)}
+        onSelect={handleModalSelect}
+      />
     </>
   );
 }
-
 const TAB_BAR_HEIGHT = 78;
-
 const styles = StyleSheet.create({
   tabBar: {
     flexDirection: 'row',

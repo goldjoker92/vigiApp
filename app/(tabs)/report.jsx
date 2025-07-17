@@ -64,7 +64,7 @@ export default function ReportScreen() {
       setEstado(addr.region || '');
       setCep(addr.postalCode || '');
       setAddress(`${addr.street || ''}, ${addr.name || ''} - ${addr.city || addr.subregion || ''}/${addr.region || ''} - ${addr.postalCode || ''}`);
-    } catch (e) {
+    } catch (_) {
       Alert.alert('Erro', 'Não foi possível obter sua localização.');
     }
     setLoadingLoc(false);
