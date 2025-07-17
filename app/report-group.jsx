@@ -12,6 +12,8 @@ import {
 } from "lucide-react-native";
 import Toast from 'react-native-toast-message';
 
+
+
 const categories = [
   { label: "Falta de água", icon: Droplets, severity: "minor", color: "#0099FF" },
   { label: "Falta de internet", icon: WifiOff, severity: "minor", color: "#7B61FF" },
@@ -118,6 +120,13 @@ export default function ReportGroupScreen() {
             </TouchableOpacity>
           ))}
         </View>
+        {/* Bouton Demande d'entraide */}
+        <TouchableOpacity
+          style={styles.helpBtn}
+          onPress={() => router.push('/report-help')}
+        >
+          <Text style={styles.helpBtnText}>🤝 Demander de l&apos;aide à mon groupe</Text>
+        </TouchableOpacity>
         {/* Description */}
         <TextInput
           style={styles.input}
@@ -189,5 +198,17 @@ const styles = StyleSheet.create({
     borderRadius: 10, padding: 17, alignItems: "center", marginTop: 14,
     flexDirection: "row", justifyContent: "center"
   },
-    sendBtnText: { color: "#fff", fontWeight: "bold", fontSize: 17 }
+    sendBtnText: { color: "#fff", fontWeight: "bold", fontSize: 17 },
+    helpBtn: {
+    backgroundColor: "#36C5FF",
+    borderRadius: 9,
+    padding: 16,
+    marginVertical: 12,
+    alignItems: "center"
+  },
+  helpBtnText: {
+    color: "#fff",
+    fontWeight: "bold",
+    fontSize: 16
+  }
   });
