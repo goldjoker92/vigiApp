@@ -1,27 +1,9 @@
-// components/SideDrawer.jsx
-import { View, Text, TouchableOpacity, StyleSheet, Modal, Alert } from 'react-native';
-import { LogOut } from 'lucide-react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Modal } from 'react-native';
 import { useUserStore } from '../../store/users';
+import LogoutButton from './LogoutButton';
 
 export default function SideDrawer({ visible, onClose }) {
-  const { user, logout } = useUserStore();
-
-  // Demande confirmation
-  const confirmLogout = () => {
-    Alert.alert(
-      "Confirmação",
-      "Você tem certeza que deseja sair?",
-      [
-        { text: "Cancelar", style: "cancel" },
-        { text: "Sim, sair", onPress: handleLogout, style: "destructive" }
-      ]
-    );
-  };
-
-  const handleLogout = () => {
-    logout();
-    onClose();
-  };
+  const { user } = useUserStore();
 
   return (
     <Modal
@@ -30,14 +12,16 @@ export default function SideDrawer({ visible, onClose }) {
       transparent
       onRequestClose={onClose}
     >
-      <TouchableOpacity style={styles.overlay} onPress={onClose} activeOpacity={1}>
+      <TouchableOpacity
+        style={styles.overlay}
+        onPress={onClose}
+        activeOpacity={1}
+      >
         <View style={styles.drawer}>
-          <Text style={styles.welcome}>Olá, {user?.apelido || user?.nome || "usuário"} 👋</Text>
-          {/* Ajoute d’autres liens ici si besoin */}
-          <TouchableOpacity style={styles.logoutBtn} onPress={confirmLogout}>
-            <LogOut color="#FF4444" size={22} style={{ marginRight: 10 }} />
-            <Text style={styles.logoutText}>Sair</Text>
-          </TouchableOpacity>
+          <Text style={styles.welcome}>
+            Olá, {user?.apelido || user?.nome || "usuário"} 👋
+          </Text>
+          <LogoutButton />
         </View>
       </TouchableOpacity>
     </Modal>
@@ -46,7 +30,7 @@ export default function SideDrawer({ visible, onClose }) {
 
 const styles = StyleSheet.create({
   overlay: {
-    flex:1,
+    flex: 1,
     backgroundColor: 'rgba(0,0,0,0.19)',
     justifyContent: 'flex-end',
     alignItems: 'flex-end',
@@ -68,21 +52,4 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 34,
   },
-  logoutBtn: {
-    marginTop: 40,
-    backgroundColor: '#FFEAEA',
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 13,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#FF4444',
-    width: '100%',
-    justifyContent: 'center'
-  },
-  logoutText: {
-    color: '#FF4444',
-    fontWeight: 'bold',
-    fontSize: 16,
-  }
 });

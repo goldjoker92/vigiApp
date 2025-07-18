@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
-import { useRouter } from 'expo-router';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { auth } from '../../firebase';
+import { useRouter } from 'expo-router';
 
 export default function SignUpScreen() {
   const router = useRouter();
@@ -18,7 +18,6 @@ export default function SignUpScreen() {
     setLoading(true);
     try {
       await createUserWithEmailAndPassword(auth, email, password);
-      // Passe l’email dans les paramètres pour l’onboarding
       router.replace({ pathname: '/auth/profile-onboarding', params: { email } });
     } catch (error) {
       Alert.alert("Erro no cadastro", error.message);
@@ -28,41 +27,45 @@ export default function SignUpScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Criar uma conta</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="E-mail"
-        placeholderTextColor="#7E8A9A"
-        value={email}
-        onChangeText={setEmail}
-        keyboardType="email-address"
-        autoCapitalize="none"
-        editable={!loading}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Senha"
-        placeholderTextColor="#7E8A9A"
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-        editable={!loading}
-      />
-      <TouchableOpacity
-        style={[styles.button, loading && { opacity: 0.6 }]}
-        onPress={handleSignup}
-        disabled={loading}
-      >
-        <Text style={styles.buttonText}>
-          {loading ? "Cadastrando..." : "Cadastrar"}
-        </Text>
-      </TouchableOpacity>
-      <Text style={styles.link}>
-        Já possui uma conta?{' '}
-        <Text style={styles.linkAction} onPress={() => router.back()}>Entrar</Text>
-      </Text>
-    </View>
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
+        <View style={styles.container}>
+          <Text style={styles.title}>Criar uma conta</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="E-mail"
+            placeholderTextColor="#7E8A9A"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            editable={!loading}
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="Senha"
+            placeholderTextColor="#7E8A9A"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            editable={!loading}
+          />
+          <TouchableOpacity
+            style={[styles.button, loading && { opacity: 0.6 }]}
+            onPress={handleSignup}
+            disabled={loading}
+          >
+            <Text style={styles.buttonText}>
+              {loading ? "Cadastrando..." : "Cadastrar"}
+            </Text>
+          </TouchableOpacity>
+          <Text style={styles.link}>
+            Já possui uma conta?{' '}
+            <Text style={styles.linkAction} onPress={() => router.back()}>Entrar</Text>
+          </Text>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 

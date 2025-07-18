@@ -1,16 +1,21 @@
-//store/user.js
-import { create } from "zustand";;
+import { create } from 'zustand';
+import { doc, getDoc } from "firebase/firestore";
+import { db } from '../firebase';
 
-// Stocke le user, le groupe courant, et le timestamp du dernier alert vu
-export const useUserStore = create((set) => ({
-  user: null, // {id, apelido, cep, email, etc.}
+export const useUserStore = create((set, get) => ({
+  user: null, // { uid, email, apelido, ... }
+  groupId: null,
   setUser: (user) => set({ user }),
-
-  groupId: null, // Le groupe auquel l'utilisateur appartient
   setGroupId: (groupId) => set({ groupId }),
 
-  lastSeenAlert: null, // Pour les notifications badge
-  setLastSeenAlert: (lastSeenAlert) => set({ lastSeenAlert }),
+  // Charge le profil user Firestore + son groupId
+  async loadUser(uid) {
+    const ref = doc(db, 'users', uid);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return;
+    const data = snap.data();
+    set({ user: { uid, ...data }, groupId: data.groupId || null });
+  },
 
-  reset: () => set({ user: null, groupId: null, lastSeenAlert: null }),
+  clearUser: () => set({ user: null, groupId: null }),
 }));

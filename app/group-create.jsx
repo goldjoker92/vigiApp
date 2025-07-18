@@ -14,17 +14,35 @@ export default function GroupCreateScreen() {
   const [loading, setLoading] = useState(false);
 
   const handleCreate = async () => {
+    // Vérifie tous les champs obligatoires
     if (!name) {
       Toast.show({ type: 'error', text1: "Informe o nome do grupo!" });
       Vibration.vibrate([0, 100, 50, 100]);
       return;
     }
+    if (!user?.cep || !user?.id || !user?.apelido) {
+      Toast.show({ type: 'error', text1: "Informações do usuário incompletas. Refaça o login." });
+      Vibration.vibrate([0, 100, 50, 100]);
+      return;
+    }
+
     setLoading(true);
+
+    // DEBUG : affiche toutes les données envoyées
+    console.log('Creating group with:', {
+      cep: user.cep,
+      name,
+      description: description ?? "",
+      userId: user.id,
+      apelido: user.apelido,
+    });
+
     try {
+      console.log("DEBUG GROUP CREATE:");
       const groupId = await createGroup({
         cep: user.cep,
         name,
-        description,
+        description: description ?? "", // Jamais undefined
         userId: user.id,
         apelido: user.apelido,
       });
@@ -37,12 +55,12 @@ export default function GroupCreateScreen() {
       Vibration.vibrate(60);
       setTimeout(() => {
         router.replace("/(tabs)/vizinhos");
-      }, 1000); // Laisse le toast s'afficher avant redirect
+      }, 1000);
     } catch (e) {
       Toast.show({
         type: 'error',
         text1: "Erro ao criar grupo",
-        text2: e.message,
+        text2: e.message || "Erro desconhecido",
       });
       Vibration.vibrate([0, 100, 50, 100]);
     } finally {
