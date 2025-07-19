@@ -1,49 +1,80 @@
 import { db } from "../firebase";
 import {
-  collection, query, where, getDocs, addDoc, updateDoc, doc, arrayUnion, arrayRemove, getDoc
+  collection,
+  query,
+  where,
+  getDocs,
+  addDoc,
+  serverTimestamp,
 } from "firebase/firestore";
 
-export async function getGroupsByCep(cep) {
-  if (!cep) return [];
-  const q = query(collection(db, "groups"), where("cep", "==", cep));
-  const snap = await getDocs(q);
-  return snap.docs
-    .map((d) => ({ id: d.id, ...d.data() }))
-    .filter((g) => (g.members?.length || 0) < (g.maxMembers || 30));
-}
-
-export async function createGroup({ cep, name, description, userId, apelido }) {
-  const q = query(collection(db, "groups"), where("cep", "==", cep), where("name", "==", name));
-  const snap = await getDocs(q);
-  if (!snap.empty) throw new Error("Nome de grupo já existe neste CEP.");
-  const docRef = await addDoc(collection(db, "groups"), {
+export async function createGroup({
+  cep,
+  name,
+  description,
+  userId,
+  apelido,
+  nome,
+  cpf,
+}) {
+  console.log("[createGroup] Params reçus:", {
     cep,
     name,
     description,
-    members: [userId],
-    apelidos: [apelido],
+    userId,
+    apelido,
+    nome,
+    cpf,
+  });
+
+  if (!cep || !name || !userId || !apelido || !nome || !cpf) {
+    console.error("[createGroup] Un ou plusieurs champs obligatoires sont manquants !");
+    throw new Error("Champs obrigatórios faltando");
+  }
+
+  // Vérifie unicité nom+cep
+  const q = query(
+    collection(db, "groups"),
+    where("cep", "==", cep),
+    where("name", "==", name)
+  );
+  const snap = await getDocs(q);
+  console.log("[createGroup] Résultat requête Firestore pour doublon:", snap.empty ? "OK pas de doublon" : "Déjà existant");
+  if (!snap.empty) {
+    console.error("[createGroup] Groupe déjà existant !");
+    throw new Error("Nome de grupo já existe neste CEP.");
+  }
+
+  const creatorMember = {
+    userId: userId + "",
+    nome: nome + "",
+    apelido: apelido + "",
+    cpf: cpf + "",
+    cep: cep + "",
+  };
+
+  const docToCreate = {
+    cep: cep + "",
+    name: name + "",
+    description: description || "",
+    creatorUserId: userId + "",
+    creatorNome: nome + "",
+    creatorApelido: apelido + "",
+    creatorCpf: cpf + "",
+    creatorCep: cep + "",
+    members: [creatorMember],
     maxMembers: 30,
-    createdAt: new Date(),
-  });
-  return docRef.id;
-}
+    createdAt: serverTimestamp(),
+  };
 
-export async function joinGroup({ groupId, userId, apelido }) {
-  const groupRef = doc(db, "groups", groupId);
-  const snap = await getDoc(groupRef);
-  const data = snap.data();
-  if ((data.members?.length || 0) >= (data.maxMembers || 30)) throw new Error("Grupo completo.");
-  if ((data.apelidos || []).includes(apelido)) throw new Error("Apelido já usado neste groupe.");
-  await updateDoc(groupRef, {
-    members: arrayUnion(userId),
-    apelidos: arrayUnion(apelido),
-  });
-}
+  console.log("[createGroup] Document prêt à push:", docToCreate);
 
-export async function leaveGroup({ groupId, userId, apelido }) {
-  const groupRef = doc(db, "groups", groupId);
-  await updateDoc(groupRef, {
-    members: arrayRemove(userId),
-    apelidos: arrayRemove(apelido),
-  });
+  try {
+    const docRef = await addDoc(collection(db, "groups"), docToCreate);
+    console.log("[createGroup] Groupe créé avec succès, ID :", docRef.id);
+    return docRef.id;
+  } catch (error) {
+    console.error("[createGroup] Erreur Firestore :", error);
+    throw error;
+  }
 }
