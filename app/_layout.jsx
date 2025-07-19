@@ -1,28 +1,33 @@
-// app/_layout.jsx
+// app/_layout.jsx ou app/layout.jsx
 import { Stack } from 'expo-router';
-import Toast from 'react-native-toast-message';
 import { useEffect } from 'react';
-import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from '../firebase';               
-import { useUserStore } from '../store/users';    
+import { StatusBar } from 'expo-status-bar';
+import Toast from 'react-native-toast-message';
+import CustomToast from './components/CustomToast'; // Chemin selon ton projet
 
-export default function Layout() {
+export default function RootLayout() {
+  // Ajoute la couleur de statusBar si besoin
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        // Recharge le user profile (et donc groupId, etc)
-        await useUserStore.getState().loadUser(user.uid);
-      } else {
-        useUserStore.getState().clearUser();
-      }
-    });
-    return unsub; // Clean-up quand le layout est démonté
+    // Ici, tu peux forcer une couleur pour la StatusBar si tu veux (optionnel)
   }, []);
 
   return (
     <>
-      <Stack screenOptions={{ headerShown: false }} />
-      <Toast />
+      <StatusBar style="light" backgroundColor="#181A20" />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+        }}
+      />
+      <Toast
+        position="top"
+        topOffset={48}
+        config={{
+          success: (props) => <CustomToast {...props} type="success" />,
+          error: (props) => <CustomToast {...props} type="error" />,
+          info: (props) => <CustomToast {...props} type="info" />,
+        }}
+      />
     </>
   );
 }

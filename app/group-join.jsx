@@ -1,10 +1,10 @@
 // app/group-join.jsx
+import { useRouter, useSearchParams } from 'expo-router';
 import { useEffect } from 'react';
-import { View, ActivityIndicator, Vibration } from 'react-native';
-import { useSearchParams, useRouter } from 'expo-router';
-import { useUserStore } from '../store/users';
-import { joinGroup } from '../services/groupService';
+import { ActivityIndicator, Vibration, View } from 'react-native';
 import Toast from 'react-native-toast-message';
+import { joinGroup } from '../services/groupService';
+import { useUserStore } from '../store/users';
 
 export default function GroupJoinScreen() {
   const router = useRouter();
@@ -15,7 +15,7 @@ export default function GroupJoinScreen() {
     async function join() {
       if (!user || !groupId) return;
       try {
-        await joinGroup({ groupId, userId: user.id, apelido: user.apelido });
+        await joinGroup({ groupId, userId: user.uid, apelido: user.apelido });
         setGroupId(groupId);
         Toast.show({
           type: 'success',

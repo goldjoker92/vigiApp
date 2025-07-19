@@ -1,10 +1,10 @@
-import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
-import { db } from '../firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { useUserStore } from '../store/users';
 import { useRouter } from 'expo-router';
+import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { HandHeart, Send } from "lucide-react-native";
+import { useState } from 'react';
+import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { db } from '../firebase';
+import { useUserStore } from '../store/users';
 
 export default function HelpRequestScreen() {
   const { user, groupId } = useUserStore();
@@ -18,7 +18,7 @@ export default function HelpRequestScreen() {
     try {
       await addDoc(collection(db, "groupHelps"), {
         groupId,
-        userId: user.id,
+        userId: user.uid,
         apelido: user.apelido,
         mensagem,
         status: 'aberta',

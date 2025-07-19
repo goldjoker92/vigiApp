@@ -1,13 +1,13 @@
-import { useUserStore } from '../../store/users';
-import { useGrupoDetails } from '../../hooks/useGrupoDetails';
-import { useGroupHelps } from '../../hooks/useGroupHelps';
-import { leaveGroup } from '../../services/groupService';
-import NotificationBell from '../components/NotificationBell';
-import InviteQRCode from '../components/InviteQRCode';
-import { HelpRequestCard } from '../components/HelpRequestCard';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Vibration, Platform, KeyboardAvoidingView } from "react-native";
-import Toast from 'react-native-toast-message';
 import { useRouter } from "expo-router";
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, Vibration, View } from "react-native";
+import Toast from 'react-native-toast-message';
+import { useGroupHelps } from '../../hooks/useGroupHelps';
+import { useGrupoDetails } from '../../hooks/useGrupoDetails';
+import { leaveGroup } from '../../services/groupService';
+import { useUserStore } from '../../store/users';
+import { HelpRequestCard } from '../components/HelpRequestCard';
+import InviteQRCode from '../components/InviteQRCode';
+import NotificationBell from '../components/NotificationBell';
 
 export default function VizinhosScreen() {
   const { groupId, user, setGroupId } = useUserStore();
@@ -17,7 +17,7 @@ export default function VizinhosScreen() {
 
   const handleQuit = async () => {
     try {
-      await leaveGroup({ groupId, userId: user.id, apelido: user.apelido });
+      await leaveGroup({ groupId, userId: user.uid, apelido: user.apelido });
       setGroupId(null);
       Toast.show({ type: 'success', text1: "Você saiu do grupo." });
       Vibration.vibrate([0, 60, 60, 60]);

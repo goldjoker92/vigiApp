@@ -3,10 +3,11 @@ import { Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, Keybo
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { doc, setDoc } from "firebase/firestore";
 import { auth, db } from '../../firebase';
-import { loadUserProfile } from '../../utils/loadUserProfile';
+import { useUserStore } from '../../store/users';
 
 export default function ProfileOnboardingScreen() {
   const router = useRouter();
+  const { setUser } = useUserStore();
   const { email: routeEmail } = useLocalSearchParams();
 
   const [email] = useState(routeEmail || '');
@@ -32,12 +33,13 @@ export default function ProfileOnboardingScreen() {
     try {
       const user = auth.currentUser;
       if (!user) throw new Error("Usuário não autenticado.");
-      await setDoc(doc(db, "users", user.uid), {
+      const profile = {
         nome, apelido, cpf, dataNascimento, endereco, telefone,
         estado, cidade, cep, profissao, sexo, email,
         criadoEm: new Date().toISOString()
-      });
-      await loadUserProfile(user.uid);
+      };
+      await setDoc(doc(db, "users", user.uid), profile);
+      setUser({ uid: user.uid, ...profile });
       Alert.alert("Perfil salvo com sucesso!");
       router.replace('/(tabs)/home');
     } catch (error) {
@@ -64,7 +66,6 @@ export default function ProfileOnboardingScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <Text style={styles.title}>Complete seu perfil</Text>
-
         <Label text="E-mail" obrigatorio />
         <TextInput
           style={[styles.input, { backgroundColor: '#23262F80' }]}
@@ -74,40 +75,28 @@ export default function ProfileOnboardingScreen() {
           selectTextOnFocus={false}
           placeholderTextColor="#7E8A9A"
         />
-
         <Label text="Nome completo" obrigatorio />
         <TextInput style={styles.input} placeholder="Nome completo" value={nome} onChangeText={setNome}/>
-
         <Label text="Apelido (exibe no app)" obrigatorio />
         <TextInput style={styles.input} placeholder="Apelido" value={apelido} onChangeText={setApelido}/>
-
         <Label text="CPF" obrigatorio />
         <TextInput style={styles.input} placeholder="CPF" value={cpf} onChangeText={setCpf} keyboardType="numeric" />
-
         <Label text="Data de nascimento" obrigatorio />
         <TextInput style={styles.input} placeholder="Data de nascimento (DD/MM/AAAA)" value={dataNascimento} onChangeText={setDataNascimento} />
-
         <Label text="Endereço" obrigatorio={false} />
         <TextInput style={styles.input} placeholder="Endereço (opcional)" value={endereco} onChangeText={setEndereco} />
-
         <Label text="Telefone WhatsApp" obrigatorio />
         <TextInput style={styles.input} placeholder="Telefone (WhatsApp)" value={telefone} onChangeText={setTelefone} keyboardType="phone-pad"/>
-
         <Label text="Estado" obrigatorio />
         <TextInput style={styles.input} placeholder="Estado" value={estado} onChangeText={setEstado} />
-
         <Label text="Cidade" obrigatorio />
         <TextInput style={styles.input} placeholder="Cidade" value={cidade} onChangeText={setCidade} />
-
         <Label text="CEP" obrigatorio />
         <TextInput style={styles.input} placeholder="CEP" value={cep} onChangeText={setCep} keyboardType="numeric"/>
-
         <Label text="Profissão" obrigatorio={false} />
         <TextInput style={styles.input} placeholder="Profissão (opcional)" value={profissao} onChangeText={setProfissao} />
-
         <Label text="Sexo" obrigatorio={false} />
         <TextInput style={styles.input} placeholder="Sexo (opcional)" value={sexo} onChangeText={setSexo} />
-
         <View style={{ height: 12 }} />
         <TouchableOpacity
           style={[styles.button, loading && { opacity: 0.6 }]}

@@ -1,10 +1,10 @@
-import { useUserStore } from "../store/users";
+import { useRouter } from "expo-router";
+import { Handshake, PlusCircle } from "lucide-react-native";
+import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import Toast from 'react-native-toast-message';
 import { useGruposPorCep } from "../hooks/useGruposPorCep";
 import { joinGroup } from "../services/groupService";
-import Toast from 'react-native-toast-message';
-import { Handshake, PlusCircle } from "lucide-react-native";
-import { useRouter } from "expo-router";
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator, Platform, KeyboardAvoidingView } from "react-native";
+import { useUserStore } from "../store/users";
 
 export default function GroupSelectScreen() {
   const { user, setGroupId } = useUserStore();
@@ -13,7 +13,7 @@ export default function GroupSelectScreen() {
 
   const handleJoin = async (grupo) => {
     try {
-      await joinGroup({ groupId: grupo.id, userId: user.id, apelido: user.apelido });
+      await joinGroup({ groupId: grupo.id, userId: user.uid, apelido: user.apelido });
       setGroupId(grupo.id);
       Toast.show({
         type: 'success',

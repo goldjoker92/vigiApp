@@ -1,110 +1,47 @@
-import { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Vibration, KeyboardAvoidingView, Platform } from "react-native";
-import { useUserStore } from "../store/users";
-import { createGroup } from "../services/groupService";
 import Toast from 'react-native-toast-message';
-import { PlusCircle } from "lucide-react-native";
-import { useRouter } from 'expo-router';
+import { Vibration } from 'react-native';
+import { createGroup } from '../services/groupService'; // <-- Assure-toi que l'import est correct
 
-export default function GroupCreateScreen() {
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const { user, setGroupId } = useUserStore();
-  const router = useRouter();
-  const [loading, setLoading] = useState(false);
+export async function handleGroupCreate(user, name, description, callback) {
+  const userId = user?.id || user?.uid;
+  if (!user?.cep || !userId || !user?.apelido) {
+    console.log("[GroupCreate] Erreur: infos utilisateur incomplètes", user);
+    Toast.show({ type: 'error', text1: "Informações do usuário incompletas. Refaça o login." });
+    Vibration.vibrate([0, 100, 50, 100]);
+    return;
+  }
+  if (!name) {
+    Toast.show({ type: 'error', text1: "Informe o nome do grupo!" });
+    Vibration.vibrate([0, 100, 50, 100]);
+    return;
+  }
 
-  const handleCreate = async () => {
-    // Vérifie tous les champs obligatoires
-    if (!name) {
-      Toast.show({ type: 'error', text1: "Informe o nome do grupo!" });
-      Vibration.vibrate([0, 100, 50, 100]);
-      return;
-    }
-    if (!user?.cep || !user?.id || !user?.apelido) {
-      Toast.show({ type: 'error', text1: "Informações do usuário incompletas. Refaça o login." });
-      Vibration.vibrate([0, 100, 50, 100]);
-      return;
-    }
+  console.log("[GroupCreate] USER prêt pour création:", {
+    id: userId,
+    apelido: user.apelido,
+    cep: user.cep,
+    name,
+    description
+  });
 
-    setLoading(true);
-
-    // DEBUG : affiche toutes les données envoyées
-    console.log('Creating group with:', {
+  try {
+    // 🔥 Création dans Firestore
+    const groupId = await createGroup({
       cep: user.cep,
       name,
       description: description ?? "",
-      userId: user.id,
+      userId, // bien userId !
       apelido: user.apelido,
     });
-
-    try {
-      console.log("DEBUG GROUP CREATE:");
-      const groupId = await createGroup({
-        cep: user.cep,
-        name,
-        description: description ?? "", // Jamais undefined
-        userId: user.id,
-        apelido: user.apelido,
-      });
-      setGroupId(groupId);
-      Toast.show({
-        type: 'success',
-        text1: "Grupo criado com sucesso!",
-        text2: name,
-      });
-      Vibration.vibrate(60);
-      setTimeout(() => {
-        router.replace("/(tabs)/vizinhos");
-      }, 1000);
-    } catch (e) {
-      Toast.show({
-        type: 'error',
-        text1: "Erro ao criar grupo",
-        text2: e.message || "Erro desconhecido",
-      });
-      Vibration.vibrate([0, 100, 50, 100]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
-      <View style={styles.container}>
-        <Text style={styles.title}>Criar novo grupo</Text>
-        <TextInput
-          placeholder="Nome do grupo"
-          placeholderTextColor="#aaa"
-          value={name}
-          onChangeText={setName}
-          style={styles.input}
-          editable={!loading}
-        />
-        <TextInput
-          placeholder="Descrição (opcional)"
-          placeholderTextColor="#aaa"
-          value={description}
-          onChangeText={setDescription}
-          style={styles.input}
-          editable={!loading}
-        />
-        <TouchableOpacity
-          style={[styles.button, loading && { opacity: 0.5 }]}
-          onPress={handleCreate}
-          disabled={loading}
-        >
-          <PlusCircle color="#fff" size={22} style={{ marginRight: 6 }} />
-          <Text style={styles.buttonText}>{loading ? "Criando..." : "Criar grupo"}</Text>
-        </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
-  );
+    console.log("[GroupCreate] Groupe créé avec l'id:", groupId);
+    Toast.show({ type: 'success', text1: "Grupo criado com sucesso!" });
+    Vibration.vibrate(60);
+    if (callback) callback(groupId);
+    // Ici tu peux faire une navigation ou un autre traitement
+  } catch (e) {
+    console.log("[GroupCreate] Erreur Firestore:", e);
+    Toast.show({ type: 'error', text1: "Erro ao criar grupo", text2: e.message || "Erro desconhecido" });
+    Vibration.vibrate([0, 100, 50, 100]);
+  }
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#181A20", padding: 24, justifyContent: "center" },
-  title: { color: "#00C859", fontSize: 27, marginBottom: 28, fontWeight: "bold", textAlign: 'center' },
-  input: { backgroundColor: "#23262F", color: "#fff", borderRadius: 12, padding: 16, marginBottom: 18, fontSize: 16 },
-  button: { flexDirection: "row", backgroundColor: "#22C55E", borderRadius: 12, padding: 16, alignItems: "center", justifyContent: "center", marginTop: 18, shadowColor: '#22C55E', shadowOpacity: 0.15, shadowRadius: 6, elevation: 2 },
-  buttonText: { color: "#fff", fontWeight: "bold", fontSize: 17, marginLeft: 8 },
-});
+export default handleGroupCreate;

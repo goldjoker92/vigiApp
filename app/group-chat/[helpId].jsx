@@ -1,9 +1,9 @@
-import { useState, useRef, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
 import { useRoute } from '@react-navigation/native';
-import { useUserStore } from '../../store/users';
-import { useGroupChat } from '../../hooks/useGroupChat';
 import { Send, UserCircle } from "lucide-react-native";
+import { useEffect, useRef, useState } from 'react';
+import { FlatList, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useGroupChat } from '../../hooks/useGroupChat';
+import { useUserStore } from '../../store/users';
 
 export default function GroupChatScreen() {
   const route = useRoute();
@@ -23,7 +23,7 @@ export default function GroupChatScreen() {
     if (text.trim().length === 0) return;
     await sendMessage({
       helpId,
-      fromUserId: user.id,
+      fromUserId: user.uid,
       fromApelido: user.apelido,
       text
     });
@@ -42,9 +42,9 @@ export default function GroupChatScreen() {
         renderItem={({ item }) => (
           <View style={[
             styles.msgBubble,
-            item.fromUserId === user.id ? styles.myMsg : styles.otherMsg
+            item.fromUserId === user.uid ? styles.myMsg : styles.otherMsg
           ]}>
-            <UserCircle size={22} color={item.fromUserId === user.id ? "#22C55E" : "#36C5FF"} style={{marginRight:6}}/>
+            <UserCircle size={22} color={item.fromUserId === user.uid ? "#22C55E" : "#36C5FF"} style={{marginRight:6}}/>
             <View>
               <Text style={styles.msgUser}>{item.fromApelido}</Text>
               <Text style={styles.msgText}>{item.text}</Text>
