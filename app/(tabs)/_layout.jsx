@@ -1,16 +1,26 @@
-// app/(tabs)/_layout.jsx
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View } from 'react-native';
-import { Tabs } from 'expo-router';
 import CustomHeader from '../components/CustomHeader';
 import SideDrawer from '../components/SideDrawer';
 import CustomTabBar from '../components/CustomTabBar';
 import { useUserStore } from '../../store/users';
-import { House, MapPinned, Star, User } from 'lucide-react-native';
+import { House, MapPinned, Users, User } from 'lucide-react-native'; // Remplace Star par Users
+import { Tabs, useRouter } from 'expo-router';
+import { isProfileIncomplete } from '../../utils/isProfileIncomplete';
+
 
 export default function TabsLayout() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const { user } = useUserStore();
+  const router = useRouter();
+
+  useEffect(() => {
+    console.log('USER DANS LAYOUT :', user);
+    if (isProfileIncomplete(user)) {
+      router.replace('/auth/profile-onboarding');
+    }
+  }, [user, router]);
+
 
   return (
     <View style={{ flex: 1, backgroundColor: '#181A20' }}>
@@ -50,10 +60,10 @@ export default function TabsLayout() {
           }}
         />
         <Tabs.Screen
-          name="favoritos"
+          name="vizinhos"
           options={{
-            tabBarLabel: 'Favoritos',
-            tabBarIcon: ({ color }) => <Star color={color} size={26} />,
+            tabBarLabel: 'vizinhos',
+            tabBarIcon: ({ color }) => <Users color={color} size={26} />,
           }}
         />
         <Tabs.Screen
