@@ -1,17 +1,16 @@
-import { doc, getDoc } from "firebase/firestore";
-import { db, auth } from '../firebase';
+import { db } from '../firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { useUserStore } from '../store/users';
 
-export const loadUserProfile = async (uid) => {
-  try {
-    const docSnap = await getDoc(doc(db, "usuarios", uid));
-    if (docSnap.exists()) {
-      useUserStore.getState().setUser({ ...docSnap.data(), uid });
-    } else {
-      // Garde les infos auth minimal si pas de profil Firestore
-      useUserStore.getState().setUser({ uid, email: auth.currentUser.email });
-    }
-  } catch (e) {
-    console.warn("Erreur chargement profil Firestore", e);
-  }
-};
+// Charge Firestore → Zustand (userId obligatoire)
+export async function loadUserProfile(uid) {
+  const userDoc = await getDoc(doc(db, "users", uid));
+  if (!userDoc.exists()) return null;
+  useUserStore.getState().setUser({ id: uid, ...userDoc.data() });
+  return userDoc.data();
+}
+
+// Sauve dans Firestore
+export async function saveUserProfile(uid, data) {
+  await setDoc(doc(db, "users", uid), data, { merge: true });
+}
