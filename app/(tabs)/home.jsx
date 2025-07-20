@@ -57,9 +57,24 @@ function GroupSkeleton() {
 // Formatage du CEP
 const formatCep = (cep) => cep?.replace(/^(\d{5})(\d{3})$/, "$1-$2");
 
-export default function HomeScreen() {
-  console.log("[HOME] Entrée dans HomeScreen");
+// Récupération propre du nom du créateur (logique universelle pour toute la plateforme)
+function getCriador(grupo, user) {
+  if (!grupo) return "Desconhecido";
+  // Cas où les champs firestore sont OK
+  if (grupo.creatorUserId && grupo.creatorNome) {
+    return grupo.creatorUserId === user.uid
+      ? (user.apelido || user.username || "Você")
+      : grupo.creatorNome;
+  }
+  // Cas fallback : on a juste creatorNome
+  if (grupo.creatorNome) return grupo.creatorNome;
+  // Cas ultra fallback : premier membre = créateur
+  if (Array.isArray(grupo.members) && grupo.members[0]?.apelido)
+    return grupo.members[0].apelido;
+  return "Desconhecido";
+}
 
+export default function HomeScreen() {
   const { groupId, user } = useUserStore();
   const { grupo, loading: loadingGrupo } = useGrupoDetails(groupId);
   const { grupos, loading: loadingGrupos } = useGruposPorCep(user?.cep);
@@ -67,16 +82,14 @@ export default function HomeScreen() {
   useUserGroupEffect();
   const { quitGroup } = useLocalSearchParams();
 
+  // Toast "Vous avez quitté le groupe"
   useEffect(() => {
     if (quitGroup) {
-      console.log(`[TOAST HOME] Vous avez quitté le groupe: ${quitGroup}`);
       Toast.show({
         type: 'success',
         text1: `Você saiu do grupo ${quitGroup}`,
-        position: 'bottom',
-        visibilityTime: 2800,
-        text1Style: { color: "#fff", fontWeight: "bold" },
-        style: { backgroundColor: '#00C859' }
+        duration: 4000,
+        props: { duration: 4000 },
       });
     }
   }, [quitGroup]);
@@ -85,6 +98,7 @@ export default function HomeScreen() {
     g => g.id !== groupId && (g.members?.length || 0) < (g.maxMembers || 30)
   );
 
+  // Salutation dynamique
   const horaBrasil = new Date().toLocaleTimeString('pt-BR', {
     hour: '2-digit', hour12: false, timeZone: 'America/Fortaleza'
   });
@@ -96,7 +110,6 @@ export default function HomeScreen() {
   const nome = user?.apelido || user?.username || 'Cidadão';
 
   if (!user) {
-    console.log("[HOME] Pas d'utilisateur en store, affichage du loader.");
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color="#00C859" />
@@ -118,10 +131,7 @@ export default function HomeScreen() {
         ) : groupId && grupo ? (
           <TouchableOpacity
             style={styles.groupCard}
-            onPress={() => {
-              console.log("[HOME] Clique sur le groupe principal : ", grupo.name);
-              router.push('/(tabs)/vizinhos');
-            }}
+            onPress={() => router.push('/(tabs)/vizinhos')}
           >
             <Text style={styles.groupTitle}>Seu grupo de vizinhança</Text>
             <Text style={styles.groupName}>{grupo.name}</Text>
@@ -129,7 +139,7 @@ export default function HomeScreen() {
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
               <MaterialIcons name="person-pin" size={18} color="#00C859" />
               <Text style={{ color: '#eee', fontSize: 15, marginLeft: 6 }}>
-                Criador : {grupo.creatorUserId === user.uid ? nome : grupo.creatorNome || 'Desconhecido'}
+                Criador : {getCriador(grupo, user)}
               </Text>
             </View>
 
@@ -141,7 +151,7 @@ export default function HomeScreen() {
               <Text style={{ marginHorizontal: 8, color: '#666' }}>|</Text>
               <FontAwesome name="users" size={16} color="#facc15" />
               <Text style={{ color: '#eee', fontSize: 14, marginLeft: 4 }}>
-                {grupo.members.length} / {grupo.maxMembers || 30} vizinhos
+                {grupo.members?.length || 0} / {grupo.maxMembers || 30} vizinhos
               </Text>
             </View>
           </TouchableOpacity>
@@ -151,10 +161,7 @@ export default function HomeScreen() {
               <Text style={{ color: '#bbb', fontSize: 16 }}>Nenhum grupo encontrado</Text>
               <TouchableOpacity
                 style={styles.createBtn}
-                onPress={() => {
-                  console.log("[HOME] Clique sur CRIAR NOVO GRUPO");
-                  router.push("/group-create");
-                }}
+                onPress={() => router.push("/group-create")}
               >
                 <PlusCircle color="#fff" size={22} />
                 <Text style={styles.createBtnText}>Criar novo grupo</Text>
@@ -173,10 +180,7 @@ export default function HomeScreen() {
             </Text>
             <TouchableOpacity
               style={styles.createBtn}
-              onPress={() => {
-                console.log("[HOME] Clique sur CRIAR NOVO GRUPO (depuis section autres groupes)");
-                router.push("/group-create");
-              }}
+              onPress={() => router.push("/group-create")}
             >
               <PlusCircle color="#fff" size={22} />
               <Text style={styles.createBtnText}>Criar novo grupo</Text>
@@ -189,18 +193,13 @@ export default function HomeScreen() {
               <Text style={styles.otherGroupInfo}>
                 Criador:{" "}
                 <Text style={{ color: g.creatorUserId === user.uid ? '#00C859' : '#F7B801' }}>
-                  {g.creatorUserId === user.uid
-                    ? nome
-                    : g.creatorNome || "Desconhecido"}
+                  {getCriador(g, user)}
                 </Text>{" "}
-                — {g.members.length} / {g.maxMembers || 30} vizinhos
+                — {g.members?.length || 0} / {g.maxMembers || 30} vizinhos
               </Text>
               <TouchableOpacity
                 style={styles.joinBtn}
-                onPress={() => {
-                  console.log(`[HOME] Clique sur ENTRAR NO GRUPO : ${g.name}`);
-                  router.push({ pathname: '/group-join', params: { groupId: g.id } });
-                }}
+                onPress={() => router.push({ pathname: '/group-join', params: { groupId: g.id } })}
               >
                 <Handshake color="#fff" size={20} />
                 <Text style={styles.joinBtnText}>Entrar no grupo</Text>
@@ -212,10 +211,7 @@ export default function HomeScreen() {
         {!groupId && (
           <TouchableOpacity
             style={[styles.createBtn, { marginTop: 26 }]}
-            onPress={() => {
-              console.log("[HOME] Clique sur CRIAR GRUPO (pas encore membre)");
-              router.push("/group-create");
-            }}
+            onPress={() => router.push("/group-create")}
           >
             <Users color="#fff" size={20} />
             <Text style={styles.createBtnText}>Criar grupo com vizinhos do seu CEP</Text>

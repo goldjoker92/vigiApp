@@ -7,11 +7,25 @@ export function useGrupoDetails(groupId) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!groupId) return;
+    console.log("[HOOK][useGrupoDetails] groupId:", groupId);
+    if (!groupId) {
+      setGrupo(null);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true); // Important pour skeleton UX lors du changement de groupe
+
     const unsub = onSnapshot(doc(db, 'groups', groupId), (docSnap) => {
-      setGrupo({ id: docSnap.id, ...docSnap.data() });
+      console.log("[HOOK][useGrupoDetails] snapshot exists:", docSnap.exists(), "| data:", docSnap.data());
+      if (docSnap.exists()) {
+        setGrupo({ id: docSnap.id, ...docSnap.data() });
+      } else {
+        setGrupo(null); // Groupe supprimé ou inexistant
+      }
       setLoading(false);
     });
+
     return () => unsub();
   }, [groupId]);
 
