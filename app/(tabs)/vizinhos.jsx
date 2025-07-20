@@ -60,10 +60,47 @@ export default function VizinhosScreen() {
 
   const [quitModalVisible, setQuitModalVisible] = useState(false);
 
+  // ----- CAS USER NON RATTACHÉ À AUCUN GROUPE -----
+  if (!loading && !grupo) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#181A20" }}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={{ flex: 1 }}
+        >
+          <ScrollView
+            contentContainerStyle={styles.noGroupContainer}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <Feather name="alert-triangle" size={42} color="#FFD600" style={{ marginBottom: 14 }} />
+            <Text style={styles.noGroupTitle}>Você não está em nenhum grupo</Text>
+            <Text style={styles.noGroupText}>
+              Você ainda não está vinculado a um grupo de vizinhos do seu CEP.{"\n\n"}
+              Para criar um novo grupo, volte à página inicial e clique no botão{" "}
+              <Text style={{ color: "#4F8DFF", fontWeight: "bold" }}>Criar novo grupo com seu CEP</Text>.
+            </Text>
+            <TouchableOpacity
+              style={styles.goHomeBtn}
+              onPress={() => router.replace("/(tabs)/home")}
+              activeOpacity={0.87}
+            >
+              <Feather name="arrow-left-circle" size={18} color="#fff" style={{ marginRight: 8 }} />
+              <Text style={styles.goHomeBtnText} numberOfLines={1} adjustsFontSizeToFit>
+                Voltar para a página inicial
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    );
+  }
+
+  // ---- AFFICHAGE DU GROUPE ----
   const handleQuit = async () => {
     try {
       const isCreator = user.uid === grupo.creatorUserId;
-      if (isCreator) startAdminReassignment(grupo, user, groupId);
+      if (isCreator) await startAdminReassignment(grupo, user, groupId);
       await leaveGroup({ groupId, userId: user.id, apelido: user.apelido });
       setGroupId(null);
       setQuitModalVisible(false);
@@ -84,7 +121,6 @@ export default function VizinhosScreen() {
       </View>
     );
 
-  // -- LOGIQUE CREATOR COMME SUR HOME --
   let criador =
     grupo.creatorUserId === user.uid
       ? user.apelido || user.username || "Você"
@@ -137,7 +173,7 @@ export default function VizinhosScreen() {
             </View>
           </View>
 
-          {/* BOUTON SCROLLABLE & RESPONSIVE */}
+          {/* BOUTON QUITTER */}
           <View style={styles.quitBtnWrapper}>
             <TouchableOpacity
               style={styles.quitBtn}
@@ -172,6 +208,7 @@ export default function VizinhosScreen() {
 }
 
 const styles = StyleSheet.create({
+  // --- PAGE AVEC GROUPE ---
   content: {
     paddingHorizontal: 24,
     paddingTop: 44,
@@ -237,10 +274,53 @@ const styles = StyleSheet.create({
   quitBtnText: {
     color: "#fff",
     fontWeight: "bold",
-    fontSize: 15, // <--- police réduite et stable
+    fontSize: 15,
     letterSpacing: 0.25,
     flexShrink: 1,
     includeFontPadding: false,
     textAlignVertical: "center",
+  },
+  // --- PAGE SANS GROUPE ---
+  noGroupContainer: {
+    flexGrow: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#181A20",
+    paddingHorizontal: 24,
+    paddingBottom: 24,
+    minHeight: Dimensions.get("window").height * 0.95,
+  },
+  noGroupTitle: {
+    color: "#FFD600",
+    fontWeight: "bold",
+    fontSize: 18.5,
+    marginBottom: 11,
+    textAlign: "center",
+    letterSpacing: 0.15,
+  },
+  noGroupText: {
+    color: "#eee",
+    fontSize: 14.3,
+    textAlign: "center",
+    marginBottom: 22,
+    lineHeight: 19,
+  },
+  goHomeBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#4F8DFF",
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    alignSelf: "center",
+    minWidth: 160,
+    maxWidth: 290,
+    elevation: 2,
+  },
+  goHomeBtnText: {
+    color: "#fff",
+    fontWeight: "bold",
+    fontSize: 13.5,
+    letterSpacing: 0.11,
   },
 });
