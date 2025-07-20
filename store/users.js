@@ -1,8 +1,11 @@
 import { create } from "zustand";
 
-// Stocke le user avec toutes les infos requises (id, apelido, cep, nome, cpf, etc.)
+/**
+ * user: { id, apelido, cep, email, nome, cpf, ... }
+ * groupId: string | null
+ */
 export const useUserStore = create((set) => ({
-  user: null, // { id, apelido, cep, email, nome, cpf }
+  user: null,
   setUser: (user) => set({ user }),
   groupId: null,
   setGroupId: (groupId) => set({ groupId }),
