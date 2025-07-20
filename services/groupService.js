@@ -6,8 +6,12 @@ import {
   getDocs,
   addDoc,
   serverTimestamp,
+  updateDoc,
+  doc,
+  arrayRemove,
 } from "firebase/firestore";
 
+// ----- CRÉATION DE GROUPE -----
 export async function createGroup({
   cep,
   name,
@@ -46,24 +50,26 @@ export async function createGroup({
   }
 
   const creatorMember = {
-    userId: userId + "",
-    nome: nome + "",
-    apelido: apelido + "",
-    cpf: cpf + "",
-    cep: cep + "",
+    userId: String(userId),
+    nome: String(nome),
+    apelido: String(apelido),
+    cpf: String(cpf),
+    cep: String(cep),
   };
 
   const docToCreate = {
-    cep: cep + "",
-    name: name + "",
+    cep: String(cep),
+    name: String(name),
     description: description || "",
-    creatorUserId: userId + "",
-    creatorNome: nome + "",
-    creatorApelido: apelido + "",
-    creatorCpf: cpf + "",
-    creatorCep: cep + "",
+    creatorUserId: String(userId),
+    creatorNome: String(nome),
+    creatorApelido: String(apelido),
+    creatorCpf: String(cpf),
+    creatorCep: String(cep),
     members: [creatorMember],
+    apelidos: [String(apelido)],    // Pour affichage rapide dans la liste
     maxMembers: 30,
+    adminApelido: String(apelido),  // Admin de départ
     createdAt: serverTimestamp(),
   };
 
@@ -77,4 +83,12 @@ export async function createGroup({
     console.error("[createGroup] Erreur Firestore :", error);
     throw error;
   }
+}
+
+// ----- QUITTER UN GROUPE -----
+export async function leaveGroup({ groupId, userId, apelido }) {
+  await updateDoc(doc(db, 'groups', groupId), {
+    members: arrayRemove(userId),
+    apelidos: arrayRemove(apelido),
+  });
 }
