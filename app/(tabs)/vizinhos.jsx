@@ -1,48 +1,53 @@
 import React, { useState } from "react";
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, StyleSheet, Vibration, Platform, KeyboardAvoidingView } from "react-native";
-import { MaterialCommunityIcons, Feather } from '@expo/vector-icons';
-import Toast from 'react-native-toast-message';
-import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '../../firebase'; 
-import { useUserStore } from '../../store/users';
-import { useGrupoDetails } from '../../hooks/useGrupoDetails';
-import { leaveGroup } from '../../services/groupService';
-import QuitGroupModal from '../components/QuitGroupModal';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  ActivityIndicator,
+  StyleSheet,
+  Vibration,
+  Platform,
+  KeyboardAvoidingView,
+  SafeAreaView,
+  ScrollView,
+  Dimensions,
+} from "react-native";
+import { MaterialIcons, Feather } from "@expo/vector-icons";
+import Toast from "react-native-toast-message";
+import { doc, updateDoc } from "firebase/firestore";
+import { db } from "../../firebase";
+import { useUserStore } from "../../store/users";
+import { useGrupoDetails } from "../../hooks/useGrupoDetails";
+import { leaveGroup } from "../../services/groupService";
+import QuitGroupModal from "../components/QuitGroupModal";
 import { useRouter } from "expo-router";
-import dayjs from 'dayjs';
+import dayjs from "dayjs";
 
-// ---------- PASSATION ADMIN (en tâche de fond) ----------
+// ----- ADMIN REASSIGNMENT -----
 async function startAdminReassignment(grupo, user, groupId) {
   try {
-    console.log("[ADMIN] Lancement passation admin");
     const apelidosSorted = [...(grupo.apelidos || [])].filter(a => a !== user.apelido).sort();
     const membres = grupo.membrosDetalhados || [];
     const candidates = apelidosSorted
       .map(apelido => membres.find(m => m.apelido === apelido))
       .filter(Boolean);
-
     for (let i = 0; i < candidates.length; i++) {
       const membro = candidates[i];
-      await updateDoc(doc(db, 'groups', groupId), {
+      await updateDoc(doc(db, "groups", groupId), {
         propostaAdmin: {
           apelido: membro.apelido,
           userId: membro.id,
-          status: 'pending'
-        }
+          status: "pending",
+        },
       });
-      console.log(`[ADMIN] Proposition envoyée à ${membro.apelido}`);
-      // ici: la logique d'attente/réponse Firestore, ou laisse la tâche tourner...
     }
-
-    // Si personne
-    const deleteAt = dayjs().add(7, 'day').toISOString();
-    await updateDoc(doc(db, 'groups', groupId), {
+    const deleteAt = dayjs().add(7, "day").toISOString();
+    await updateDoc(doc(db, "groups", groupId), {
       adminApelido: null,
       deleteAt,
       propostaAdmin: null,
-      deleteWarningSent: false
+      deleteWarningSent: false,
     });
-    console.log(`[ADMIN] Aucun admin accepté. Groupe supprimé le ${deleteAt}`);
   } catch (err) {
     console.log("[ADMIN ERROR]", err);
   }
@@ -55,91 +60,187 @@ export default function VizinhosScreen() {
 
   const [quitModalVisible, setQuitModalVisible] = useState(false);
 
-  // --------- Handler pour quitter le groupe ---------
   const handleQuit = async () => {
     try {
-      console.log("[QUIT] Début sortie groupe pour :", user.apelido);
-      const isCreator = user.apelido === grupo.adminApelido;
-      if (isCreator) {
-        console.log("[QUIT] User est créateur/admin, passation en fond.");
-        startAdminReassignment(grupo, user, groupId);
-      }
+      const isCreator = user.uid === grupo.creatorUserId;
+      if (isCreator) startAdminReassignment(grupo, user, groupId);
       await leaveGroup({ groupId, userId: user.id, apelido: user.apelido });
-      console.log("[QUIT] Succès Firestore. On reset groupId et ferme la modale.");
       setGroupId(null);
       setQuitModalVisible(false);
       Vibration.vibrate([0, 60, 60, 60]);
-      // Redirige vers la Home avec paramètre pour toast !
       setTimeout(() => {
-      router.replace({ pathname: "/(tabs)/home", params: { quitGroup: grupo.name } });
+        router.replace({ pathname: "/(tabs)/home", params: { quitGroup: grupo.name } });
       }, 900);
     } catch (e) {
-      Toast.show({ type: 'error', text1: "Erro ao sair", text2: e.message });
+      Toast.show({ type: "error", text1: "Erro ao sair", text2: e.message });
       Vibration.vibrate([0, 100, 50, 100]);
-      console.log("[ERRO] handleQuit:", e);
     }
   };
 
   if (loading || !grupo)
     return (
-      <View style={{ flex: 1, backgroundColor: "#1B2232", justifyContent: "center", alignItems: "center" }}>
+      <View style={{ flex: 1, backgroundColor: "#181A20", justifyContent: "center", alignItems: "center" }}>
         <ActivityIndicator color="#22C55E" size="large" />
       </View>
     );
 
+  // -- LOGIQUE CREATOR COMME SUR HOME --
+  let criador =
+    grupo.creatorUserId === user.uid
+      ? user.apelido || user.username || "Você"
+      : grupo.creatorNome
+        || grupo.creatorApelido
+        || (Array.isArray(grupo.members) && grupo.members[0]?.apelido)
+        || "Desconhecido";
+
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
-      <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.name}>
-          <MaterialCommunityIcons name="home-group" size={22} color="#22C55E" /> {grupo.name}
-        </Text>
-        <Text style={styles.desc}>{grupo.description}</Text>
-        <Text style={styles.info}>
-          <Feather name="users" size={18} color="#00C859" />{" "}
-          <Text style={{ color: "#22C55E", fontWeight: "bold" }}>
-            {(grupo.members?.length || 0)} / {(grupo.maxMembers || 30)}
-          </Text>{" "}
-          vizinhos
-        </Text>
-        <Text style={styles.members}>
-          <Feather name="user" size={16} color="#FFD700" />{" "}
-          Membros: {(grupo.apelidos || []).join(", ")}
-        </Text>
-        <Text style={styles.info}>
-          <Feather name="user-check" size={16} color="#FFD700" />{" "}
-          Admin: {grupo.adminApelido || "?"} | CEP: {grupo.cep}
-        </Text>
-        <TouchableOpacity
-          style={styles.quitBtn}
-          onPress={() => {
-            console.log("[UI] Clique sur Sair do grupo");
-            setQuitModalVisible(true);
-          }}
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#181A20" }}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
+      >
+        <ScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          <MaterialCommunityIcons name="logout" size={18} color="#fff" />
-          <Text style={styles.quitBtnText}>Sair do grupo</Text>
-        </TouchableOpacity>
+          {/* NOM DU GROUPE CENTRÉ */}
+          <View style={styles.header}>
+            <Text style={styles.groupName}>{grupo.name}</Text>
+          </View>
+
+          {/* INFOS GROUP */}
+          <View style={styles.infoBox}>
+            <View style={styles.infoRow}>
+              <Feather name="users" size={20} color="#00C859" />
+              <Text style={styles.infoText}>
+                <Text style={{ color: "#00C859", fontWeight: "bold", fontSize: 19 }}>
+                  {grupo.members?.length || 1} / {grupo.maxMembers || 30}
+                </Text>{" "}
+                vizinhos
+              </Text>
+            </View>
+            <View style={styles.infoRow}>
+              <Feather name="user-check" size={20} color="#00C859" />
+              <Text style={[styles.infoText, { color: "#00C859", fontWeight: "bold" }]}>
+                Criador:{" "}
+                <Text style={{ color: "#fff", fontWeight: "bold" }}>
+                  {criador}
+                </Text>
+              </Text>
+            </View>
+            <View style={styles.infoRow}>
+              <Feather name="map-pin" size={19} color="#00C859" />
+              <Text style={[styles.infoText, { color: "#00C859", fontWeight: "bold" }]}>
+                CEP: <Text style={{ color: "#fff", fontWeight: "bold" }}>{grupo.cep}</Text>
+              </Text>
+            </View>
+          </View>
+
+          {/* BOUTON SCROLLABLE & RESPONSIVE */}
+          <View style={styles.quitBtnWrapper}>
+            <TouchableOpacity
+              style={styles.quitBtn}
+              onPress={() => setQuitModalVisible(true)}
+              activeOpacity={0.87}
+            >
+              <MaterialIcons name="logout" size={21} color="#FFD600" style={{ marginRight: 11 }} />
+              <Text
+                style={styles.quitBtnText}
+                numberOfLines={1}
+                ellipsizeMode="clip"
+                adjustsFontSizeToFit
+                minimumFontScale={0.85}
+                allowFontScaling
+              >
+                Sair do grupo
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+
         {/* MODALE QUITTER */}
         <QuitGroupModal
           visible={quitModalVisible}
           groupName={grupo.name}
           onConfirm={handleQuit}
-          onCancel={() => {
-            console.log("[UI] Annulation modale sortie groupe");
-            setQuitModalVisible(false);
-          }}
+          onCancel={() => setQuitModalVisible(false)}
         />
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { backgroundColor: "#1B2232", padding: 20, minHeight: 400 },
-  name: { color: "#fff", fontWeight: "bold", fontSize: 22, marginBottom: 8, textAlign: "left" },
-  desc: { color: "#aaa", marginBottom: 8, fontSize: 15 },
-  info: { color: "#eee", marginBottom: 10, fontSize: 15 },
-  members: { color: "#aaa", marginBottom: 10, fontSize: 14 },
-  quitBtn: { backgroundColor: "#FF4D4F", borderRadius: 12, padding: 14, marginTop: 25, alignItems: "center", flexDirection: 'row', justifyContent: 'center' },
-  quitBtnText: { color: "#fff", fontWeight: "bold", fontSize: 16, marginLeft: 9 }
+  content: {
+    paddingHorizontal: 24,
+    paddingTop: 44,
+    paddingBottom: 44,
+    backgroundColor: "#181A20",
+    minHeight: Dimensions.get("window").height * 0.9,
+  },
+  header: {
+    alignItems: "center",
+    marginBottom: 15,
+    marginTop: 8,
+  },
+  groupName: {
+    color: "#00C859",
+    fontWeight: "bold",
+    fontSize: 38,
+    marginTop: 0,
+    textAlign: "center",
+    letterSpacing: 1.2,
+  },
+  infoBox: {
+    marginTop: 18,
+    borderRadius: 16,
+    backgroundColor: "#23262F",
+    paddingVertical: 22,
+    paddingHorizontal: 19,
+    marginBottom: 18,
+    alignItems: "flex-start",
+  },
+  infoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 15,
+  },
+  infoText: {
+    color: "#eee",
+    fontSize: 18,
+    marginLeft: 12,
+    fontWeight: "700",
+  },
+  quitBtnWrapper: {
+    width: "100%",
+    alignItems: "center",
+    marginTop: 22,
+    marginBottom: 32,
+  },
+  quitBtn: {
+    backgroundColor: "#FF4D4F",
+    borderRadius: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 22,
+    minWidth: 170,
+    maxWidth: 320,
+    width: "72%",
+    alignSelf: "center",
+    shadowColor: "#FF4D4F",
+    shadowOpacity: 0.10,
+    shadowRadius: 7,
+  },
+  quitBtnText: {
+    color: "#fff",
+    fontWeight: "bold",
+    fontSize: 15, // <--- police réduite et stable
+    letterSpacing: 0.25,
+    flexShrink: 1,
+    includeFontPadding: false,
+    textAlignVertical: "center",
+  },
 });
