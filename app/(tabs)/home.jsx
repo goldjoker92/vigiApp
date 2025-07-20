@@ -1,15 +1,9 @@
 import React, { useEffect, useRef } from 'react';
 import {
-  Animated,
-  View,
-  Text,
-  TouchableOpacity,
-  ScrollView,
-  StyleSheet,
-  Platform,
-  KeyboardAvoidingView,
-  ActivityIndicator,
+  Animated, View, Text, TouchableOpacity, ScrollView, StyleSheet,
+  Platform, KeyboardAvoidingView, ActivityIndicator
 } from 'react-native';
+import { useAuthGuard } from "../../hooks/useAuthGuard";
 import { useUserStore } from '../../store/users';
 import { useGrupoDetails } from '../../hooks/useGrupoDetails';
 import { useGruposPorCep } from '../../hooks/useGruposPorCep';
@@ -20,23 +14,13 @@ import WeatherCard from '../components/WeatherCard';
 import { useUserGroupEffect } from '../../hooks/useUserGroupEffect';
 import Toast from 'react-native-toast-message';
 
-// ---------- Skeleton animée ----------
 function AnimatedSkeletonLine({ style, delay = 0 }) {
   const opacity = useRef(new Animated.Value(0.5)).current;
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
-        Animated.timing(opacity, {
-          toValue: 1,
-          duration: 600,
-          delay,
-          useNativeDriver: true,
-        }),
-        Animated.timing(opacity, {
-          toValue: 0.5,
-          duration: 600,
-          useNativeDriver: true,
-        }),
+        Animated.timing(opacity, { toValue: 1, duration: 600, delay, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 0.5, duration: 600, useNativeDriver: true }),
       ])
     ).start();
   }, [delay, opacity]);
@@ -54,35 +38,30 @@ function GroupSkeleton() {
   );
 }
 
-// Formatage du CEP
 const formatCep = (cep) => cep?.replace(/^(\d{5})(\d{3})$/, "$1-$2");
 
-// Récupération propre du nom du créateur (logique universelle pour toute la plateforme)
 function getCriador(grupo, user) {
   if (!grupo) return "Desconhecido";
-  // Cas où les champs firestore sont OK
   if (grupo.creatorUserId && grupo.creatorNome) {
     return grupo.creatorUserId === user.uid
       ? (user.apelido || user.username || "Você")
       : grupo.creatorNome;
   }
-  // Cas fallback : on a juste creatorNome
   if (grupo.creatorNome) return grupo.creatorNome;
-  // Cas ultra fallback : premier membre = créateur
   if (Array.isArray(grupo.members) && grupo.members[0]?.apelido)
     return grupo.members[0].apelido;
   return "Desconhecido";
 }
 
 export default function HomeScreen() {
-  const { groupId, user } = useUserStore();
+  const user = useAuthGuard();
+  const { groupId } = useUserStore();
   const { grupo, loading: loadingGrupo } = useGrupoDetails(groupId);
   const { grupos, loading: loadingGrupos } = useGruposPorCep(user?.cep);
   const router = useRouter();
   useUserGroupEffect();
   const { quitGroup } = useLocalSearchParams();
 
-  // Toast "Vous avez quitté le groupe"
   useEffect(() => {
     if (quitGroup) {
       Toast.show({
@@ -94,11 +73,12 @@ export default function HomeScreen() {
     }
   }, [quitGroup]);
 
+  if (!user) return <ActivityIndicator style={{ flex: 1 }} color="#22C55E" />;
+
   const outrosGrupos = (grupos || []).filter(
     g => g.id !== groupId && (g.members?.length || 0) < (g.maxMembers || 30)
   );
 
-  // Salutation dynamique
   const horaBrasil = new Date().toLocaleTimeString('pt-BR', {
     hour: '2-digit', hour12: false, timeZone: 'America/Fortaleza'
   });
@@ -109,23 +89,13 @@ export default function HomeScreen() {
 
   const nome = user?.apelido || user?.username || 'Cidadão';
 
-  if (!user) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#00C859" />
-      </View>
-    );
-  }
-
   return (
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
       <ScrollView contentContainerStyle={styles.container}>
         <Text style={styles.greeting}>
           {saudacao}, <Text style={styles.username}>{nome}</Text> 👋
         </Text>
-
         <WeatherCard cep={user?.cep} />
-
         {loadingGrupo ? (
           <GroupSkeleton />
         ) : groupId && grupo ? (
@@ -135,14 +105,12 @@ export default function HomeScreen() {
           >
             <Text style={styles.groupTitle}>Seu grupo de vizinhança</Text>
             <Text style={styles.groupName}>{grupo.name}</Text>
-
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
               <MaterialIcons name="person-pin" size={18} color="#00C859" />
               <Text style={{ color: '#eee', fontSize: 15, marginLeft: 6 }}>
                 Criador : {getCriador(grupo, user)}
               </Text>
             </View>
-
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Feather name="map-pin" size={16} color="#60a5fa" />
               <Text style={{ color: '#eee', fontSize: 14, marginLeft: 4 }}>
@@ -235,7 +203,7 @@ const styles = StyleSheet.create({
   otherGroupName: { color: '#fff', fontWeight: 'bold', fontSize: 16, marginBottom: 4 },
   otherGroupInfo: { color: '#bbb', fontSize: 14, marginBottom: 4 },
   joinBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#00C859', padding: 9, borderRadius: 10, marginTop: 6, alignSelf: 'flex-start' },
-  joinBtnText: { color: '#fff', fontWeight: 'bold', marginLeft: 8 },
+  joinBtnText: { color: "#fff", fontWeight: "bold", marginLeft: 8 },
   createBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#4F8DFF', padding: 11, borderRadius: 12, marginTop: 18, alignSelf: 'center' },
   createBtnText: { color: "#fff", fontWeight: "bold", marginLeft: 10, fontSize: 16 },
   infoBox: { marginTop: 30, alignItems: 'center', padding: 18, backgroundColor: '#23262F', borderRadius: 14 },

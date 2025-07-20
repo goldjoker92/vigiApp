@@ -1,15 +1,15 @@
 import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView, ActivityIndicator } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { db, auth } from '../../firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { useUserStore } from '../../store/users';
 import { useRouter } from 'expo-router';
 import {
   MapPin, Bell, AlertTriangle, HandHeart, Flame, ShieldAlert,
   Bolt, Car, FileQuestion, Send, UserX
 } from "lucide-react-native";
+import { useAuthGuard } from '../../hooks/useAuthGuard';
 
 const categories = [
   { label: "Roubo/Furto", icon: ShieldAlert, severity: "medium", color: "#FFA500" },
@@ -22,9 +22,8 @@ const categories = [
 ];
 
 export default function ReportScreen() {
+  const user = useAuthGuard();
   const router = useRouter();
-  const { user } = useUserStore();
-
   const [categoria, setCategoria] = useState(null);
   const [descricao, setDescricao] = useState('');
   const [local, setLocal] = useState(null);
@@ -35,17 +34,15 @@ export default function ReportScreen() {
   const [estado, setEstado] = useState('');
   const [cep, setCep] = useState('');
   const [loadingLoc, setLoadingLoc] = useState(false);
+  if (!user) return <ActivityIndicator style={{ flex: 1 }} color="#22C55E" />;
 
-  // Date/Heure format BR
   const now = new Date();
   const dateBR = now.toLocaleDateString('pt-BR');
   const timeBR = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
-  // Couleur selon la gravité sélectionnée
   const selectedCategory = categories.find(c => c.label === categoria);
   const severityColor = selectedCategory?.color || '#007AFF';
 
-  // Géolocalisation avancée
   const handleLocation = async () => {
     setLoadingLoc(true);
     try {
@@ -64,13 +61,12 @@ export default function ReportScreen() {
       setEstado(addr.region || '');
       setCep(addr.postalCode || '');
       setAddress(`${addr.street || ''}, ${addr.name || ''} - ${addr.city || addr.subregion || ''}/${addr.region || ''} - ${addr.postalCode || ''}`);
-    } catch (e) {
+    } catch (_) {
       Alert.alert('Erro', 'Não foi possível obter sua localização.');
     }
     setLoadingLoc(false);
   };
 
-  // ENVOI FIRESTORE
   const handleSend = async () => {
     if (!categoria) return Alert.alert('Selecione uma categoria.');
     if (!rua || !numero || !cidade || !estado || !cep) return Alert.alert('Preencha todos os campos de localização.');
@@ -100,7 +96,6 @@ export default function ReportScreen() {
   return (
     <ScrollView contentContainerStyle={styles.scrollContainer}>
       <View style={styles.container}>
-        {/* Carte d'avertissement - en haut, dans une card rouge */}
         <View style={styles.alertCard}>
           <AlertTriangle color="#fff" size={26} style={{ marginRight: 12 }} />
           <View style={{ flex: 1 }}>
@@ -118,7 +113,6 @@ export default function ReportScreen() {
           Sinalizar um evento público
         </Text>
 
-        {/* Sélecteur de catégorie */}
         <View style={styles.categoriaGroup}>
           {categories.map(({ label, icon: Icon, color }) => (
             <TouchableOpacity
@@ -135,7 +129,6 @@ export default function ReportScreen() {
           ))}
         </View>
 
-        {/* Champ de description */}
         <Text style={styles.label}>Descreva o ocorrido</Text>
         <TextInput
           style={styles.input}
@@ -145,7 +138,6 @@ export default function ReportScreen() {
           multiline
         />
 
-        {/* Date & heure (lecture seule) */}
         <View style={styles.row}>
           <View style={styles.readonlyField}>
             <Text style={styles.readonlyLabel}>Data</Text>
@@ -157,7 +149,6 @@ export default function ReportScreen() {
           </View>
         </View>
 
-        {/* Champs d’adresse automatique */}
         <Text style={styles.label}>Localização</Text>
         <View style={styles.geoFields}>
           <TextInput
@@ -199,7 +190,6 @@ export default function ReportScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Affiche la carte si localisation */}
         {local && (
           <MapView
             style={styles.map}
@@ -226,7 +216,6 @@ export default function ReportScreen() {
 const styles = StyleSheet.create({
   scrollContainer: { paddingBottom: 36, backgroundColor: "#181A20" },
   container: { padding: 22, flex: 1, backgroundColor: "#181A20" },
-
   alertCard: {
     flexDirection: 'row',
     backgroundColor: '#FF3B30',
@@ -240,7 +229,6 @@ const styles = StyleSheet.create({
   },
   alertTitle: { color: "#fff", fontSize: 17, fontWeight: 'bold', marginBottom: 2 },
   alertMsg: { color: "#fff", fontSize: 15 },
-
   title: { fontSize: 22, fontWeight: "bold", marginBottom: 15, color: '#fff', flexDirection: "row", alignItems: "center" },
   categoriaGroup: { flexDirection: "row", flexWrap: "wrap", marginBottom: 16, gap: 6 },
   categoriaBtn: {

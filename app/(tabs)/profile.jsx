@@ -1,8 +1,10 @@
-import { View, Text, StyleSheet } from 'react-native';
-import { useUserStore } from '../../store/users';
+import React from 'react';
+import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { useAuthGuard } from '../../hooks/useAuthGuard';
 
 export default function ProfileScreen() {
-  const { user } = useUserStore();
+  const user = useAuthGuard();
+  if (!user) return <ActivityIndicator style={{ flex: 1 }} color="#22C55E" />;
 
   return (
     <View style={styles.container}>
@@ -17,6 +19,7 @@ export default function ProfileScreen() {
     </View>
   );
 }
+
 const styles = StyleSheet.create({
   container: { flex:1, alignItems:'center', justifyContent:'center', backgroundColor:'#181A20', padding:24 },
   title: { color:'#fff', fontSize:24, fontWeight:'bold', marginBottom:14 },
