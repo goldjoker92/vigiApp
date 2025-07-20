@@ -4,16 +4,17 @@ import { MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../firebase'; 
-import { useUserStore } from '../../store/users'; // À adapter selon ta gestion user
+import { useUserStore } from '../../store/users';
 import { useGrupoDetails } from '../../hooks/useGrupoDetails';
 import { leaveGroup } from '../../services/groupService';
-import QuitGroupModal from '../components/QuitGroupModal'; // Assure-toi que ce composant existe
+import QuitGroupModal from '../components/QuitGroupModal';
 import { useRouter } from "expo-router";
 import dayjs from 'dayjs';
 
 // ---------- PASSATION ADMIN (en tâche de fond) ----------
 async function startAdminReassignment(grupo, user, groupId) {
   try {
+    console.log("[ADMIN] Lancement passation admin");
     const apelidosSorted = [...(grupo.apelidos || [])].filter(a => a !== user.apelido).sort();
     const membres = grupo.membrosDetalhados || [];
     const candidates = apelidosSorted
@@ -29,6 +30,7 @@ async function startAdminReassignment(grupo, user, groupId) {
           status: 'pending'
         }
       });
+      console.log(`[ADMIN] Proposition envoyée à ${membro.apelido}`);
       // ici: la logique d'attente/réponse Firestore, ou laisse la tâche tourner...
     }
 
@@ -40,6 +42,7 @@ async function startAdminReassignment(grupo, user, groupId) {
       propostaAdmin: null,
       deleteWarningSent: false
     });
+    console.log(`[ADMIN] Aucun admin accepté. Groupe supprimé le ${deleteAt}`);
   } catch (err) {
     console.log("[ADMIN ERROR]", err);
   }
@@ -52,25 +55,24 @@ export default function VizinhosScreen() {
 
   const [quitModalVisible, setQuitModalVisible] = useState(false);
 
+  // --------- Handler pour quitter le groupe ---------
   const handleQuit = async () => {
     try {
+      console.log("[QUIT] Début sortie groupe pour :", user.apelido);
       const isCreator = user.apelido === grupo.adminApelido;
       if (isCreator) {
-        startAdminReassignment(grupo, user, groupId); // en tâche de fond
+        console.log("[QUIT] User est créateur/admin, passation en fond.");
+        startAdminReassignment(grupo, user, groupId);
       }
       await leaveGroup({ groupId, userId: user.id, apelido: user.apelido });
+      console.log("[QUIT] Succès Firestore. On reset groupId et ferme la modale.");
       setGroupId(null);
       setQuitModalVisible(false);
-      Toast.show({
-        type: 'success',
-        text1: `Você saiu do grupo ${grupo.name}`,
-        position: 'bottom',
-        visibilityTime: 2600,
-        text1Style: { color: "#fff", fontWeight: "bold" },
-        style: { backgroundColor: '#00C859' }
-      });
       Vibration.vibrate([0, 60, 60, 60]);
-      setTimeout(() => router.replace("/group-select"), 900);
+      // Redirige vers la Home avec paramètre pour toast !
+      setTimeout(() => {
+      router.replace({ pathname: "/(tabs)/home", params: { quitGroup: grupo.name } });
+      }, 900);
     } catch (e) {
       Toast.show({ type: 'error', text1: "Erro ao sair", text2: e.message });
       Vibration.vibrate([0, 100, 50, 100]);
@@ -93,20 +95,26 @@ export default function VizinhosScreen() {
         </Text>
         <Text style={styles.desc}>{grupo.description}</Text>
         <Text style={styles.info}>
-          <Feather name="users" size={18} color="#00C859" />{' '}
-          <Text style={{ color: "#22C55E", fontWeight: "bold" }}>{(grupo.members?.length || 0)} / {(grupo.maxMembers || 30)}</Text> vizinhos
+          <Feather name="users" size={18} color="#00C859" />{" "}
+          <Text style={{ color: "#22C55E", fontWeight: "bold" }}>
+            {(grupo.members?.length || 0)} / {(grupo.maxMembers || 30)}
+          </Text>{" "}
+          vizinhos
         </Text>
         <Text style={styles.members}>
-          <Feather name="user" size={16} color="#FFD700" />{' '}
+          <Feather name="user" size={16} color="#FFD700" />{" "}
           Membros: {(grupo.apelidos || []).join(", ")}
         </Text>
         <Text style={styles.info}>
-          <Feather name="user-check" size={16} color="#FFD700" />{' '}
+          <Feather name="user-check" size={16} color="#FFD700" />{" "}
           Admin: {grupo.adminApelido || "?"} | CEP: {grupo.cep}
         </Text>
         <TouchableOpacity
           style={styles.quitBtn}
-          onPress={() => setQuitModalVisible(true)}
+          onPress={() => {
+            console.log("[UI] Clique sur Sair do grupo");
+            setQuitModalVisible(true);
+          }}
         >
           <MaterialCommunityIcons name="logout" size={18} color="#fff" />
           <Text style={styles.quitBtnText}>Sair do grupo</Text>
@@ -116,7 +124,10 @@ export default function VizinhosScreen() {
           visible={quitModalVisible}
           groupName={grupo.name}
           onConfirm={handleQuit}
-          onCancel={() => setQuitModalVisible(false)}
+          onCancel={() => {
+            console.log("[UI] Annulation modale sortie groupe");
+            setQuitModalVisible(false);
+          }}
         />
       </ScrollView>
     </KeyboardAvoidingView>
