@@ -1,26 +1,42 @@
 import React, { useEffect, useRef } from 'react';
 import {
-  Animated, View, Text, TouchableOpacity, ScrollView, StyleSheet,
-  Platform, KeyboardAvoidingView, ActivityIndicator
+  Animated,
+  View,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+  StyleSheet,
+  Platform,
+  KeyboardAvoidingView,
+  ActivityIndicator,
 } from 'react-native';
-import { useAuthGuard } from "../../hooks/useAuthGuard";
 import { useUserStore } from '../../store/users';
 import { useGrupoDetails } from '../../hooks/useGrupoDetails';
 import { useGruposPorCep } from '../../hooks/useGruposPorCep';
-import { Handshake, PlusCircle, Users } from 'lucide-react-native';
+import { Handshake, PlusCircle } from 'lucide-react-native';
 import { FontAwesome, Feather, MaterialIcons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import WeatherCard from '../components/WeatherCard';
 import { useUserGroupEffect } from '../../hooks/useUserGroupEffect';
 import Toast from 'react-native-toast-message';
 
+// ---------- Skeleton animée ----------
 function AnimatedSkeletonLine({ style, delay = 0 }) {
   const opacity = useRef(new Animated.Value(0.5)).current;
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
-        Animated.timing(opacity, { toValue: 1, duration: 600, delay, useNativeDriver: true }),
-        Animated.timing(opacity, { toValue: 0.5, duration: 600, useNativeDriver: true }),
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 600,
+          delay,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 0.5,
+          duration: 600,
+          useNativeDriver: true,
+        }),
       ])
     ).start();
   }, [delay, opacity]);
@@ -38,8 +54,10 @@ function GroupSkeleton() {
   );
 }
 
+// Formatage du CEP
 const formatCep = (cep) => cep?.replace(/^(\d{5})(\d{3})$/, "$1-$2");
 
+// Récupération propre du nom du créateur
 function getCriador(grupo, user) {
   if (!grupo) return "Desconhecido";
   if (grupo.creatorUserId && grupo.creatorNome) {
@@ -54,8 +72,7 @@ function getCriador(grupo, user) {
 }
 
 export default function HomeScreen() {
-  const user = useAuthGuard();
-  const { groupId } = useUserStore();
+  const { groupId, user } = useUserStore();
   const { grupo, loading: loadingGrupo } = useGrupoDetails(groupId);
   const { grupos, loading: loadingGrupos } = useGruposPorCep(user?.cep);
   const router = useRouter();
@@ -73,12 +90,11 @@ export default function HomeScreen() {
     }
   }, [quitGroup]);
 
-  if (!user) return <ActivityIndicator style={{ flex: 1 }} color="#22C55E" />;
-
   const outrosGrupos = (grupos || []).filter(
     g => g.id !== groupId && (g.members?.length || 0) < (g.maxMembers || 30)
   );
 
+  // Salutation dynamique
   const horaBrasil = new Date().toLocaleTimeString('pt-BR', {
     hour: '2-digit', hour12: false, timeZone: 'America/Fortaleza'
   });
@@ -89,6 +105,14 @@ export default function HomeScreen() {
 
   const nome = user?.apelido || user?.username || 'Cidadão';
 
+  if (!user) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color="#00C859" />
+      </View>
+    );
+  }
+
   return (
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
       <ScrollView contentContainerStyle={styles.container}>
@@ -96,6 +120,24 @@ export default function HomeScreen() {
           {saudacao}, <Text style={styles.username}>{nome}</Text> 👋
         </Text>
         <WeatherCard cep={user?.cep} />
+
+        {/* --- SI PAS DE GROUPE, afficher le bouton bleu juste en dessous de la phrase --- */}
+        {(!groupId && !loadingGrupo) && (
+          <View style={styles.infoBox}>
+            <Text style={{ color: '#bbb', fontSize: 16, marginBottom: 12, textAlign: "center" }}>
+              Nenhum grupo encontrado
+            </Text>
+            <TouchableOpacity
+              style={styles.createBtn}
+              onPress={() => router.push("/group-create")}
+            >
+               <PlusCircle color="#FFD600" size={22} style={{ marginRight: -15 }} />
+               <Text style={styles.createBtnText}>Criar grupo com vizinhos do seu CEP</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* SI GROUPE */}
         {loadingGrupo ? (
           <GroupSkeleton />
         ) : groupId && grupo ? (
@@ -123,21 +165,9 @@ export default function HomeScreen() {
               </Text>
             </View>
           </TouchableOpacity>
-        ) : (
-          !loadingGrupo && (
-            <View style={styles.infoBox}>
-              <Text style={{ color: '#bbb', fontSize: 16 }}>Nenhum grupo encontrado</Text>
-              <TouchableOpacity
-                style={styles.createBtn}
-                onPress={() => router.push("/group-create")}
-              >
-                <PlusCircle color="#fff" size={22} />
-                <Text style={styles.createBtnText}>Criar novo grupo</Text>
-              </TouchableOpacity>
-            </View>
-          )
-        )}
+        ) : null}
 
+        {/* Liste autres groupes */}
         <Text style={styles.sectionTitle}>Outros grupos disponíveis</Text>
         {loadingGrupos ? (
           <Text style={{ color: '#bbb', fontSize: 16, textAlign: 'center' }}>Carregando...</Text>
@@ -146,13 +176,6 @@ export default function HomeScreen() {
             <Text style={{ color: '#bbb', fontSize: 15, textAlign: 'center' }}>
               Ainda não há outros grupos no seu CEP.
             </Text>
-            <TouchableOpacity
-              style={styles.createBtn}
-              onPress={() => router.push("/group-create")}
-            >
-              <PlusCircle color="#fff" size={22} />
-              <Text style={styles.createBtnText}>Criar novo grupo</Text>
-            </TouchableOpacity>
           </View>
         ) : (
           outrosGrupos.map(g => (
@@ -175,16 +198,6 @@ export default function HomeScreen() {
             </View>
           ))
         )}
-
-        {!groupId && (
-          <TouchableOpacity
-            style={[styles.createBtn, { marginTop: 26 }]}
-            onPress={() => router.push("/group-create")}
-          >
-            <Users color="#fff" size={20} />
-            <Text style={styles.createBtnText}>Criar grupo com vizinhos do seu CEP</Text>
-          </TouchableOpacity>
-        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -204,8 +217,31 @@ const styles = StyleSheet.create({
   otherGroupInfo: { color: '#bbb', fontSize: 14, marginBottom: 4 },
   joinBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#00C859', padding: 9, borderRadius: 10, marginTop: 6, alignSelf: 'flex-start' },
   joinBtnText: { color: "#fff", fontWeight: "bold", marginLeft: 8 },
-  createBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#4F8DFF', padding: 11, borderRadius: 12, marginTop: 18, alignSelf: 'center' },
-  createBtnText: { color: "#fff", fontWeight: "bold", marginLeft: 10, fontSize: 16 },
+   createBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#23262F',
+    paddingVertical: 13,
+    paddingHorizontal: 22,
+    borderRadius: 12,
+    alignSelf: 'center',
+    marginTop: 6,
+    minWidth: 190,
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#00C859',
+    shadowColor: '#00C859',
+    shadowOpacity: 0.07,
+    shadowRadius: 5,
+  },
+  createBtnText: {
+    color: "#00C859", // VERT habituel
+    fontWeight: "bold",
+    marginLeft: 10,
+    fontSize: 16,
+    textAlign: 'center',
+    flex: 1,
+  },
   infoBox: { marginTop: 30, alignItems: 'center', padding: 18, backgroundColor: '#23262F', borderRadius: 14 },
   skeletonCard: {
     backgroundColor: "#23262F",
