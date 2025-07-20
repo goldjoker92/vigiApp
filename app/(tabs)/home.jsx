@@ -15,11 +15,12 @@ import { useGrupoDetails } from '../../hooks/useGrupoDetails';
 import { useGruposPorCep } from '../../hooks/useGruposPorCep';
 import { Handshake, PlusCircle, Users } from 'lucide-react-native';
 import { FontAwesome, Feather, MaterialIcons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import WeatherCard from '../components/WeatherCard';
 import { useUserGroupEffect } from '../../hooks/useUserGroupEffect';
+import Toast from 'react-native-toast-message';
 
-// Animação para o skeleton
+// ---------- Skeleton animée ----------
 function AnimatedSkeletonLine({ style, delay = 0 }) {
   const opacity = useRef(new Animated.Value(0.5)).current;
   useEffect(() => {
@@ -53,15 +54,32 @@ function GroupSkeleton() {
   );
 }
 
-// Utilitário para formatar o CEP
+// Formatage du CEP
 const formatCep = (cep) => cep?.replace(/^(\d{5})(\d{3})$/, "$1-$2");
 
 export default function HomeScreen() {
+  console.log("[HOME] Entrée dans HomeScreen");
+
   const { groupId, user } = useUserStore();
   const { grupo, loading: loadingGrupo } = useGrupoDetails(groupId);
   const { grupos, loading: loadingGrupos } = useGruposPorCep(user?.cep);
   const router = useRouter();
   useUserGroupEffect();
+  const { quitGroup } = useLocalSearchParams();
+
+  useEffect(() => {
+    if (quitGroup) {
+      console.log(`[TOAST HOME] Vous avez quitté le groupe: ${quitGroup}`);
+      Toast.show({
+        type: 'success',
+        text1: `Você saiu do grupo ${quitGroup}`,
+        position: 'bottom',
+        visibilityTime: 2800,
+        text1Style: { color: "#fff", fontWeight: "bold" },
+        style: { backgroundColor: '#00C859' }
+      });
+    }
+  }, [quitGroup]);
 
   const outrosGrupos = (grupos || []).filter(
     g => g.id !== groupId && (g.members?.length || 0) < (g.maxMembers || 30)
@@ -78,6 +96,7 @@ export default function HomeScreen() {
   const nome = user?.apelido || user?.username || 'Cidadão';
 
   if (!user) {
+    console.log("[HOME] Pas d'utilisateur en store, affichage du loader.");
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color="#00C859" />
@@ -97,13 +116,21 @@ export default function HomeScreen() {
         {loadingGrupo ? (
           <GroupSkeleton />
         ) : groupId && grupo ? (
-          <TouchableOpacity style={styles.groupCard} onPress={() => router.push('/(tabs)/vizinhos')}>
+          <TouchableOpacity
+            style={styles.groupCard}
+            onPress={() => {
+              console.log("[HOME] Clique sur le groupe principal : ", grupo.name);
+              router.push('/(tabs)/vizinhos');
+            }}
+          >
             <Text style={styles.groupTitle}>Seu grupo de vizinhança</Text>
             <Text style={styles.groupName}>{grupo.name}</Text>
 
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
               <MaterialIcons name="person-pin" size={18} color="#00C859" />
-              <Text style={{ color: '#eee', fontSize: 15, marginLeft: 6 }}> Criador : {grupo.creatorUserId === user.uid ? nome : grupo.creatorNome || 'Desconhecido'}</Text>
+              <Text style={{ color: '#eee', fontSize: 15, marginLeft: 6 }}>
+                Criador : {grupo.creatorUserId === user.uid ? nome : grupo.creatorNome || 'Desconhecido'}
+              </Text>
             </View>
 
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -111,9 +138,7 @@ export default function HomeScreen() {
               <Text style={{ color: '#eee', fontSize: 14, marginLeft: 4 }}>
                 {formatCep(grupo.cep)}
               </Text>
-
               <Text style={{ marginHorizontal: 8, color: '#666' }}>|</Text>
-
               <FontAwesome name="users" size={16} color="#facc15" />
               <Text style={{ color: '#eee', fontSize: 14, marginLeft: 4 }}>
                 {grupo.members.length} / {grupo.maxMembers || 30} vizinhos
@@ -126,7 +151,10 @@ export default function HomeScreen() {
               <Text style={{ color: '#bbb', fontSize: 16 }}>Nenhum grupo encontrado</Text>
               <TouchableOpacity
                 style={styles.createBtn}
-                onPress={() => router.push("/group-create")}
+                onPress={() => {
+                  console.log("[HOME] Clique sur CRIAR NOVO GRUPO");
+                  router.push("/group-create");
+                }}
               >
                 <PlusCircle color="#fff" size={22} />
                 <Text style={styles.createBtnText}>Criar novo grupo</Text>
@@ -145,7 +173,10 @@ export default function HomeScreen() {
             </Text>
             <TouchableOpacity
               style={styles.createBtn}
-              onPress={() => router.push("/group-create")}
+              onPress={() => {
+                console.log("[HOME] Clique sur CRIAR NOVO GRUPO (depuis section autres groupes)");
+                router.push("/group-create");
+              }}
             >
               <PlusCircle color="#fff" size={22} />
               <Text style={styles.createBtnText}>Criar novo grupo</Text>
@@ -166,7 +197,10 @@ export default function HomeScreen() {
               </Text>
               <TouchableOpacity
                 style={styles.joinBtn}
-                onPress={() => router.push({ pathname: '/group-join', params: { groupId: g.id } })}
+                onPress={() => {
+                  console.log(`[HOME] Clique sur ENTRAR NO GRUPO : ${g.name}`);
+                  router.push({ pathname: '/group-join', params: { groupId: g.id } });
+                }}
               >
                 <Handshake color="#fff" size={20} />
                 <Text style={styles.joinBtnText}>Entrar no grupo</Text>
@@ -178,7 +212,10 @@ export default function HomeScreen() {
         {!groupId && (
           <TouchableOpacity
             style={[styles.createBtn, { marginTop: 26 }]}
-            onPress={() => router.push("/group-create")}
+            onPress={() => {
+              console.log("[HOME] Clique sur CRIAR GRUPO (pas encore membre)");
+              router.push("/group-create");
+            }}
           >
             <Users color="#fff" size={20} />
             <Text style={styles.createBtnText}>Criar grupo com vizinhos do seu CEP</Text>
