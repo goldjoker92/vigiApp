@@ -22,6 +22,7 @@ import { leaveGroup } from "../../services/groupService";
 import QuitGroupModal from "../components/QuitGroupModal";
 import { useRouter } from "expo-router";
 import dayjs from "dayjs";
+import { useAuthGuard } from "../../hooks/useAuthGuard";
 
 // ----- ADMIN REASSIGNMENT -----
 async function startAdminReassignment(grupo, user, groupId) {
@@ -54,11 +55,12 @@ async function startAdminReassignment(grupo, user, groupId) {
 }
 
 export default function VizinhosScreen() {
-  const { groupId, user, setGroupId } = useUserStore();
+  const { groupId, setGroupId } = useUserStore();
+  const user = useAuthGuard();
   const { grupo, loading } = useGrupoDetails(groupId);
   const router = useRouter();
-
   const [quitModalVisible, setQuitModalVisible] = useState(false);
+  if (!user) return <ActivityIndicator style={{ flex: 1 }} color="#22C55E" />;
 
   // ----- CAS USER NON RATTACHÉ À AUCUN GROUPE -----
   if (!loading && !grupo) {

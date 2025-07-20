@@ -1,14 +1,15 @@
 import { useState } from 'react';
-import { Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform, View } from 'react-native';
+import { Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform, View, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { doc, setDoc } from "firebase/firestore";
 import { auth, db } from '../../firebase';
 import { loadUserProfile } from '../../utils/loadUserProfile';
+import { useAuthGuard } from '../../hooks/useAuthGuard';
 
 export default function ProfileOnboardingScreen() {
+  const user = useAuthGuard();
   const router = useRouter();
   const { email: routeEmail } = useLocalSearchParams();
-
   const [email] = useState(routeEmail || '');
   const [nome, setNome] = useState('');
   const [cpf, setCpf] = useState('');
@@ -22,6 +23,7 @@ export default function ProfileOnboardingScreen() {
   const [profissao, setProfissao] = useState('');
   const [sexo, setSexo] = useState('');
   const [loading, setLoading] = useState(false);
+  if (!user) return <ActivityIndicator style={{ flex: 1 }} color="#22C55E" />;
 
   const handleSave = async () => {
     if (!nome || !cpf || !dataNascimento || !apelido || !telefone || !estado || !cidade || !cep) {
@@ -30,14 +32,14 @@ export default function ProfileOnboardingScreen() {
     }
     setLoading(true);
     try {
-      const user = auth.currentUser;
-      if (!user) throw new Error("Usuário não autenticado.");
-      await setDoc(doc(db, "users", user.uid), {
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error("Usuário não autenticado.");
+      await setDoc(doc(db, "users", currentUser.uid), {
         nome, apelido, cpf, dataNascimento, endereco, telefone,
         estado, cidade, cep, profissao, sexo, email,
         criadoEm: new Date().toISOString()
       });
-      await loadUserProfile(user.uid);
+      await loadUserProfile(currentUser.uid);
       Alert.alert("Perfil salvo com sucesso!");
       router.replace('/(tabs)/home');
     } catch (error) {

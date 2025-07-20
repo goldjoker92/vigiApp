@@ -1,17 +1,27 @@
 import { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Vibration, KeyboardAvoidingView, Platform } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Vibration, KeyboardAvoidingView, Platform, ActivityIndicator } from "react-native";
+// Update the import path if the correct location is different, for example:
 import { useUserStore } from "../store/users";
+// Or, if your store is in a different folder, adjust accordingly:
+// import { useUserStore } from "../../stores/users";
+// import { useUserStore } from "../../store/userStore";
+// Update the import path to match the actual location of groupService.js
 import { createGroup } from "../services/groupService";
 import Toast from 'react-native-toast-message';
 import { PlusCircle } from "lucide-react-native";
 import { useRouter } from 'expo-router';
+// Update the import path below to the correct location of useAuthGuard in your project
+import { useAuthGuard } from '../hooks/useAuthGuard';
 
 export default function GroupCreateScreen() {
+  const user = useAuthGuard();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const { user, setGroupId } = useUserStore();
+  const { setGroupId } = useUserStore();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+
+  if (!user) return <ActivityIndicator style={{ flex: 1 }} color="#22C55E" />;
 
   const handleCreate = async () => {
     if (!name) {
@@ -100,7 +110,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 24,
     backgroundColor: "#181A20",
-    justifyContent: "center", // <-- centre verticalement
+    justifyContent: "center",
     alignItems: "center",
   },
   title: {
