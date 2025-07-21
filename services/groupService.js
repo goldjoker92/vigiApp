@@ -1,14 +1,21 @@
-import { db } from "../firebase";
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  addDoc,
-  serverTimestamp,
+import { 
+  doc, 
+  getDoc, 
+  updateDoc, 
+  deleteDoc, 
+  collection, 
+  query, 
+  where, 
+  getDocs, 
+  addDoc, 
+  serverTimestamp 
 } from "firebase/firestore";
+import { db } from "../firebase";
 
-// ----- CRÉATION DE GROUPE -----
+/**
+ * Crée un groupe de voisins dans Firestore.
+ * Vérifie l'unicité (nom + cep) et ajoute tous les champs nécessaires.
+ */
 export async function createGroup({
   cep,
   name,
@@ -63,9 +70,9 @@ export async function createGroup({
     creatorApelido: String(apelido),
     creatorCpf: String(cpf),
     creatorCep: String(cep),
-    members: [creatorMember], // Ajout complet du créateur comme membre
-    membersIds: [String(userId)], // ⚠️ Champ important pour la future requête array-contains
-    apelidos: [String(apelido)],  // Pour affichage rapide
+    members: [creatorMember],
+    membersIds: [String(userId)], // Champ clé pour retrouver le groupe plus tard
+    apelidos: [String(apelido)],
     maxMembers: 30,
     adminApelido: String(apelido),
     createdAt: serverTimestamp(),
@@ -80,5 +87,38 @@ export async function createGroup({
   } catch (error) {
     console.error("[createGroup] ❌ Erreur Firestore :", error);
     throw error;
+  }
+}
+
+/**
+ * Retire un membre d'un groupe et met à jour les champs (members, membersIds, apelidos).
+ * Si le groupe devient vide après départ, il est supprimé.
+ */
+export async function leaveGroup({ groupId, userId, apelido }) {
+  console.log("[leaveGroup] Début retrait du membre du groupe", groupId);
+
+  const groupRef = doc(db, "groups", groupId);
+  const snap = await getDoc(groupRef);
+  if (!snap.exists()) {
+    throw new Error("Groupe introuvable");
+  }
+  const groupData = snap.data();
+
+  // Filtrage manuel du membre dans tous les tableaux
+  const members = (groupData.members || []).filter((m) => m.userId !== userId);
+  const membersIds = (groupData.membersIds || []).filter((id) => id !== userId);
+  const apelidos = (groupData.apelidos || []).filter((a) => a !== apelido);
+
+  await updateDoc(groupRef, {
+    members,
+    membersIds,
+    apelidos,
+  });
+  console.log("[leaveGroup] ✅ Membre retiré du groupe", groupId);
+
+  // Suppression du groupe si plus aucun membre
+  if (members.length === 0) {
+    await deleteDoc(groupRef);
+    console.log("[leaveGroup] 🚮 Groupe supprimé car vide :", groupId);
   }
 }
