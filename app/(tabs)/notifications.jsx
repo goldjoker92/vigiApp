@@ -3,13 +3,16 @@ import { View, Text, ScrollView, ActivityIndicator } from "react-native";
 import { db } from "../../firebase";
 import { useUserStore } from "../../store/users";
 import { collection, query, where, orderBy, getDocs } from "firebase/firestore";
+import { useAuthGuard } from '../../hooks/useAuthGuard';
 
 export default function NotificationsScreen() {
+  const user = useAuthGuard();
   const { groupId, setLastSeenAlert } = useUserStore();
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!user) return;
     async function fetchAlerts() {
       setLoading(true);
       const q = query(
@@ -23,7 +26,7 @@ export default function NotificationsScreen() {
     }
     fetchAlerts();
     setLastSeenAlert(Date.now());
-  }, [groupId, setLastSeenAlert]);
+  }, [user, groupId, setLastSeenAlert]);
 
   return (
     <View style={{ flex: 1, backgroundColor: "#1B2232", padding: 20 }}>

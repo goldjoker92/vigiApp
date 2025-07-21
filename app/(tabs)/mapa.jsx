@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { View, ActivityIndicator, StyleSheet, Dimensions } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import * as Location from 'expo-location';
+import { useAuthGuard } from '../../hooks/useAuthGuard';
 
 const { width, height } = Dimensions.get('window');
 
@@ -10,7 +11,7 @@ const alerts = [
     id: '1',
     latitude: -3.7275,
     longitude: -38.5255,
-    gravidade: 'grave', // grave, medio, leve
+    gravidade: 'grave',
     titulo: 'Incêndio',
     descricao: 'Incêndio em apartamento',
     cidade: 'Fortaleza',
@@ -45,12 +46,13 @@ const alerts = [
 ];
 
 const GRAVITY_COLORS = {
-  grave: '#FF3B30', // rouge
-  medio: '#FF9500', // orange
-  leve: '#FFD600',  // jaune
+  grave: '#FF3B30',
+  medio: '#FF9500',
+  leve: '#FFD600',
 };
 
 export default function MapPage() {
+  const user = useAuthGuard();
   const [region, setRegion] = useState(null);
   const [location, setLocation] = useState(null);
 
@@ -69,6 +71,8 @@ export default function MapPage() {
     })();
   }, []);
 
+  if (!user) return <ActivityIndicator style={{ flex: 1 }} color="#22C55E" />;
+
   if (!region)
     return (
       <View style={styles.loading}>
@@ -78,7 +82,6 @@ export default function MapPage() {
 
   return (
     <MapView style={styles.map} region={region} showsUserLocation>
-      {/* Marqueur principal = utilisateur */}
       {location && (
         <Marker
           coordinate={{
@@ -89,7 +92,6 @@ export default function MapPage() {
           pinColor="#007AFF"
         />
       )}
-      {/* Marqueurs d'alertes dynamiques */}
       {alerts.map(alert => (
         <Marker
           key={alert.id}

@@ -1,18 +1,31 @@
-import { useEffect, useState } from "react";
-import { db } from "../firebase";
-import { doc, onSnapshot } from "firebase/firestore";
+import { useState, useEffect } from 'react';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '../firebase';
 
 export function useGrupoDetails(groupId) {
   const [grupo, setGrupo] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!groupId) return setGrupo(null);
-    setLoading(true);
-    const unsub = onSnapshot(doc(db, "groups", groupId), (snap) => {
-      setGrupo(snap.exists() ? { id: snap.id, ...snap.data() } : null);
+    console.log("[HOOK][useGrupoDetails] groupId:", groupId);
+    if (!groupId) {
+      setGrupo(null);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true); // Important pour skeleton UX lors du changement de groupe
+
+    const unsub = onSnapshot(doc(db, 'groups', groupId), (docSnap) => {
+      console.log("[HOOK][useGrupoDetails] snapshot exists:", docSnap.exists(), "| data:", docSnap.data());
+      if (docSnap.exists()) {
+        setGrupo({ id: docSnap.id, ...docSnap.data() });
+      } else {
+        setGrupo(null); // Groupe supprimé ou inexistant
+      }
       setLoading(false);
     });
+
     return () => unsub();
   }, [groupId]);
 
