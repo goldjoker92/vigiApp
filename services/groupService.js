@@ -8,7 +8,8 @@ import {
   where, 
   getDocs, 
   addDoc, 
-  serverTimestamp 
+  serverTimestamp,
+  arrayUnion
 } from "firebase/firestore";
 import { db } from "../firebase";
 
@@ -121,4 +122,27 @@ export async function leaveGroup({ groupId, userId, apelido }) {
     await deleteDoc(groupRef);
     console.log("[leaveGroup] 🚮 Groupe supprimé car vide :", groupId);
   }
+}
+
+// Ajoute un utilisateur au groupe (mises à jour Firestore).
+export async function joinGroup({ groupId, user }) {
+  const groupRef = doc(db, "groups", groupId);
+  const snap = await getDoc(groupRef);
+  if (!snap.exists()) throw new Error("Groupe introuvable");
+
+  const data = snap.data();
+  if ((data.membersIds || []).includes(user.id)) throw new Error("Vous êtes déjà dans ce groupe.");
+  if ((data.members?.length || 0) >= (data.maxMembers || 30)) throw new Error("Le groupe est plein.");
+
+  await updateDoc(groupRef, {
+    members: arrayUnion({
+      userId: user.id,
+      nome: user.nome,
+      apelido: user.apelido,
+      cpf: user.cpf,
+      cep: user.cep,
+    }),
+    membersIds: arrayUnion(user.id),
+    apelidos: arrayUnion(user.apelido),
+  });
 }
