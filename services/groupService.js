@@ -1,17 +1,22 @@
-import { db } from "../firebase";
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  addDoc,
+import { 
+  doc, 
+  getDoc, 
+  updateDoc, 
+  deleteDoc, 
+  collection, 
+  query, 
+  where, 
+  getDocs, 
+  addDoc, 
   serverTimestamp,
-  updateDoc,
-  doc,
-  arrayRemove,
+  arrayUnion
 } from "firebase/firestore";
+import { db } from "../firebase";
 
-// ----- CRÉATION DE GROUPE -----
+/**
+ * Crée un groupe de voisins dans Firestore.
+ * Vérifie l'unicité (nom + cep) et ajoute tous les champs nécessaires.
+ */
 export async function createGroup({
   cep,
   name,
@@ -67,9 +72,10 @@ export async function createGroup({
     creatorCpf: String(cpf),
     creatorCep: String(cep),
     members: [creatorMember],
-    apelidos: [String(apelido)],    // Pour affichage rapide dans la liste
+    membersIds: [String(userId)], // Champ clé pour retrouver le groupe plus tard
+    apelidos: [String(apelido)],
     maxMembers: 30,
-    adminApelido: String(apelido),  // Admin de départ
+    adminApelido: String(apelido),
     createdAt: serverTimestamp(),
   };
 
@@ -77,18 +83,66 @@ export async function createGroup({
 
   try {
     const docRef = await addDoc(collection(db, "groups"), docToCreate);
-    console.log("[createGroup] Groupe créé avec succès, ID :", docRef.id);
+    console.log("[createGroup] ✅ Groupe créé avec succès, ID :", docRef.id);
     return docRef.id;
   } catch (error) {
-    console.error("[createGroup] Erreur Firestore :", error);
+    console.error("[createGroup] ❌ Erreur Firestore :", error);
     throw error;
   }
 }
 
-// ----- QUITTER UN GROUPE -----
+/**
+ * Retire un membre d'un groupe et met à jour les champs (members, membersIds, apelidos).
+ * Si le groupe devient vide après départ, il est supprimé.
+ */
 export async function leaveGroup({ groupId, userId, apelido }) {
-  await updateDoc(doc(db, 'groups', groupId), {
-    members: arrayRemove(userId),
-    apelidos: arrayRemove(apelido),
+  console.log("[leaveGroup] Début retrait du membre du groupe", groupId);
+
+  const groupRef = doc(db, "groups", groupId);
+  const snap = await getDoc(groupRef);
+  if (!snap.exists()) {
+    throw new Error("Groupe introuvable");
+  }
+  const groupData = snap.data();
+
+  // Filtrage manuel du membre dans tous les tableaux
+  const members = (groupData.members || []).filter((m) => m.userId !== userId);
+  const membersIds = (groupData.membersIds || []).filter((id) => id !== userId);
+  const apelidos = (groupData.apelidos || []).filter((a) => a !== apelido);
+
+  await updateDoc(groupRef, {
+    members,
+    membersIds,
+    apelidos,
+  });
+  console.log("[leaveGroup] ✅ Membre retiré du groupe", groupId);
+
+  // Suppression du groupe si plus aucun membre
+  if (members.length === 0) {
+    await deleteDoc(groupRef);
+    console.log("[leaveGroup] 🚮 Groupe supprimé car vide :", groupId);
+  }
+}
+
+// Ajoute un utilisateur au groupe (mises à jour Firestore).
+export async function joinGroup({ groupId, user }) {
+  const groupRef = doc(db, "groups", groupId);
+  const snap = await getDoc(groupRef);
+  if (!snap.exists()) throw new Error("Groupe introuvable");
+
+  const data = snap.data();
+  if ((data.membersIds || []).includes(user.id)) throw new Error("Vous êtes déjà dans ce groupe.");
+  if ((data.members?.length || 0) >= (data.maxMembers || 30)) throw new Error("Le groupe est plein.");
+
+  await updateDoc(groupRef, {
+    members: arrayUnion({
+      userId: user.id,
+      nome: user.nome,
+      apelido: user.apelido,
+      cpf: user.cpf,
+      cep: user.cep,
+    }),
+    membersIds: arrayUnion(user.id),
+    apelidos: arrayUnion(user.apelido),
   });
 }
