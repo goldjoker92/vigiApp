@@ -20,7 +20,6 @@ import WeatherCard from '../components/WeatherCard';
 import { useUserGroupEffect } from '../../hooks/useUserGroupEffect';
 import Toast from 'react-native-toast-message';
 
-// ---------- Skeleton animée ----------
 function AnimatedSkeletonLine({ style, delay = 0 }) {
   const opacity = useRef(new Animated.Value(0.5)).current;
   useEffect(() => {
@@ -54,15 +53,11 @@ function GroupSkeleton() {
   );
 }
 
-// Formatage du CEP
-const formatCep = (cep) => cep?.replace(/^(\d{5})(\d{3})$/, "$1-$2");
-
-// Récupération propre du nom du créateur
 function getCriador(grupo, user) {
   if (!grupo) return "Desconhecido";
   if (grupo.creatorUserId && grupo.creatorNome) {
     return grupo.creatorUserId === user.uid
-      ? (user.apelido || user.username || "Você")
+      ? user.apelido || user.username || "Você"
       : grupo.creatorNome;
   }
   if (grupo.creatorNome) return grupo.creatorNome;
@@ -72,7 +67,7 @@ function getCriador(grupo, user) {
 }
 
 export default function HomeScreen() {
-  const { groupId, user } = useUserStore();
+  const { groupId, user, isGroupLoading } = useUserStore();
   const { grupo, loading: loadingGrupo } = useGrupoDetails(groupId);
   const { grupos, loading: loadingGrupos } = useGruposPorCep(user?.cep);
   const router = useRouter();
@@ -94,7 +89,6 @@ export default function HomeScreen() {
     g => g.id !== groupId && (g.members?.length || 0) < (g.maxMembers || 30)
   );
 
-  // Salutation dynamique
   const horaBrasil = new Date().toLocaleTimeString('pt-BR', {
     hour: '2-digit', hour12: false, timeZone: 'America/Fortaleza'
   });
@@ -113,6 +107,11 @@ export default function HomeScreen() {
     );
   }
 
+  // 👉 Ici, c'est la clé UX :
+  if (isGroupLoading) {
+    return <GroupSkeleton />;
+  }
+
   return (
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
       <ScrollView contentContainerStyle={styles.container}>
@@ -121,8 +120,8 @@ export default function HomeScreen() {
         </Text>
         <WeatherCard cep={user?.cep} />
 
-        {/* --- SI PAS DE GROUPE, afficher le bouton bleu juste en dessous de la phrase --- */}
-        {(!groupId && !loadingGrupo) && (
+        {/* --- SI PAS DE GROUPE --- */}
+        {!groupId && !loadingGrupo ? (
           <View style={styles.infoBox}>
             <Text style={{ color: '#bbb', fontSize: 16, marginBottom: 12, textAlign: "center" }}>
               Nenhum grupo encontrado
@@ -131,15 +130,10 @@ export default function HomeScreen() {
               style={styles.createBtn}
               onPress={() => router.push("/group-create")}
             >
-               <PlusCircle color="#FFD600" size={22} style={{ marginRight: -15 }} />
-               <Text style={styles.createBtnText}>Criar grupo com vizinhos do seu CEP</Text>
+              <PlusCircle color="#FFD600" size={22} style={{ marginRight: -15 }} />
+              <Text style={styles.createBtnText}>Criar grupo com vizinhos do seu CEP</Text>
             </TouchableOpacity>
           </View>
-        )}
-
-        {/* SI GROUPE */}
-        {loadingGrupo ? (
-          <GroupSkeleton />
         ) : groupId && grupo ? (
           <TouchableOpacity
             style={styles.groupCard}
@@ -156,7 +150,7 @@ export default function HomeScreen() {
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Feather name="map-pin" size={16} color="#60a5fa" />
               <Text style={{ color: '#eee', fontSize: 14, marginLeft: 4 }}>
-                {formatCep(grupo.cep)}
+                {grupo.cep}
               </Text>
               <Text style={{ marginHorizontal: 8, color: '#666' }}>|</Text>
               <FontAwesome name="users" size={16} color="#facc15" />
@@ -182,11 +176,7 @@ export default function HomeScreen() {
             <View key={g.id} style={styles.otherGroupCard}>
               <Text style={styles.otherGroupName}>{g.name}</Text>
               <Text style={styles.otherGroupInfo}>
-                Criador:{" "}
-                <Text style={{ color: g.creatorUserId === user.uid ? '#00C859' : '#F7B801' }}>
-                  {getCriador(g, user)}
-                </Text>{" "}
-                — {g.members?.length || 0} / {g.maxMembers || 30} vizinhos
+                Criador: <Text style={{ color: g.creatorUserId === user.uid ? '#00C859' : '#F7B801' }}>{getCriador(g, user)}</Text> — {g.members?.length || 0} / {g.maxMembers || 30} vizinhos
               </Text>
               <TouchableOpacity
                 style={styles.joinBtn}
