@@ -7,9 +7,10 @@ import { loadUserProfile } from '../../utils/loadUserProfile';
 import { useAuthGuard } from '../../hooks/useAuthGuard';
 
 export default function ProfileOnboardingScreen() {
-  const user = useAuthGuard();
   const router = useRouter();
   const { email: routeEmail } = useLocalSearchParams();
+  const user = useAuthGuard();
+
   const [email] = useState(routeEmail || '');
   const [nome, setNome] = useState('');
   const [cpf, setCpf] = useState('');
@@ -23,7 +24,9 @@ export default function ProfileOnboardingScreen() {
   const [profissao, setProfissao] = useState('');
   const [sexo, setSexo] = useState('');
   const [loading, setLoading] = useState(false);
-  if (!user) return <ActivityIndicator style={{ flex: 1 }} color="#22C55E" />;
+
+  if (user === undefined) return <ActivityIndicator style={{ flex: 1 }} color="#22C55E" />;
+  if (!user) return null;
 
   const handleSave = async () => {
     if (!nome || !cpf || !dataNascimento || !apelido || !telefone || !estado || !cidade || !cep) {
@@ -66,7 +69,6 @@ export default function ProfileOnboardingScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <Text style={styles.title}>Complete seu perfil</Text>
-
         <Label text="E-mail" obrigatorio />
         <TextInput
           style={[styles.input, { backgroundColor: '#23262F80' }]}
@@ -78,10 +80,10 @@ export default function ProfileOnboardingScreen() {
         />
 
         <Label text="Nome completo" obrigatorio />
-        <TextInput style={styles.input} placeholder="Nome completo" value={nome} onChangeText={setNome}/>
+        <TextInput style={styles.input} placeholder="Nome completo" value={nome} onChangeText={setNome} />
 
         <Label text="Apelido (exibe no app)" obrigatorio />
-        <TextInput style={styles.input} placeholder="Apelido" value={apelido} onChangeText={setApelido}/>
+        <TextInput style={styles.input} placeholder="Apelido" value={apelido} onChangeText={setApelido} />
 
         <Label text="CPF" obrigatorio />
         <TextInput style={styles.input} placeholder="CPF" value={cpf} onChangeText={setCpf} keyboardType="numeric" />
@@ -93,7 +95,7 @@ export default function ProfileOnboardingScreen() {
         <TextInput style={styles.input} placeholder="Endereço (opcional)" value={endereco} onChangeText={setEndereco} />
 
         <Label text="Telefone WhatsApp" obrigatorio />
-        <TextInput style={styles.input} placeholder="Telefone (WhatsApp)" value={telefone} onChangeText={setTelefone} keyboardType="phone-pad"/>
+        <TextInput style={styles.input} placeholder="Telefone (WhatsApp)" value={telefone} onChangeText={setTelefone} keyboardType="phone-pad" />
 
         <Label text="Estado" obrigatorio />
         <TextInput style={styles.input} placeholder="Estado" value={estado} onChangeText={setEstado} />
@@ -102,7 +104,7 @@ export default function ProfileOnboardingScreen() {
         <TextInput style={styles.input} placeholder="Cidade" value={cidade} onChangeText={setCidade} />
 
         <Label text="CEP" obrigatorio />
-        <TextInput style={styles.input} placeholder="CEP" value={cep} onChangeText={setCep} keyboardType="numeric"/>
+        <TextInput style={styles.input} placeholder="CEP" value={cep} onChangeText={setCep} keyboardType="numeric" />
 
         <Label text="Profissão" obrigatorio={false} />
         <TextInput style={styles.input} placeholder="Profissão (opcional)" value={profissao} onChangeText={setProfissao} />
@@ -130,10 +132,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#181A20',
     paddingBottom: 40,
   },
-  title: { fontSize:30, fontWeight:'bold', marginBottom:30, color:'#fff', textAlign:'center', letterSpacing:1 },
-  input: { borderWidth:0, backgroundColor:'#23262F', color:'#fff', padding:16, borderRadius:10, marginBottom:16, fontSize:17 },
-  button: { backgroundColor:'#22C55E', padding:16, borderRadius:10, alignItems:'center', marginBottom:16, shadowColor:'#22C55E', shadowOpacity:0.3, shadowRadius:8, elevation:2 },
-  buttonText:{ color:'#fff', fontWeight:'bold', fontSize:19, letterSpacing:0.5 },
-  label:     { color:'#fff', fontWeight:'500', marginBottom:2, marginLeft:2 },
-  required:  { color:'#FF4C4C', fontWeight:'bold', fontSize:16 },
+  title: { fontSize: 30, fontWeight: 'bold', marginBottom: 30, color: '#fff', textAlign: 'center', letterSpacing: 1 },
+  input: { borderWidth: 0, backgroundColor: '#23262F', color: '#fff', padding: 16, borderRadius: 10, marginBottom: 16, fontSize: 17 },
+  button: { backgroundColor: '#22C55E', padding: 16, borderRadius: 10, alignItems: 'center', marginBottom: 16, shadowColor: '#22C55E', shadowOpacity: 0.3, shadowRadius: 8, elevation: 2 },
+  buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 19, letterSpacing: 0.5 },
+  label: { color: '#fff', fontWeight: '500', marginBottom: 2, marginLeft: 2 },
+  required: { color: '#FF4C4C', fontWeight: 'bold', fontSize: 16 },
 });
