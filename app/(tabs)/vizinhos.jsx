@@ -60,7 +60,9 @@ export default function VizinhosScreen() {
   const { grupo, loading } = useGrupoDetails(groupId);
   const router = useRouter();
   const [quitModalVisible, setQuitModalVisible] = useState(false);
-  if (!user) return <ActivityIndicator style={{ flex: 1 }} color="#22C55E" />;
+
+  if (user === undefined) return <ActivityIndicator style={{ flex: 1 }} color="#22C55E" />;
+  if (!user) return null;
 
   // ----- CAS USER NON RATTACHÉ À AUCUN GROUPE -----
   if (!loading && !grupo) {

@@ -1,28 +1,29 @@
-// src/components/AvailableGroupsCarousel.js
-
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator } from "react-native";
 import { Handshake } from "lucide-react-native";
 import Toast from "react-native-toast-message";
 import { useUserStore } from "../../store/users";
-import { joinGroup } from "../../services/groupService"; // à créer si besoin
+import { joinGroup } from "../../services/groupService";
 
-export default function AvailableGroupsCarousel({ grupos, loading }) {
+export default function AvailableGroupsCarousel({ groups, loading }) {
   const { user, setGroupId } = useUserStore();
   const [joining, setJoining] = useState(null);
+
+  useEffect(() => {
+    console.log("[AvailableGroupsCarousel] Props groups:", groups);
+  }, [groups]);
 
   const handleJoin = async (group) => {
     if (joining) return;
     setJoining(group.id);
     try {
-      await joinGroup({
-        groupId: group.id,
-        user, // doit contenir userId, apelido, nome, cpf, cep
-      });
+      await joinGroup({ groupId: group.id, user });
       setGroupId(group.id);
-      Toast.show({ type: "success", text1: `Você entrou no grupo "${group.name}"!` });
+      Toast.show({ type: "success", text1: `Entré dans le groupe "${group.name}"` });
+      console.log("[AvailableGroupsCarousel] ✅ User ajouté au groupe", group.id);
     } catch (err) {
-      Toast.show({ type: "error", text1: "Erro ao entrar no grupo", text2: err.message });
+      Toast.show({ type: "error", text1: "Erreur:", text2: err.message });
+      console.error("[AvailableGroupsCarousel] ❌ Erreur:", err);
     }
     setJoining(null);
   };
@@ -35,11 +36,11 @@ export default function AvailableGroupsCarousel({ grupos, loading }) {
     );
   }
 
-  if (!grupos?.length) {
+  if (!groups?.length) {
     return (
       <View style={styles.infoBox}>
         <Text style={{ color: "#bbb", fontSize: 15, textAlign: "center" }}>
-          Ainda não há outros grupos no seu CEP.
+          Aucun groupe à rejoindre pour ce CEP.
         </Text>
       </View>
     );
@@ -48,17 +49,11 @@ export default function AvailableGroupsCarousel({ grupos, loading }) {
   return (
     <View style={{ marginBottom: 34 }}>
       <Text style={styles.sectionTitle}>Grupos disponíveis</Text>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.horizontalScroll}
-      >
-        {grupos.map((g) => (
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalScroll}>
+        {groups.map((g) => (
           <View key={g.id} style={styles.card}>
             <Text style={styles.groupName}>{g.name}</Text>
-            <Text style={styles.creator}>
-              Criador: <Text style={{ color: "#FFD600", fontWeight: "bold" }}>{g.creatorNome || g.creatorApelido || "Desconhecido"}</Text>
-            </Text>
+            <Text style={styles.creator}>Criador: <Text style={{ color: "#FFD600", fontWeight: "bold" }}>{g.creatorNome || g.creatorApelido || "?"}</Text></Text>
             <Text style={styles.members}>{g.members?.length || 0} / {g.maxMembers || 30} vizinhos</Text>
             <TouchableOpacity
               style={styles.joinBtn}
@@ -66,9 +61,7 @@ export default function AvailableGroupsCarousel({ grupos, loading }) {
               onPress={() => handleJoin(g)}
             >
               <Handshake color="#fff" size={19} />
-              <Text style={styles.joinBtnText}>
-                {joining === g.id ? "Entrando..." : "Entrar no grupo"}
-              </Text>
+              <Text style={styles.joinBtnText}>{joining === g.id ? "Entrando..." : "Entrar no grupo"}</Text>
             </TouchableOpacity>
           </View>
         ))}
@@ -78,72 +71,13 @@ export default function AvailableGroupsCarousel({ grupos, loading }) {
 }
 
 const styles = StyleSheet.create({
-  sectionTitle: {
-    color: "#fff",
-    fontWeight: "bold",
-    fontSize: 18,
-    marginBottom: 9,
-    marginLeft: 8,
-  },
-  horizontalScroll: {
-    flexDirection: "row",
-    paddingLeft: 2,
-    paddingRight: 10,
-  },
-  card: {
-    backgroundColor: "#23262F",
-    borderRadius: 14,
-    padding: 16,
-    width: 215,
-    marginRight: 14,
-    marginLeft: 2,
-    shadowColor: "#00C859",
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-  },
-  groupName: {
-    color: "#fff",
-    fontWeight: "bold",
-    fontSize: 18,
-    marginBottom: 6,
-  },
-  creator: {
-    color: "#bbb",
-    fontSize: 15,
-    marginBottom: 5,
-  },
-  members: {
-    color: "#facc15",
-    fontWeight: "bold",
-    fontSize: 15,
-    marginBottom: 10,
-  },
-  joinBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#00C859",
-    paddingVertical: 9,
-    paddingHorizontal: 13,
-    borderRadius: 10,
-    alignSelf: "flex-start",
-    marginTop: 4,
-    minWidth: 105,
-    justifyContent: "center",
-  },
-  joinBtnText: {
-    color: "#fff",
-    fontWeight: "bold",
-    marginLeft: 8,
-    fontSize: 15,
-  },
-  infoBox: {
-    backgroundColor: "#23262F",
-    padding: 15,
-    borderRadius: 11,
-    alignItems: "center",
-    marginTop: 7,
-    marginBottom: 24,
-  },
+  sectionTitle: { color: "#fff", fontWeight: "bold", fontSize: 18, marginBottom: 9, marginLeft: 8 },
+  horizontalScroll: { flexDirection: "row", paddingLeft: 2, paddingRight: 10 },
+  card: { backgroundColor: "#23262F", borderRadius: 14, padding: 16, width: 215, marginRight: 14, marginLeft: 2, shadowColor: "#00C859", shadowOpacity: 0.08, shadowRadius: 4, alignItems: "flex-start", justifyContent: "space-between" },
+  groupName: { color: "#fff", fontWeight: "bold", fontSize: 18, marginBottom: 6 },
+  creator: { color: "#bbb", fontSize: 15, marginBottom: 5 },
+  members: { color: "#facc15", fontWeight: "bold", fontSize: 15, marginBottom: 10 },
+  joinBtn: { flexDirection: "row", alignItems: "center", backgroundColor: "#00C859", paddingVertical: 9, paddingHorizontal: 13, borderRadius: 10, alignSelf: "flex-start", marginTop: 4, minWidth: 105, justifyContent: "center" },
+  joinBtnText: { color: "#fff", fontWeight: "bold", marginLeft: 8, fontSize: 15 },
+  infoBox: { backgroundColor: "#23262F", padding: 15, borderRadius: 11, alignItems: "center", marginTop: 7, marginBottom: 24 },
 });

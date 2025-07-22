@@ -13,7 +13,7 @@ import {
 import { useUserStore } from '../../store/users';
 import { useGrupoDetails } from '../../hooks/useGrupoDetails';
 import { useGruposPorCep } from '../../hooks/useGruposPorCep';
-import { PlusCircle, } from 'lucide-react-native';
+import { PlusCircle } from 'lucide-react-native';
 import { FontAwesome, Feather, MaterialIcons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import WeatherCard from '../components/WeatherCard';
@@ -21,7 +21,7 @@ import { useUserGroupEffect } from '../../hooks/useUserGroupEffect';
 import Toast from 'react-native-toast-message';
 import AvailableGroupsCarousel from '../components/AvailableGroupsCarousel';
 
-// --- Skeleton animé pour le loader principal ---
+// ---- Skeleton animé
 function AnimatedSkeletonLine({ style, delay = 0 }) {
   const opacity = useRef(new Animated.Value(0.5)).current;
   useEffect(() => {
@@ -34,7 +34,6 @@ function AnimatedSkeletonLine({ style, delay = 0 }) {
   }, [delay, opacity]);
   return <Animated.View style={[style, { opacity }]} />;
 }
-
 function GroupSkeleton() {
   return (
     <View style={styles.skeletonCard}>
@@ -46,12 +45,12 @@ function GroupSkeleton() {
   );
 }
 
-// --- Pour afficher proprement le créateur
+// ---- Affichage du créateur (friendly)
 function getCriador(grupo, user) {
   if (!grupo) return "Desconhecido";
   if (grupo.creatorUserId && grupo.creatorNome) {
-    return grupo.creatorUserId === user.uid
-      ? user.apelido || user.username || "Você"
+    return grupo.creatorUserId === user?.id || grupo.creatorUserId === user?.uid
+      ? user?.apelido || user?.username || "Você"
       : grupo.creatorNome;
   }
   if (grupo.creatorNome) return grupo.creatorNome;
@@ -79,11 +78,14 @@ export default function HomeScreen() {
     }
   }, [quitGroup]);
 
-  // Ici, on ne garde QUE les groupes dispo à rejoindre
+  // --- GROUPES DISPOS À REJOINDRE (pas déjà membre)
   const outrosGrupos = (grupos || []).filter(
-    g => g.id !== groupId && (g.members?.length || 0) < (g.maxMembers || 30)
+    g =>
+      !(g.membersIds || []).includes(user?.id || user?.uid) &&
+      (g.members?.length || 0) < (g.maxMembers || 30)
   );
 
+  // ---- Salutation dynamique
   const horaBrasil = new Date().toLocaleTimeString('pt-BR', {
     hour: '2-digit', hour12: false, timeZone: 'America/Fortaleza'
   });
@@ -94,6 +96,7 @@ export default function HomeScreen() {
 
   const nome = user?.apelido || user?.username || 'Cidadão';
 
+  // --- Loader user pas chargé
   if (!user) {
     return (
       <View style={styles.center}>
@@ -101,14 +104,16 @@ export default function HomeScreen() {
       </View>
     );
   }
-
-  // --- Loader principal pour transition fluide ---
+  // --- Loader groupe loading
   if (isGroupLoading) {
     return <GroupSkeleton />;
   }
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={{ flex: 1 }}
+    >
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <Text style={styles.greeting}>
           {saudacao}, <Text style={styles.username}>{nome}</Text> 👋
@@ -156,7 +161,7 @@ export default function HomeScreen() {
           </TouchableOpacity>
         ) : null}
 
-        {/* --- CAROUSEL GROUPES À REJOINDRE --- */}
+        {/* --- GROUPES À REJOINDRE --- */}
         <AvailableGroupsCarousel groups={outrosGrupos} loading={loadingGrupos} />
 
       </ScrollView>

@@ -1,21 +1,41 @@
-// hooks/useAuthGuard.jsx
-import { useUserStore } from "../store/users";
+import { useEffect, useState } from "react";
+import { onAuthStateChanged } from "firebase/auth";
+import { auth } from "../firebase";
 import { useRouter } from "expo-router";
-import { useEffect } from "react";
+import { useUserStore } from "../store/users";
+import { loadUserProfile } from "../utils/loadUserProfile";
 
 /**
- * Protège une page : redirige vers "/" si user non connecté.
- * Retourne le user, ou null si on redirige.
+ * Observe l'état Firebase, hydrate Zustand avec Firestore
+ * Redirige si déconnecté. Retourne undefined (chargement), null (redirige), ou le user.
  */
-export function useAuthGuard() {
-  const { user } = useUserStore();
+export function useAuthGuard({ redirectTo = "/" } = {}) {
+  const [firebaseUser, setFirebaseUser] = useState(undefined); // undefined: loading
+  const setUser = useUserStore((s) => s.setUser);
   const router = useRouter();
 
   useEffect(() => {
-    if (!user) {
-      setTimeout(() => router.replace("/"), 0);
-    }
-  }, [user, router]);
+    // Observe Firebase Auth
+    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+      if (fbUser) {
+        // Hydrate le user Zustand avec Firestore (pour avoir le profil complet)
+        const userData = await loadUserProfile(fbUser.uid);
+        setFirebaseUser({ ...userData, email: fbUser.email, id: fbUser.uid });
+        setUser({ ...userData, email: fbUser.email, id: fbUser.uid });
+      } else {
+        setFirebaseUser(null);
+        setUser(null);
+      }
+    });
+    return unsubscribe;
+  }, [setUser]);
 
-  return user;
+  useEffect(() => {
+    // Redirige vers login si déconnecté
+    if (firebaseUser === null) {
+      setTimeout(() => router.replace(redirectTo), 0);
+    }
+  }, [firebaseUser, router, redirectTo]);
+
+  return firebaseUser; // undefined: loading, null: pas connecté, objet: ok
 }
