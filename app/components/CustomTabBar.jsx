@@ -40,7 +40,7 @@ export default function CustomTabBar({ state, descriptors, navigation }) {
           { backgroundColor: state.index === 1 ? '#007AFF' : '#FF4444' } // <- couleur dynamique: bleu si tab "mapa" actif, rouge sinon
         ]}
         activeOpacity={0.9}
-        onPress={() => router.push('/report')}
+        onPress={() => router.push('/grupo-sinalizar')}
       >
         <AlertCircle color="#fff" size={32} />
         <Text style={styles.fabText}>Sinalizar</Text>
