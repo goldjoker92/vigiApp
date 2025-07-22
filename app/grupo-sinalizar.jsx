@@ -10,6 +10,9 @@ export default function GrupoSinalizarScreen() {
   const user = useAuthGuard();
   const [toastVisible, setToastVisible] = useState(false);
 
+  // 6000 ms pour le toast ET la redirection
+  const TOAST_DURATION = 6000;
+
   const checkLocationAndDispatch = React.useCallback(async () => {
     console.log('[SINALIZAR] Début du flux');
     try {
@@ -34,7 +37,6 @@ export default function GrupoSinalizarScreen() {
       const currentCep = formatCep(addr?.postalCode);
       const userCepRef = formatCep(user?.cep || user?.cepRef);
 
-      // Debug complet
       console.log('[SINALIZAR] Données de comparaison:', {
         currentCep,
         userCepRef,
@@ -46,7 +48,6 @@ export default function GrupoSinalizarScreen() {
 
       if (currentCep && userCepRef && currentCep === userCepRef) {
         console.log('[SINALIZAR] CEPs identiques (chez soi)');
-
         Alert.alert(
           'Tipo de alerta',
           'Como deseja sinalizar?',
@@ -86,13 +87,13 @@ export default function GrupoSinalizarScreen() {
           { cancelable: true }
         );
       } else {
-        // Pas chez soi → toast + redirection
+        // Pas chez soi → toast + redirection DELAYÉE (6000ms)
         console.log('[SINALIZAR] CEPs différents (hors zone) – toast public only');
         setToastVisible(true);
         setTimeout(() => {
           setToastVisible(false);
           router.replace('/report');
-        }, 3000);
+        }, TOAST_DURATION);
       }
     } catch (err) {
       console.log('[SINALIZAR] ERREUR:', err);
@@ -114,7 +115,9 @@ export default function GrupoSinalizarScreen() {
       {toastVisible && (
         <CustomTopToast
           text1="📍 Fora da sua zona de vizinhança – sinalização pública apenas."
-          duration={3000}
+          duration={8000}
+          textColor="#FFD600"
+          containerStyle={{ marginTop: 60 }}
         />
       )}
     </View>
