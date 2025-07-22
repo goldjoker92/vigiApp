@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView, ActivityIndicator } from 'react-native';
+import { Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, View, ActivityIndicator } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { db, auth } from '../../firebase';
@@ -22,8 +22,9 @@ const categories = [
 ];
 
 export default function ReportScreen() {
-  const user = useAuthGuard();
   const router = useRouter();
+  const user = useAuthGuard();
+
   const [categoria, setCategoria] = useState(null);
   const [descricao, setDescricao] = useState('');
   const [local, setLocal] = useState(null);
@@ -34,7 +35,9 @@ export default function ReportScreen() {
   const [estado, setEstado] = useState('');
   const [cep, setCep] = useState('');
   const [loadingLoc, setLoadingLoc] = useState(false);
-  if (!user) return <ActivityIndicator style={{ flex: 1 }} color="#22C55E" />;
+
+  if (user === undefined) return <ActivityIndicator style={{ flex: 1 }} color="#22C55E" />;
+  if (!user) return null;
 
   const now = new Date();
   const dateBR = now.toLocaleDateString('pt-BR');
