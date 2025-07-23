@@ -73,7 +73,7 @@ export default function PublicAlertScreen() {
       });
       Alert.alert(
         "Alerta enviado!",
-        "Seu alerta foi registrado com sucesso! Lembre-se: sua declaração envolve sua responsabilidade e não substitui os serviços de emergência. ☎️ Ligue 190 (Polícia) ou 192 (Samu) em caso de urgência."
+        "Seu alerta foi registrado com sucessoooooooooooooooo! Lembre-se: sua declaração envolve sua responsabilidade e não substitui os serviços de emergência. ☎️ Ligue 190 (Polícia) ou 192 (Samu) em caso de urgência."
       );
       router.replace('/home');
     } catch (e) {
