@@ -72,8 +72,10 @@ export default function ReportScreen() {
 
   const handleSend = async () => {
     if (!categoria) return Alert.alert('Selecione uma categoria.');
-    if (!rua || !numero || !cidade || !estado || !cep) return Alert.alert('Preencha todos os campos de localização.');
+    if (!rua.trim()) return Alert.alert('Preencha o campo da rua.');
+    if (!cidade.trim() || !estado.trim()) return Alert.alert('Preencha cidade e estado.');
     if (!descricao.trim()) return Alert.alert('Descreva o ocorrido.');
+    // numero et cep sont optionnels
     try {
       await addDoc(collection(db, "publicAlerts"), {
         userId: auth.currentUser?.uid,
@@ -83,7 +85,12 @@ export default function ReportScreen() {
         descricao,
         gravidade: selectedCategory?.severity || '',
         color: severityColor,
-        rua, numero, cidade, estado, cep, address,
+        rua,
+        numero, // optionnel
+        cidade,
+        estado,
+        cep, // optionnel
+        address,
         location: local,
         date: dateBR,
         time: timeBR,
@@ -152,39 +159,43 @@ export default function ReportScreen() {
           </View>
         </View>
 
+        {/* Adresse dans l’ordre demandé */}
         <Text style={styles.label}>Localização</Text>
         <View style={styles.geoFields}>
           <TextInput
             style={styles.input}
-            placeholder="Rua"
+            placeholder="Rua (obrigatório)"
             value={rua}
             onChangeText={setRua}
           />
           <TextInput
             style={styles.input}
-            placeholder="Número"
+            placeholder="Número da rua (opcional)"
             value={numero}
             onChangeText={setNumero}
           />
           <TextInput
             style={styles.input}
-            placeholder="Cidade"
+            placeholder="Cidade (obrigatório)"
             value={cidade}
             onChangeText={setCidade}
           />
           <TextInput
             style={styles.input}
-            placeholder="Estado"
+            placeholder="Estado (obrigatório)"
             value={estado}
             onChangeText={setEstado}
           />
           <TextInput
             style={styles.input}
-            placeholder="CEP"
+            placeholder="CEP (opcional)"
             value={cep}
             onChangeText={setCep}
             keyboardType="numeric"
           />
+          <Text style={{ color: '#aaa', marginBottom: 6, marginLeft: 2, fontSize: 13 }}>
+            Adicione o número da rua e o CEP se souber, para ajudar na localização (opcional)
+          </Text>
           <TouchableOpacity style={styles.locBtn} onPress={handleLocation} disabled={loadingLoc}>
             <MapPin color="#007AFF" size={18} style={{ marginRight: 8 }} />
             <Text style={styles.locBtnText}>
