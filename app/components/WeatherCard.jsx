@@ -15,7 +15,7 @@ export default function WeatherCard({ cep }) {
         // Récupère la ville à partir du CEP
         const cepResp = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
         const cepJson = await cepResp.json();
-        const cidade = cepJson.localidade || "Fortaleza";
+        const cidade = cepJson.localidade || "Desconhecida";
         // Récupère la météo de la ville
         const resp = await fetch(`https://api.openweathermap.org/data/2.5/weather?q=${cidade},BR&lang=pt_br&appid=${process.env.OPENWEATHER_API_KEY}&units=metric`);
         const json = await resp.json();
