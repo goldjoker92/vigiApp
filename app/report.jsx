@@ -2,14 +2,14 @@ import { useState } from 'react';
 import { Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, View, ActivityIndicator } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import * as Location from 'expo-location';
-import { db, auth } from '../../firebase';
+import { db, auth } from '../firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useRouter } from 'expo-router';
 import {
   MapPin, Bell, AlertTriangle, HandHeart, Flame, ShieldAlert,
   Bolt, Car, FileQuestion, Send, UserX
 } from "lucide-react-native";
-import { useAuthGuard } from '../../hooks/useAuthGuard';
+import { useAuthGuard } from '../hooks/useAuthGuard';
 
 const categories = [
   { label: "Roubo/Furto", icon: ShieldAlert, severity: "medium", color: "#FFA500" },
