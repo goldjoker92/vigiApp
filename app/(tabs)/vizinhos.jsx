@@ -20,9 +20,12 @@ import { useUserStore } from "../../store/users";
 import { useGrupoDetails } from "../../hooks/useGrupoDetails";
 import { leaveGroup } from "../../services/groupService";
 import QuitGroupModal from "../components/QuitGroupModal";
+import GroupHelpSection from "../components/GroupHelpSection";
 import { useRouter } from "expo-router";
 import dayjs from "dayjs";
 import { useAuthGuard } from "../../hooks/useAuthGuard";
+
+const SCREEN_HEIGHT = Dimensions.get("window").height;
 
 // ----- ADMIN REASSIGNMENT -----
 async function startAdminReassignment(grupo, user, groupId) {
@@ -61,10 +64,11 @@ export default function VizinhosScreen() {
   const router = useRouter();
   const [quitModalVisible, setQuitModalVisible] = useState(false);
 
-  if (user === undefined) return <ActivityIndicator style={{ flex: 1 }} color="#22C55E" />;
+  if (user === undefined)
+    return <ActivityIndicator style={{ flex: 1 }} color="#22C55E" />;
   if (!user) return null;
 
-  // ----- CAS USER NON RATTACHÉ À AUCUN GROUPE -----
+  // --- CAS USER NON RATTACHÉ À AUCUN GROUPE ---
   if (!loading && !grupo) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: "#181A20" }}>
@@ -77,20 +81,38 @@ export default function VizinhosScreen() {
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            <Feather name="alert-triangle" size={42} color="#FFD600" style={{ marginBottom: 14 }} />
-            <Text style={styles.noGroupTitle}>Você não está em nenhum grupo</Text>
+            <Feather
+              name="alert-triangle"
+              size={42}
+              color="#FFD600"
+              style={{ marginBottom: 14 }}
+            />
+            <Text style={styles.noGroupTitle}>
+              Você não está em nenhum grupo
+            </Text>
             <Text style={styles.noGroupText}>
               Você ainda não está vinculado a um grupo de vizinhos do seu CEP.{"\n\n"}
               Para criar um novo grupo, volte à página inicial e clique no botão{" "}
-              <Text style={{ color: "#4F8DFF", fontWeight: "bold" }}>Criar novo grupo com seu CEP</Text>.
+              <Text style={{ color: "#4F8DFF", fontWeight: "bold" }}>
+                Criar novo grupo com seu CEP
+              </Text>.
             </Text>
             <TouchableOpacity
               style={styles.goHomeBtn}
               onPress={() => router.replace("/(tabs)/home")}
               activeOpacity={0.87}
             >
-              <Feather name="arrow-left-circle" size={18} color="#fff" style={{ marginRight: 8 }} />
-              <Text style={styles.goHomeBtnText} numberOfLines={1} adjustsFontSizeToFit>
+              <Feather
+                name="arrow-left-circle"
+                size={18}
+                color="#fff"
+                style={{ marginRight: 8 }}
+              />
+              <Text
+                style={styles.goHomeBtnText}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
                 Voltar para a página inicial
               </Text>
             </TouchableOpacity>
@@ -110,17 +132,31 @@ export default function VizinhosScreen() {
       setQuitModalVisible(false);
       Vibration.vibrate([0, 60, 60, 60]);
       setTimeout(() => {
-        router.replace({ pathname: "/(tabs)/home", params: { quitGroup: grupo.name } });
+        router.replace({
+          pathname: "/(tabs)/home",
+          params: { quitGroup: grupo.name },
+        });
       }, 900);
     } catch (e) {
-      Toast.show({ type: "error", text1: "Erro ao sair", text2: e.message });
+      Toast.show({
+        type: "error",
+        text1: "Erro ao sair",
+        text2: e.message,
+      });
       Vibration.vibrate([0, 100, 50, 100]);
     }
   };
 
   if (loading || !grupo)
     return (
-      <View style={{ flex: 1, backgroundColor: "#181A20", justifyContent: "center", alignItems: "center" }}>
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: "#181A20",
+          justifyContent: "center",
+          alignItems: "center",
+        }}
+      >
         <ActivityIndicator color="#22C55E" size="large" />
       </View>
     );
@@ -128,10 +164,10 @@ export default function VizinhosScreen() {
   let criador =
     grupo.creatorUserId === user.uid
       ? user.apelido || user.username || "Você"
-      : grupo.creatorNome
-        || grupo.creatorApelido
-        || (Array.isArray(grupo.members) && grupo.members[0]?.apelido)
-        || "Desconhecido";
+      : grupo.creatorNome ||
+        grupo.creatorApelido ||
+        (Array.isArray(grupo.members) && grupo.members[0]?.apelido) ||
+        "Desconhecido";
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#181A20" }}>
@@ -144,17 +180,21 @@ export default function VizinhosScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* NOM DU GROUPE CENTRÉ */}
+          {/* --- INFOS GROUPE --- */}
           <View style={styles.header}>
             <Text style={styles.groupName}>{grupo.name}</Text>
           </View>
-
-          {/* INFOS GROUP */}
           <View style={styles.infoBox}>
             <View style={styles.infoRow}>
               <Feather name="users" size={20} color="#00C859" />
               <Text style={styles.infoText}>
-                <Text style={{ color: "#00C859", fontWeight: "bold", fontSize: 19 }}>
+                <Text
+                  style={{
+                    color: "#00C859",
+                    fontWeight: "bold",
+                    fontSize: 19,
+                  }}
+                >
                   {grupo.members?.length || 1} / {grupo.maxMembers || 30}
                 </Text>{" "}
                 vizinhos
@@ -162,7 +202,12 @@ export default function VizinhosScreen() {
             </View>
             <View style={styles.infoRow}>
               <Feather name="user-check" size={20} color="#00C859" />
-              <Text style={[styles.infoText, { color: "#00C859", fontWeight: "bold" }]}>
+              <Text
+                style={[
+                  styles.infoText,
+                  { color: "#00C859", fontWeight: "bold" },
+                ]}
+              >
                 Criador:{" "}
                 <Text style={{ color: "#fff", fontWeight: "bold" }}>
                   {criador}
@@ -171,20 +216,36 @@ export default function VizinhosScreen() {
             </View>
             <View style={styles.infoRow}>
               <Feather name="map-pin" size={19} color="#00C859" />
-              <Text style={[styles.infoText, { color: "#00C859", fontWeight: "bold" }]}>
-                CEP: <Text style={{ color: "#fff", fontWeight: "bold" }}>{grupo.cep}</Text>
+              <Text
+                style={[
+                  styles.infoText,
+                  { color: "#00C859", fontWeight: "bold" },
+                ]}
+              >
+                CEP:{" "}
+                <Text style={{ color: "#fff", fontWeight: "bold" }}>
+                  {grupo.cep}
+                </Text>
               </Text>
             </View>
           </View>
 
-          {/* BOUTON QUITTER */}
+          {/* --- SECTION ENTRAIDE / AJUDA --- */}
+          <GroupHelpSection groupId={groupId} />
+
+          {/* --- BOUTON QUITTER --- */}
           <View style={styles.quitBtnWrapper}>
             <TouchableOpacity
               style={styles.quitBtn}
               onPress={() => setQuitModalVisible(true)}
               activeOpacity={0.87}
             >
-              <MaterialIcons name="logout" size={21} color="#FFD600" style={{ marginRight: 11 }} />
+              <MaterialIcons
+                name="logout"
+                size={21}
+                color="#FFD600"
+                style={{ marginRight: 11 }}
+              />
               <Text
                 style={styles.quitBtnText}
                 numberOfLines={1}
@@ -214,62 +275,62 @@ export default function VizinhosScreen() {
 const styles = StyleSheet.create({
   // --- PAGE AVEC GROUPE ---
   content: {
-    paddingHorizontal: 24,
-    paddingTop: 44,
-    paddingBottom: 44,
+    paddingHorizontal: 18,
+    paddingTop: 35,
+    paddingBottom: 35,
     backgroundColor: "#181A20",
-    minHeight: Dimensions.get("window").height * 0.9,
+    minHeight: SCREEN_HEIGHT * 0.93,
   },
   header: {
     alignItems: "center",
-    marginBottom: 15,
-    marginTop: 8,
+    marginBottom: 12,
+    marginTop: 0,
   },
   groupName: {
     color: "#00C859",
     fontWeight: "bold",
-    fontSize: 38,
+    fontSize: 30,
     marginTop: 0,
     textAlign: "center",
-    letterSpacing: 1.2,
+    letterSpacing: 1.1,
   },
   infoBox: {
-    marginTop: 18,
-    borderRadius: 16,
+    marginTop: 12,
+    borderRadius: 15,
     backgroundColor: "#23262F",
-    paddingVertical: 22,
-    paddingHorizontal: 19,
-    marginBottom: 18,
+    paddingVertical: 19,
+    paddingHorizontal: 16,
+    marginBottom: 15,
     alignItems: "flex-start",
   },
   infoRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 15,
+    marginBottom: 13,
   },
   infoText: {
     color: "#eee",
-    fontSize: 18,
-    marginLeft: 12,
+    fontSize: 16.5,
+    marginLeft: 10,
     fontWeight: "700",
   },
   quitBtnWrapper: {
     width: "100%",
     alignItems: "center",
-    marginTop: 22,
-    marginBottom: 32,
+    marginTop: 14,
+    marginBottom: 16,
   },
   quitBtn: {
     backgroundColor: "#FF4D4F",
-    borderRadius: 16,
+    borderRadius: 15,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 12,
-    paddingHorizontal: 22,
-    minWidth: 170,
-    maxWidth: 320,
-    width: "72%",
+    paddingVertical: 11,
+    paddingHorizontal: 18,
+    minWidth: 160,
+    maxWidth: 280,
+    width: "67%",
     alignSelf: "center",
     shadowColor: "#FF4D4F",
     shadowOpacity: 0.10,
@@ -278,7 +339,7 @@ const styles = StyleSheet.create({
   quitBtnText: {
     color: "#fff",
     fontWeight: "bold",
-    fontSize: 15,
+    fontSize: 14,
     letterSpacing: 0.25,
     flexShrink: 1,
     includeFontPadding: false,
@@ -292,39 +353,39 @@ const styles = StyleSheet.create({
     backgroundColor: "#181A20",
     paddingHorizontal: 24,
     paddingBottom: 24,
-    minHeight: Dimensions.get("window").height * 0.95,
+    minHeight: SCREEN_HEIGHT * 0.95,
   },
   noGroupTitle: {
     color: "#FFD600",
     fontWeight: "bold",
-    fontSize: 18.5,
-    marginBottom: 11,
+    fontSize: 17,
+    marginBottom: 9,
     textAlign: "center",
-    letterSpacing: 0.15,
+    letterSpacing: 0.13,
   },
   noGroupText: {
     color: "#eee",
-    fontSize: 14.3,
+    fontSize: 13.5,
     textAlign: "center",
-    marginBottom: 22,
-    lineHeight: 19,
+    marginBottom: 17,
+    lineHeight: 17,
   },
   goHomeBtn: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#4F8DFF",
-    borderRadius: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
+    borderRadius: 11,
+    paddingVertical: 7,
+    paddingHorizontal: 13,
     alignSelf: "center",
-    minWidth: 160,
-    maxWidth: 290,
+    minWidth: 140,
+    maxWidth: 220,
     elevation: 2,
   },
   goHomeBtnText: {
     color: "#fff",
     fontWeight: "bold",
-    fontSize: 13.5,
-    letterSpacing: 0.11,
+    fontSize: 12.5,
+    letterSpacing: 0.09,
   },
 });
