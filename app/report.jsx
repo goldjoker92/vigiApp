@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, View, ActivityIndicator } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import * as Location from 'expo-location';
@@ -28,9 +28,7 @@ export default function ReportScreen() {
   const [categoria, setCategoria] = useState(null);
   const [descricao, setDescricao] = useState('');
   const [local, setLocal] = useState(null);
-  const [address, setAddress] = useState('');
-  const [rua, setRua] = useState('');
-  const [numero, setNumero] = useState('');
+  const [ruaNumero, setRuaNumero] = useState('');
   const [cidade, setCidade] = useState('');
   const [estado, setEstado] = useState('');
   const [cep, setCep] = useState('');
@@ -46,6 +44,7 @@ export default function ReportScreen() {
   const selectedCategory = categories.find(c => c.label === categoria);
   const severityColor = selectedCategory?.color || '#007AFF';
 
+  // Géo/Adresse propre (anti-doublon et gestion de cas extrêmes)
   const handleLocation = async () => {
     setLoadingLoc(true);
     try {
@@ -58,12 +57,26 @@ export default function ReportScreen() {
       setLocal(loc.coords);
       let [addr] = await Location.reverseGeocodeAsync(loc.coords);
 
-      setRua(addr.street || '');
-      setNumero(addr.name || '');
+      // ----------- ANTI-DOUBLON + patch brésilien -----------
+      let rua = addr.street || '';
+      let numero = addr.name || addr.streetNumber || '';
+
+      let ruaNumeroVal;
+      if (
+        numero &&
+        rua &&
+        (numero.startsWith(rua) || numero.includes(rua))
+      ) {
+        ruaNumeroVal = numero;
+      } else if (numero && rua) {
+        ruaNumeroVal = `${rua}, ${numero}`;
+      } else {
+        ruaNumeroVal = rua || numero || '';
+      }
+      setRuaNumero(ruaNumeroVal.trim());
       setCidade(addr.city || addr.subregion || '');
       setEstado(addr.region || '');
       setCep(addr.postalCode || '');
-      setAddress(`${addr.street || ''}, ${addr.name || ''} - ${addr.city || addr.subregion || ''}/${addr.region || ''} - ${addr.postalCode || ''}`);
     } catch (_) {
       Alert.alert('Erro', 'Não foi possível obter sua localização.');
     }
@@ -72,10 +85,9 @@ export default function ReportScreen() {
 
   const handleSend = async () => {
     if (!categoria) return Alert.alert('Selecione uma categoria.');
-    if (!rua.trim()) return Alert.alert('Preencha o campo da rua.');
+    if (!ruaNumero.trim()) return Alert.alert('Preencha o campo Rua e número.');
     if (!cidade.trim() || !estado.trim()) return Alert.alert('Preencha cidade e estado.');
     if (!descricao.trim()) return Alert.alert('Descreva o ocorrido.');
-    // numero et cep sont optionnels
     try {
       await addDoc(collection(db, "publicAlerts"), {
         userId: auth.currentUser?.uid,
@@ -85,12 +97,10 @@ export default function ReportScreen() {
         descricao,
         gravidade: selectedCategory?.severity || '',
         color: severityColor,
-        rua,
-        numero, // optionnel
+        ruaNumero,
         cidade,
         estado,
-        cep, // optionnel
-        address,
+        cep,
         location: local,
         date: dateBR,
         time: timeBR,
@@ -102,6 +112,15 @@ export default function ReportScreen() {
       Alert.alert('Erro', e.message);
     }
   };
+
+  // Bouton actif si tous les champs OBLIGATOIRES sont remplis
+  const isBtnActive = !!(
+    categoria &&
+    descricao.trim().length > 0 &&
+    ruaNumero.trim().length > 0 &&
+    cidade.trim().length > 0 &&
+    estado.trim().length > 0
+  );
 
   return (
     <ScrollView contentContainerStyle={styles.scrollContainer}>
@@ -159,50 +178,42 @@ export default function ReportScreen() {
           </View>
         </View>
 
-        {/* Adresse dans l’ordre demandé */}
+        {/* Adresse propre */}
         <Text style={styles.label}>Localização</Text>
-        <View style={styles.geoFields}>
-          <TextInput
-            style={styles.input}
-            placeholder="Rua (obrigatório)"
-            value={rua}
-            onChangeText={setRua}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Número da rua (opcional)"
-            value={numero}
-            onChangeText={setNumero}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Cidade (obrigatório)"
-            value={cidade}
-            onChangeText={setCidade}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Estado (obrigatório)"
-            value={estado}
-            onChangeText={setEstado}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="CEP (opcional)"
-            value={cep}
-            onChangeText={setCep}
-            keyboardType="numeric"
-          />
-          <Text style={{ color: '#aaa', marginBottom: 6, marginLeft: 2, fontSize: 13 }}>
-            Adicione o número da rua e o CEP se souber, para ajudar na localização (opcional)
+        <TextInput
+          style={styles.input}
+          placeholder="Rua e número (obrigatório)"
+          value={ruaNumero}
+          onChangeText={setRuaNumero}
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="Cidade (obrigatório)"
+          value={cidade}
+          onChangeText={setCidade}
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="Estado (obrigatório)"
+          value={estado}
+          onChangeText={setEstado}
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="CEP (opcional)"
+          value={cep}
+          onChangeText={setCep}
+          keyboardType="numeric"
+        />
+        <Text style={{ color: '#aaa', marginBottom: 6, marginLeft: 2, fontSize: 13 }}>
+          Adicione o número da rua e o CEP se souber, para ajudar na localização (opcional)
+        </Text>
+        <TouchableOpacity style={styles.locBtn} onPress={handleLocation} disabled={loadingLoc}>
+          <MapPin color="#007AFF" size={18} style={{ marginRight: 8 }} />
+          <Text style={styles.locBtnText}>
+            {loadingLoc ? "Buscando localização..." : "Usar minha localização atual"}
           </Text>
-          <TouchableOpacity style={styles.locBtn} onPress={handleLocation} disabled={loadingLoc}>
-            <MapPin color="#007AFF" size={18} style={{ marginRight: 8 }} />
-            <Text style={styles.locBtnText}>
-              {loadingLoc ? "Buscando localização..." : "Usar minha localização atual"}
-            </Text>
-          </TouchableOpacity>
-        </View>
+        </TouchableOpacity>
 
         {local && (
           <MapView
@@ -218,7 +229,14 @@ export default function ReportScreen() {
           </MapView>
         )}
 
-        <TouchableOpacity style={[styles.sendBtn, { backgroundColor: severityColor }]} onPress={handleSend}>
+        <TouchableOpacity
+          style={[
+            styles.sendBtn,
+            { backgroundColor: isBtnActive ? severityColor : '#aaa', opacity: isBtnActive ? 1 : 0.6 }
+          ]}
+          onPress={handleSend}
+          disabled={!isBtnActive}
+        >
           <Send size={20} color="#fff" style={{ marginRight: 8 }} />
           <Text style={styles.sendBtnText}>Enviar alerta</Text>
         </TouchableOpacity>
@@ -264,7 +282,6 @@ const styles = StyleSheet.create({
   readonlyField: { flex: 1, backgroundColor: '#22252b', borderRadius: 7, padding: 10, alignItems: 'center' },
   readonlyLabel: { color: '#bbb', fontSize: 13 },
   readonlyValue: { color: '#fff', fontWeight: 'bold', fontSize: 15, marginTop: 2 },
-  geoFields: { width: '100%' },
   locBtn: {
     backgroundColor: "#e6f2ff",
     borderRadius: 8,
