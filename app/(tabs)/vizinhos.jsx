@@ -230,9 +230,6 @@ export default function VizinhosScreen() {
             </View>
           </View>
 
-          {/* --- SECTION ENTRAIDE / AJUDA --- */}
-          <GroupHelpSection groupId={groupId} />
-
           {/* --- BOUTON QUITTER --- */}
           <View style={styles.quitBtnWrapper}>
             <TouchableOpacity
@@ -258,6 +255,9 @@ export default function VizinhosScreen() {
               </Text>
             </TouchableOpacity>
           </View>
+
+          {/* --- SECTION ENTRAIDE / AJUDA --- */}
+          <GroupHelpSection groupId={groupId} />
         </ScrollView>
 
         {/* MODALE QUITTER */}
@@ -273,7 +273,6 @@ export default function VizinhosScreen() {
 }
 
 const styles = StyleSheet.create({
-  // --- PAGE AVEC GROUPE ---
   content: {
     paddingHorizontal: 18,
     paddingTop: 35,
@@ -318,7 +317,7 @@ const styles = StyleSheet.create({
     width: "100%",
     alignItems: "center",
     marginTop: 14,
-    marginBottom: 16,
+    marginBottom: 18,
   },
   quitBtn: {
     backgroundColor: "#FF4D4F",
@@ -345,7 +344,6 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
     textAlignVertical: "center",
   },
-  // --- PAGE SANS GROUPE ---
   noGroupContainer: {
     flexGrow: 1,
     justifyContent: "center",

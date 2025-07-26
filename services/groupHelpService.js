@@ -1,12 +1,36 @@
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, query, where, getDocs, addDoc, serverTimestamp, Timestamp } from "firebase/firestore";
 import { db } from "../firebase";
 import dayjs from "dayjs";
 
-/**
- * Crée une demande d'entraide dans la sous-collection du groupe ET dans la collection globale.
- * @param {Object} params - { groupId, userId, apelido, message, isScheduled, dateHelp }
- * @returns {Promise<{subId: string, globalId: string}>}
- */
+// Compter les demandes du user (corrigé pour Timestamp)
+export async function countUserRequests({ userId, groupId, since }) {
+  // Guard & conversion
+  if (!userId || !groupId || !since) {
+    throw new Error("Paramètre manquant pour countUserRequests");
+  }
+  const sinceTimestamp =
+    since instanceof Date ? Timestamp.fromDate(since) : 
+    typeof since === "string" ? Timestamp.fromDate(new Date(since)) :
+    since; // déjà Timestamp
+
+  // Logs debug robustes
+  console.log('==[countUserRequests]==');
+  console.log('userId:', userId, typeof userId);
+  console.log('groupId:', groupId, typeof groupId);
+  console.log('since:', since, typeof since);
+  console.log('sinceTimestamp:', sinceTimestamp, sinceTimestamp instanceof Timestamp);
+
+  const q = query(
+    collection(db, "groupHelps"),
+    where("userId", "==", userId),
+    where("groupId", "==", groupId),
+    where("createdAt", ">=", sinceTimestamp)
+  );
+  const snapshot = await getDocs(q);
+  return snapshot.size;
+}
+
+// Créer une demande d'entraide
 export async function createGroupHelp({
   groupId,
   userId,
@@ -15,8 +39,10 @@ export async function createGroupHelp({
   isScheduled,
   dateHelp,
 }) {
+  if (!groupId || !userId) throw new Error("Paramètre manquant à createGroupHelp");
+
   const docData = {
-    groupId, // utile pour la globale
+    groupId,
     userId,
     apelido,
     message,
@@ -37,14 +63,14 @@ export async function createGroupHelp({
     lastUpdateAt: serverTimestamp(),
   };
 
-  // 1. Ajout sous-collection du groupe
-  const subRef = await addDoc(collection(db, "groups", groupId, "helpRequests"), docData);
+  // Ajout global
+  const docRef = await addDoc(collection(db, "groupHelps"), docData);
 
-  // 2. Ajout collection globale
-  const globalRef = await addDoc(collection(db, "groupHelps"), {
+  // Sous-collection dans le groupe
+  await addDoc(collection(db, `groups/${groupId}/helpRequests`), {
     ...docData,
-    groupHelpSubId: subRef.id, // tu peux garder le lien
+    groupHelpSubId: docRef.id,
   });
 
-  return { subId: subRef.id, globalId: globalRef.id };
+  return docRef.id;
 }
