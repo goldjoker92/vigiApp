@@ -7,49 +7,57 @@ import {
   StyleSheet,
   Platform,
   Modal,
+  Alert,
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import dayjs from "dayjs";
+import "dayjs/locale/pt-br";
 import Toast from "react-native-toast-message";
-import 'dayjs/locale/pt-br';
 
-import { createGroupHelp } from "../../services/groupHelpService";
-// ADAPTE ICI si ton store user a une autre structure
+import { createGroupHelp, countUserRequests } from "../../services/groupHelpService";
 import { useUserStore } from "../../store/users";
 
+dayjs.locale("pt-br");
 
-dayjs.locale('pt-br');
+export default function GroupHelpSection({ groupId: groupIdProp }) {
+  const { user, groupId: groupIdStore } = useUserStore();
+  const groupId = groupIdProp || groupIdStore;
 
-export default function GroupHelpSection({ groupId }) {
   const [tipoAjuda, setTipoAjuda] = useState("rapido");
   const [descricao, setDescricao] = useState("");
   const [showPicker, setShowPicker] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [isLoading, setIsLoading] = useState(false);
 
-  const { user } = useUserStore(); // DOIT retourner {id, apelido, ...}
-
   const minDate = new Date();
-  const maxDate = dayjs().add(3, "day").endOf('day').toDate();
+  const maxDate = dayjs().add(3, "day").endOf("day").toDate();
   const dataLimite = dayjs(maxDate).format("D [de] MMMM");
 
-  const handleSelectAjuda = (type) => setTipoAjuda(type);
-  const handleChangeDescricao = (text) => setDescricao(text);
+  // ---- DateTimePicker
+  const handleOpenPicker = () => setShowPicker(true);
 
   const handleDateChange = (event, date) => {
-    if (date) {
-      const corrige = dayjs(date).isAfter(maxDate)
-        ? maxDate
-        : dayjs(date).isBefore(minDate)
-        ? minDate
-        : date;
-      setSelectedDate(corrige);
+    if (Platform.OS === "android") {
+      // Android : ferme le picker à chaque sélection
+      if (event.type === "set" && date) {
+        let finalDate = dayjs(date);
+        if (finalDate.isAfter(maxDate)) finalDate = dayjs(maxDate);
+        if (finalDate.isBefore(minDate)) finalDate = dayjs(minDate);
+        setSelectedDate(finalDate.toDate());
+      }
       setShowPicker(false);
-    } else if (Platform.OS === "android") {
-      setShowPicker(false);
+    } else if (Platform.OS === "ios") {
+      // iOS : ne ferme QUE si on valide (pas à chaque scroll)
+      if (event.type === "set" && date) {
+        let finalDate = dayjs(date);
+        if (finalDate.isAfter(maxDate)) finalDate = dayjs(maxDate);
+        if (finalDate.isBefore(minDate)) finalDate = dayjs(minDate);
+        setSelectedDate(finalDate.toDate());
+      }
     }
   };
 
+  // ---- Formulaire
   const handlePedirAjuda = async () => {
     if (!descricao.trim()) {
       Toast.show({
@@ -67,8 +75,58 @@ export default function GroupHelpSection({ groupId }) {
       });
       return;
     }
+    if (!groupId) {
+      Toast.show({
+        type: "error",
+        text1: "Nenhum grupo encontrado",
+        text2: "Entre em um grupo antes de pedir ajuda.",
+      });
+      return;
+    }
+    if (descricao.trim().length < 15) {
+      Toast.show({
+        type: "error",
+        text1: "Descrição muito curta",
+        text2: "Descreva sua necessidade em pelo menos 15 caracteres.",
+      });
+      return;
+    }
     setIsLoading(true);
+
     try {
+      const now = dayjs();
+      const todayStart = now.startOf("day").toDate();
+      const weekStart = now.startOf("week").toDate();
+
+      // Limite jour
+      const demandesHoje = await countUserRequests({
+        userId: user.id,
+        groupId,
+        since: todayStart,
+      });
+      if (demandesHoje >= 2) {
+        setIsLoading(false);
+        Alert.alert(
+          "Limite diário atingido",
+          "Você atingiu o limite de 2 pedidos por dia. Tente novamente amanhã."
+        );
+        return;
+      }
+      // Limite semaine
+      const demandesSemana = await countUserRequests({
+        userId: user.id,
+        groupId,
+        since: weekStart,
+      });
+      if (demandesSemana >= 8) {
+        setIsLoading(false);
+        Alert.alert(
+          "Limite semanal atingido",
+          "Você atingiu o limite de 8 pedidos por semana. Tente novamente na próxima semana."
+        );
+        return;
+      }
+
       await createGroupHelp({
         groupId,
         userId: user.id,
@@ -77,11 +135,20 @@ export default function GroupHelpSection({ groupId }) {
         isScheduled: tipoAjuda === "agendada",
         dateHelp: tipoAjuda === "agendada" ? selectedDate : null,
       });
-      Toast.show({
-        type: "success",
-        text1: "Ajuda solicitada!",
-        text2: "Seu pedido foi enviado aos vizinhos.",
-      });
+
+      if (tipoAjuda === "agendada") {
+        Toast.show({
+          type: "success",
+          text1: `Seu pedido agendado para dia ${dayjs(selectedDate).format("dddd, D [de] MMMM [às] HH:mm")}`,
+          text2: "Por gentileza, aguarde contato.",
+        });
+      } else {
+        Toast.show({
+          type: "success",
+          text1: "Seu pedido foi enviado aos vizinhos.",
+          text2: "O mais rápido possível. Por gentileza, aguarde contato.",
+        });
+      }
       setDescricao("");
       setTipoAjuda("rapido");
       setSelectedDate(new Date());
@@ -101,6 +168,7 @@ export default function GroupHelpSection({ groupId }) {
     setSelectedDate(new Date());
   };
 
+  // iOS Modal OK/Annuler
   const handleClosePicker = () => setShowPicker(false);
 
   return (
@@ -109,7 +177,7 @@ export default function GroupHelpSection({ groupId }) {
       <View style={styles.row}>
         <TouchableOpacity
           style={[styles.optionBtn, tipoAjuda === "rapido" && styles.optionBtnActive]}
-          onPress={() => handleSelectAjuda("rapido")}
+          onPress={() => setTipoAjuda("rapido")}
         >
           <Text style={[styles.optionText, tipoAjuda === "rapido" && styles.optionTextActive]}>
             O mais rápido possível
@@ -117,29 +185,37 @@ export default function GroupHelpSection({ groupId }) {
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.optionBtn, tipoAjuda === "agendada" && styles.optionBtnActive]}
-          onPress={() => handleSelectAjuda("agendada")}
+          onPress={() => {
+            setTipoAjuda("agendada");
+            setShowPicker(true); // ouvre direct
+          }}
         >
           <Text style={[styles.optionText, tipoAjuda === "agendada" && styles.optionTextActive]}>
-            Agendada
+            Agendada (data e hora)
           </Text>
         </TouchableOpacity>
       </View>
 
+      {/* DateTime */}
       {tipoAjuda === "agendada" && (
         <View style={{ marginBottom: 18 }}>
-          <TouchableOpacity onPress={() => setShowPicker(true)} style={styles.dateBtn}>
+          {/* Champ date/heure CLiquable */}
+          <TouchableOpacity style={styles.dateBtn} onPress={handleOpenPicker}>
             <Text style={styles.dateBtnText}>
-              {dayjs(selectedDate).format("DD/MM/YYYY")}
+              {dayjs(selectedDate).format("dddd, D [de] MMMM [às] HH:mm")}
             </Text>
           </TouchableOpacity>
+          {/* Picker */}
           {showPicker && Platform.OS === "android" && (
             <DateTimePicker
               value={selectedDate}
-              mode="date"
-              display="calendar"
+              mode="datetime"
+              display="default"
               onChange={handleDateChange}
               minimumDate={minDate}
               maximumDate={maxDate}
+              is24Hour={true}
+              locale="pt-BR"
             />
           )}
           {showPicker && Platform.OS === "ios" && (
@@ -153,15 +229,20 @@ export default function GroupHelpSection({ groupId }) {
                 <View style={styles.pickerModalBox}>
                   <DateTimePicker
                     value={selectedDate}
-                    mode="date"
+                    mode="datetime"
                     display="spinner"
                     onChange={handleDateChange}
                     minimumDate={minDate}
                     maximumDate={maxDate}
+                    is24Hour={true}
+                    locale="pt-BR"
                     style={{ width: 250, alignSelf: "center" }}
                   />
-                  <TouchableOpacity style={styles.cancelarPedidoBtn} onPress={handleClosePicker}>
-                    <Text style={styles.cancelarPedidoText}>Cancelar pedido</Text>
+                  <TouchableOpacity
+                    style={styles.cancelarPedidoBtn}
+                    onPress={handleClosePicker}
+                  >
+                    <Text style={styles.cancelarPedidoText}>Fechar</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -176,7 +257,7 @@ export default function GroupHelpSection({ groupId }) {
       <Text style={styles.label}>Descreva sua necessidade *</Text>
       <TextInput
         value={descricao}
-        onChangeText={handleChangeDescricao}
+        onChangeText={setDescricao}
         style={styles.textInput}
         multiline
         maxLength={120}
@@ -184,7 +265,8 @@ export default function GroupHelpSection({ groupId }) {
         placeholderTextColor="#AAA"
       />
       <Text style={styles.precisao}>
-        Seja muito preciso no seu pedido para facilitar a ajuda dos vizinhos.
+        Seja muito preciso no seu pedido para facilitar a ajuda dos vizinhos.{"\n"}
+        (mínimo 15 caracteres)
       </Text>
 
       <View style={styles.alertBox}>
@@ -203,7 +285,11 @@ export default function GroupHelpSection({ groupId }) {
             {isLoading ? "Enviando..." : "Pedir ajuda"}
           </Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.cancelarBtn} onPress={handleCancelar} disabled={isLoading}>
+        <TouchableOpacity
+          style={styles.cancelarBtn}
+          onPress={handleCancelar}
+          disabled={isLoading}
+        >
           <Text style={styles.cancelarBtnText}>Cancelar</Text>
         </TouchableOpacity>
       </View>
@@ -211,7 +297,9 @@ export default function GroupHelpSection({ groupId }) {
   );
 }
 
+// Styles: identique à avant !
 const styles = StyleSheet.create({
+  // ... (tes styles, pas changés)
   section: {
     backgroundColor: "#23252C",
     borderRadius: 16,
