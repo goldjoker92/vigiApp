@@ -1,13 +1,6 @@
 import React, { useState } from "react";
 import {
-  View,
-  Text,
-  TouchableOpacity,
-  TextInput,
-  StyleSheet,
-  Platform,
-  Modal,
-  Alert,
+  View, Text, TouchableOpacity, TextInput, StyleSheet, Platform, Modal, Alert
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import dayjs from "dayjs";
@@ -38,7 +31,6 @@ export default function GroupHelpSection({ groupId: groupIdProp }) {
 
   const handleDateChange = (event, date) => {
     if (Platform.OS === "android") {
-      // Android : ferme le picker à chaque sélection
       if (event.type === "set" && date) {
         let finalDate = dayjs(date);
         if (finalDate.isAfter(maxDate)) finalDate = dayjs(maxDate);
@@ -47,7 +39,6 @@ export default function GroupHelpSection({ groupId: groupIdProp }) {
       }
       setShowPicker(false);
     } else if (Platform.OS === "ios") {
-      // iOS : ne ferme QUE si on valide (pas à chaque scroll)
       if (event.type === "set" && date) {
         let finalDate = dayjs(date);
         if (finalDate.isAfter(maxDate)) finalDate = dayjs(maxDate);
@@ -59,36 +50,21 @@ export default function GroupHelpSection({ groupId: groupIdProp }) {
 
   // ---- Formulaire
   const handlePedirAjuda = async () => {
+    console.log("[HELP][SEND] param:", { descricao, groupId, user });
     if (!descricao.trim()) {
-      Toast.show({
-        type: "error",
-        text1: "Descreva sua necessidade",
-        text2: "O campo descrição é obrigatório.",
-      });
+      Toast.show({ type: "error", text1: "Descreva sua necessidade", text2: "O campo descrição é obrigatório." });
       return;
     }
     if (!user || !user.id) {
-      Toast.show({
-        type: "error",
-        text1: "Usuário não autenticado",
-        text2: "Faça login para pedir ajuda.",
-      });
+      Toast.show({ type: "error", text1: "Usuário não autenticado", text2: "Faça login para pedir ajuda." });
       return;
     }
     if (!groupId) {
-      Toast.show({
-        type: "error",
-        text1: "Nenhum grupo encontrado",
-        text2: "Entre em um grupo antes de pedir ajuda.",
-      });
+      Toast.show({ type: "error", text1: "Nenhum grupo encontrado", text2: "Entre em um grupo antes de pedir ajuda." });
       return;
     }
     if (descricao.trim().length < 15) {
-      Toast.show({
-        type: "error",
-        text1: "Descrição muito curta",
-        text2: "Descreva sua necessidade em pelo menos 15 caracteres.",
-      });
+      Toast.show({ type: "error", text1: "Descrição muito curta", text2: "Descreva sua necessidade em pelo menos 15 caracteres." });
       return;
     }
     setIsLoading(true);
@@ -99,42 +75,36 @@ export default function GroupHelpSection({ groupId: groupIdProp }) {
       const weekStart = now.startOf("week").toDate();
 
       // Limite jour
-      const demandesHoje = await countUserRequests({
-        userId: user.id,
-        groupId,
-        since: todayStart,
-      });
+      console.log("[HELP][COUNT] Check demandesHoje", { userId: user.id, groupId, since: todayStart });
+      const demandesHoje = await countUserRequests({ userId: user.id, groupId, since: todayStart });
+      console.log("[HELP][COUNT] demandesHoje =", demandesHoje);
       if (demandesHoje >= 2) {
         setIsLoading(false);
-        Alert.alert(
-          "Limite diário atingido",
-          "Você atingiu o limite de 2 pedidos por dia. Tente novamente amanhã."
-        );
+        Alert.alert("Limite diário atingido", "Você atingiu o limite de 2 pedidos por dia. Tente novamente amanhã.");
         return;
       }
       // Limite semaine
-      const demandesSemana = await countUserRequests({
-        userId: user.id,
-        groupId,
-        since: weekStart,
-      });
+      console.log("[HELP][COUNT] Check demandesSemana", { userId: user.id, groupId, since: weekStart });
+      const demandesSemana = await countUserRequests({ userId: user.id, groupId, since: weekStart });
+      console.log("[HELP][COUNT] demandesSemana =", demandesSemana);
       if (demandesSemana >= 8) {
         setIsLoading(false);
-        Alert.alert(
-          "Limite semanal atingido",
-          "Você atingiu o limite de 8 pedidos por semana. Tente novamente na próxima semana."
-        );
+        Alert.alert("Limite semanal atingido", "Você atingiu o limite de 8 pedidos por semana. Tente novamente na próxima semana.");
         return;
       }
 
-      await createGroupHelp({
+      // Création de la demande
+      const payload = {
         groupId,
         userId: user.id,
         apelido: user.apelido,
         message: descricao,
         isScheduled: tipoAjuda === "agendada",
         dateHelp: tipoAjuda === "agendada" ? selectedDate : null,
-      });
+      };
+      console.log("[HELP][CREATE] payload:", payload);
+
+      await createGroupHelp(payload);
 
       if (tipoAjuda === "agendada") {
         Toast.show({
@@ -152,7 +122,9 @@ export default function GroupHelpSection({ groupId: groupIdProp }) {
       setDescricao("");
       setTipoAjuda("rapido");
       setSelectedDate(new Date());
+      console.log("[HELP][CREATE] SUCCESS");
     } catch (err) {
+      console.log("[HELP][ERROR]", err);
       Toast.show({
         type: "error",
         text1: "Erro ao enviar pedido",
@@ -168,7 +140,6 @@ export default function GroupHelpSection({ groupId: groupIdProp }) {
     setSelectedDate(new Date());
   };
 
-  // iOS Modal OK/Annuler
   const handleClosePicker = () => setShowPicker(false);
 
   return (
@@ -187,7 +158,7 @@ export default function GroupHelpSection({ groupId: groupIdProp }) {
           style={[styles.optionBtn, tipoAjuda === "agendada" && styles.optionBtnActive]}
           onPress={() => {
             setTipoAjuda("agendada");
-            setShowPicker(true); // ouvre direct
+            setShowPicker(true);
           }}
         >
           <Text style={[styles.optionText, tipoAjuda === "agendada" && styles.optionTextActive]}>
@@ -195,17 +166,13 @@ export default function GroupHelpSection({ groupId: groupIdProp }) {
           </Text>
         </TouchableOpacity>
       </View>
-
-      {/* DateTime */}
       {tipoAjuda === "agendada" && (
         <View style={{ marginBottom: 18 }}>
-          {/* Champ date/heure CLiquable */}
           <TouchableOpacity style={styles.dateBtn} onPress={handleOpenPicker}>
             <Text style={styles.dateBtnText}>
               {dayjs(selectedDate).format("dddd, D [de] MMMM [às] HH:mm")}
             </Text>
           </TouchableOpacity>
-          {/* Picker */}
           {showPicker && Platform.OS === "android" && (
             <DateTimePicker
               value={selectedDate}
@@ -219,12 +186,7 @@ export default function GroupHelpSection({ groupId: groupIdProp }) {
             />
           )}
           {showPicker && Platform.OS === "ios" && (
-            <Modal
-              animationType="fade"
-              transparent
-              visible={showPicker}
-              onRequestClose={handleClosePicker}
-            >
+            <Modal animationType="fade" transparent visible={showPicker} onRequestClose={handleClosePicker}>
               <View style={styles.modalOverlay}>
                 <View style={styles.pickerModalBox}>
                   <DateTimePicker
@@ -238,10 +200,7 @@ export default function GroupHelpSection({ groupId: groupIdProp }) {
                     locale="pt-BR"
                     style={{ width: 250, alignSelf: "center" }}
                   />
-                  <TouchableOpacity
-                    style={styles.cancelarPedidoBtn}
-                    onPress={handleClosePicker}
-                  >
+                  <TouchableOpacity style={styles.cancelarPedidoBtn} onPress={handleClosePicker}>
                     <Text style={styles.cancelarPedidoText}>Fechar</Text>
                   </TouchableOpacity>
                 </View>
@@ -253,7 +212,6 @@ export default function GroupHelpSection({ groupId: groupIdProp }) {
           </Text>
         </View>
       )}
-
       <Text style={styles.label}>Descreva sua necessidade *</Text>
       <TextInput
         value={descricao}
@@ -268,7 +226,6 @@ export default function GroupHelpSection({ groupId: groupIdProp }) {
         Seja muito preciso no seu pedido para facilitar a ajuda dos vizinhos.{"\n"}
         (mínimo 15 caracteres)
       </Text>
-
       <View style={styles.alertBox}>
         <Text style={styles.alertText}>
           <Text style={{ fontWeight: "bold" }}>O VigiApp não transmite dados pessoais.</Text>{" "}
@@ -297,154 +254,28 @@ export default function GroupHelpSection({ groupId: groupIdProp }) {
   );
 }
 
-// Styles: identique à avant !
 const styles = StyleSheet.create({
-  // ... (tes styles, pas changés)
-  section: {
-    backgroundColor: "#23252C",
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 24,
-  },
-  label: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
-    marginBottom: 10,
-  },
-  row: {
-    flexDirection: "row",
-    gap: 10,
-    marginBottom: 14,
-  },
-  optionBtn: {
-    flex: 1,
-    backgroundColor: "#181A20",
-    borderRadius: 10,
-    paddingVertical: 14,
-    paddingHorizontal: 10,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#FFD60044",
-  },
-  optionBtnActive: {
-    borderColor: "#FFD600",
-    backgroundColor: "#FFD60022",
-  },
-  optionText: {
-    color: "#FFD600",
-    fontSize: 14,
-    fontWeight: "500",
-  },
-  optionTextActive: {
-    color: "#181A20",
-    fontWeight: "bold",
-  },
-  dateBtn: {
-    backgroundColor: "#181A20",
-    borderRadius: 10,
-    padding: 11,
-    alignItems: "center",
-    marginBottom: 4,
-    borderWidth: 1,
-    borderColor: "#FFD600",
-  },
-  dateBtnText: {
-    color: "#FFD600",
-    fontSize: 16,
-  },
-  infoText: {
-    color: "#FFD600",
-    fontSize: 13,
-    marginLeft: 4,
-    marginTop: 2,
-    marginBottom: 6,
-  },
-  precisao: {
-    color: "#FFD600",
-    fontSize: 13,
-    marginBottom: 6,
-    marginTop: -8,
-    marginLeft: 2,
-  },
-  textInput: {
-    backgroundColor: "#181A20",
-    borderRadius: 10,
-    color: "#fff",
-    padding: 13,
-    minHeight: 60,
-    marginBottom: 6,
-    borderWidth: 1,
-    borderColor: "#FFD60022",
-  },
-  alertBox: {
-    backgroundColor: "#FFF4DE",
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 14,
-  },
-  alertText: {
-    color: "#FF9900",
-    fontSize: 14,
-  },
-  actionRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 10,
-    marginBottom: 16,
-  },
-  enviarBtn: {
-    flex: 1,
-    backgroundColor: "#FFD600",
-    padding: 13,
-    borderRadius: 12,
-    alignItems: "center",
-    marginRight: 2,
-  },
-  enviarBtnText: {
-    color: "#23252C",
-    fontWeight: "bold",
-    fontSize: 15,
-  },
-  cancelarBtn: {
-    flex: 1,
-    backgroundColor: "#23252C",
-    padding: 13,
-    borderRadius: 12,
-    alignItems: "center",
-    marginLeft: 2,
-    borderWidth: 1,
-    borderColor: "#FFD600",
-  },
-  cancelarBtnText: {
-    color: "#FFD600",
-    fontWeight: "bold",
-    fontSize: 15,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.23)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  pickerModalBox: {
-    backgroundColor: "#23252C",
-    borderRadius: 18,
-    padding: 24,
-    alignItems: "center",
-    width: 290,
-    maxWidth: "90%",
-  },
-  cancelarPedidoBtn: {
-    marginTop: 14,
-    paddingVertical: 8,
-    paddingHorizontal: 24,
-    backgroundColor: "#FFD600",
-    borderRadius: 8,
-  },
-  cancelarPedidoText: {
-    color: "#23252C",
-    fontWeight: "bold",
-    fontSize: 15,
-  },
+  section: { backgroundColor: "#23252C", borderRadius: 16, padding: 16, marginBottom: 24 },
+  label: { color: "#fff", fontSize: 16, fontWeight: "600", marginBottom: 10 },
+  row: { flexDirection: "row", gap: 10, marginBottom: 14 },
+  optionBtn: { flex: 1, backgroundColor: "#181A20", borderRadius: 10, paddingVertical: 14, paddingHorizontal: 10, alignItems: "center", borderWidth: 1, borderColor: "#FFD60044" },
+  optionBtnActive: { borderColor: "#FFD600", backgroundColor: "#FFD60022" },
+  optionText: { color: "#FFD600", fontSize: 14, fontWeight: "500" },
+  optionTextActive: { color: "#181A20", fontWeight: "bold" },
+  dateBtn: { backgroundColor: "#181A20", borderRadius: 10, padding: 11, alignItems: "center", marginBottom: 4, borderWidth: 1, borderColor: "#FFD600" },
+  dateBtnText: { color: "#FFD600", fontSize: 16 },
+  infoText: { color: "#FFD600", fontSize: 13, marginLeft: 4, marginTop: 2, marginBottom: 6 },
+  precisao: { color: "#FFD600", fontSize: 13, marginBottom: 6, marginTop: -8, marginLeft: 2 },
+  textInput: { backgroundColor: "#181A20", borderRadius: 10, color: "#fff", padding: 13, minHeight: 60, marginBottom: 6, borderWidth: 1, borderColor: "#FFD60022" },
+  alertBox: { backgroundColor: "#FFF4DE", borderRadius: 10, padding: 12, marginBottom: 14 },
+  alertText: { color: "#FF9900", fontSize: 14 },
+  actionRow: { flexDirection: "row", justifyContent: "space-between", gap: 10, marginBottom: 16 },
+  enviarBtn: { flex: 1, backgroundColor: "#FFD600", padding: 13, borderRadius: 12, alignItems: "center", marginRight: 2 },
+  enviarBtnText: { color: "#23252C", fontWeight: "bold", fontSize: 15 },
+  cancelarBtn: { flex: 1, backgroundColor: "#23252C", padding: 13, borderRadius: 12, alignItems: "center", marginLeft: 2, borderWidth: 1, borderColor: "#FFD600" },
+  cancelarBtnText: { color: "#FFD600", fontWeight: "bold", fontSize: 15 },
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.23)", justifyContent: "center", alignItems: "center" },
+  pickerModalBox: { backgroundColor: "#23252C", borderRadius: 18, padding: 24, alignItems: "center", width: 290, maxWidth: "90%" },
+  cancelarPedidoBtn: { marginTop: 14, paddingVertical: 8, paddingHorizontal: 24, backgroundColor: "#FFD600", borderRadius: 8 },
+  cancelarPedidoText: { color: "#23252C", fontWeight: "bold", fontSize: 15 },
 });
