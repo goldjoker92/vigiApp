@@ -21,6 +21,7 @@ import { useGrupoDetails } from "../../hooks/useGrupoDetails";
 import { leaveGroup } from "../../services/groupService";
 import QuitGroupModal from "../components/QuitGroupModal";
 import GroupHelpSection from "../components/GroupHelpSection";
+import FeedGroupRequests from "../components/FeedGroupRequests";
 import { useRouter } from "expo-router";
 import dayjs from "dayjs";
 import { useAuthGuard } from "../../hooks/useAuthGuard";
@@ -257,6 +258,7 @@ export default function VizinhosScreen() {
           </View>
 
           {/* --- SECTION ENTRAIDE / AJUDA --- */}
+           <FeedGroupRequests groupId={groupId} />
           <GroupHelpSection groupId={groupId} />
         </ScrollView>
 
