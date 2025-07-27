@@ -10,6 +10,7 @@ import {
   Bolt, Car, FileQuestion, Send, UserX
 } from "lucide-react-native";
 import { useAuthGuard } from '../hooks/useAuthGuard';
+import { useUserStore } from '../store/users'; // adapte selon ton projet
 
 const categories = [
   { label: "Roubo/Furto", icon: ShieldAlert, severity: "medium", color: "#FFA500" },
@@ -21,10 +22,13 @@ const categories = [
   { label: "Outros", icon: FileQuestion, severity: "minor", color: "#007AFF" }
 ];
 
+const MAX_GEO_ATTEMPTS = 3;
+
 export default function GrupoReportScreen() {
   const router = useRouter();
   const user = useAuthGuard();
   const params = useLocalSearchParams();
+  const groupIdStore = useUserStore((state) => state.groupId);
 
   const [categoria, setCategoria] = useState(null);
   const [descricao, setDescricao] = useState('');
@@ -32,14 +36,17 @@ export default function GrupoReportScreen() {
   const [loadingLoc, setLoadingLoc] = useState(false);
   const [showManualLoc, setShowManualLoc] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
+  const [address, setAddress] = useState(null);
 
-  // Champs readonly
   const groupCep = params.cep || user?.cepRef || '';
   const groupCidade = params.cidade || user?.cidade || '';
   const groupEstado = params.estado || user?.estado || '';
-  const groupId = params.groupId || user?.groupId || '';
+  const groupId =
+    params.groupId ||
+    groupIdStore ||
+    user?.groupId ||
+    (Array.isArray(user?.groups) && user.groups.length > 0 ? user.groups[0] : null);
 
-  // Dates
   const now = new Date();
   const dateBR = now.toLocaleDateString('pt-BR');
   const timeBR = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -47,69 +54,97 @@ export default function GrupoReportScreen() {
   const selectedCategory = categories.find(c => c.label === categoria);
   const severityColor = selectedCategory?.color || '#FF3B30';
 
-  // --- GÉOLOC AUTOMATIQUE AU MONTAGE ---
-  useEffect(() => {
-    let isActive = true;
-
-    const tryGetLocation = async () => {
-      setLoadingLoc(true);
-      try {
-        let { status } = await Location.getForegroundPermissionsAsync();
-        if (status !== 'granted') {
-          const ask = await Location.requestForegroundPermissionsAsync();
-          status = ask.status;
-        }
-        if (status !== 'granted') throw new Error('Permission refusée');
-        const loc = await Location.getCurrentPositionAsync({ accuracy: 3, timeout: 4000 });
-        if (isActive) {
-          setLocal({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
-          setLoadingLoc(false);
-          setShowManualLoc(false);
-          setModalVisible(false);
-        }
-      } catch (_) {
-        if (isActive) {
-          setLoadingLoc(false);
-          setLocal(null);
-          setShowManualLoc(false);
-          setModalVisible(true); // Affiche la modale d’échec
-        }
+  // GÉOLOCALISATION LOGIC identique au flow public, mais sans champ adresse éditable à l’UI
+  const tryGetLocationAndAddress = async (tryCount = 1) => {
+    setLoadingLoc(true);
+    try {
+      let { status } = await Location.getForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        const ask = await Location.requestForegroundPermissionsAsync();
+        status = ask.status;
       }
-    };
+      if (status !== 'granted') throw new Error('Permission refusée');
 
-    tryGetLocation();
-    return () => { isActive = false; };
+      // Précision haute
+      const loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Highest,
+        timeout: 4000
+      });
+
+      setLocal({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
+
+      // Reverse geocode, avec robustesse sur les valeurs
+      try {
+        const addr = await Location.reverseGeocodeAsync({
+          latitude: loc.coords.latitude,
+          longitude: loc.coords.longitude,
+        });
+
+        if (addr && addr.length > 0) {
+          let rua = addr[0].street || "Não recuperado";
+          let numero = addr[0].streetNumber || addr[0].name || "";
+          if (numero && rua.includes(numero)) numero = "";
+          setAddress({
+            rua,
+            numero,
+            cidade: addr[0].city || groupCidade || "Não recuperado",
+            estado: addr[0].region || groupEstado || "Não recuperado",
+            cep: addr[0].postalCode || groupCep || "Não recuperado",
+          });
+        } else if (tryCount < MAX_GEO_ATTEMPTS) {
+          setTimeout(() => tryGetLocationAndAddress(tryCount + 1), 400);
+          return;
+        } else {
+          setAddress({
+            rua: "Não recuperado",
+            numero: "",
+            cidade: groupCidade || "Não recuperado",
+            estado: groupEstado || "Não recuperado",
+            cep: groupCep || "Não recuperado",
+          });
+        }
+        setLoadingLoc(false);
+        setShowManualLoc(false);
+        setModalVisible(false);
+      } catch (_) {
+        setAddress({
+          rua: "Não recuperado",
+          numero: "",
+          cidade: groupCidade || "Não recuperado",
+          estado: groupEstado || "Não recuperado",
+          cep: groupCep || "Não recuperado",
+        });
+        setLoadingLoc(false);
+        setShowManualLoc(false);
+        setModalVisible(false);
+      }
+    } catch (_) {
+      setLoadingLoc(false);
+      setLocal(null);
+      setShowManualLoc(false);
+      setModalVisible(true);
+    }
+  };
+
+  useEffect(() => {
+    tryGetLocationAndAddress();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Quand on ferme la modale, on affiche le bouton manuel
   const handleModalOk = () => {
     setModalVisible(false);
     setShowManualLoc(true);
   };
 
-  // Relance la géoloc manuelle
-  const handleManualLoc = async () => {
-    setLoadingLoc(true);
-    try {
-      let { status } = await Location.getForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        await Location.requestForegroundPermissionsAsync();
-      }
-      const loc = await Location.getCurrentPositionAsync({ accuracy: 3, timeout: 4000 });
-      setLocal({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
-      setShowManualLoc(false);
-      setLoadingLoc(false);
-    } catch (_) {
-      setLoadingLoc(false);
-      Alert.alert("Localização não disponível", "Ative o GPS e tente novamente.");
-    }
+  const handleManualLoc = () => {
+    tryGetLocationAndAddress();
   };
 
-  // Envoi du signalement
   const handleSend = async () => {
     if (!categoria) return Alert.alert('Selecione uma categoria.');
     if (!descricao.trim()) return Alert.alert('Descreva o ocorrido.');
     if (!local) return Alert.alert('Localização ausente.');
+    if (!groupId) return Alert.alert('Você não está em nenhum grupo.');
     try {
       await addDoc(collection(db, "groupAlerts"), {
         userId: auth.currentUser?.uid,
@@ -118,10 +153,12 @@ export default function GrupoReportScreen() {
         descricao,
         gravidade: selectedCategory?.severity || '',
         color: severityColor,
-        cep: groupCep,
-        cidade: groupCidade,
-        estado: groupEstado,
         groupId,
+        rua: address?.rua || "Não recuperado",
+        numero: address?.numero || "",
+        cidade: address?.cidade || groupCidade || "Não recuperado",
+        estado: address?.estado || groupEstado || "Não recuperado",
+        cep: address?.cep || groupCep || "Não recuperado",
         location: local,
         date: dateBR,
         time: timeBR,
@@ -136,6 +173,16 @@ export default function GrupoReportScreen() {
 
   if (user === undefined) return <ActivityIndicator style={{ flex: 1 }} color="#22C55E" />;
   if (!user) return null;
+
+  const isBtnActive = !!(
+    categoria &&
+    descricao.trim().length > 0 &&
+    local &&
+    typeof local.latitude === 'number' &&
+    typeof local.longitude === 'number' &&
+    groupCep &&
+    groupId
+  );
 
   return (
     <KeyboardAvoidingView
@@ -162,6 +209,7 @@ export default function GrupoReportScreen() {
             Sinalizar um evento para o grupo de vizinhos
           </Text>
 
+          <Text style={styles.label}>Categoria</Text>
           <View style={styles.categoriaGroup}>
             {categories.map(({ label, icon: Icon, color }) => (
               <TouchableOpacity
@@ -187,22 +235,13 @@ export default function GrupoReportScreen() {
             multiline
           />
 
-          <View style={styles.row}>
-            <View style={styles.readonlyField}>
-              <Text style={styles.readonlyLabel}>Data</Text>
-              <Text style={styles.readonlyValue}>{dateBR}</Text>
-            </View>
-            <View style={styles.readonlyField}>
-              <Text style={styles.readonlyLabel}>Horário</Text>
-              <Text style={styles.readonlyValue}>{timeBR}</Text>
-            </View>
-          </View>
-
+          {/* CEP affiché en vert, readonly */}
           <Text style={styles.label}>CEP do grupo</Text>
           <View style={styles.cepBox}>
             <Text style={styles.cepText}>{groupCep}</Text>
           </View>
 
+          {/* MAP */}
           {local && (
             <MapView
               style={styles.map}
@@ -222,16 +261,11 @@ export default function GrupoReportScreen() {
           )}
 
           {/* MODALE d’échec */}
-          <Modal
-            visible={modalVisible}
-            animationType="fade"
-            transparent
-          >
+          <Modal visible={modalVisible} animationType="fade" transparent>
             <View style={styles.modalOverlay}>
               <View style={styles.modalContent}>
                 <Text style={styles.modalText}>
-                  Localização não capturada você vai usar a localização manual com o botão da localização em baixo do <Text style={{ fontWeight: "bold" }}>CEP</Text>. 
-                  Clique em OK para continuar.
+                  Localização não capturada. Você vai usar a localização manual com o botão da localização abaixo do <Text style={{ fontWeight: "bold" }}>CEP</Text>. Clique em OK para continuer.
                 </Text>
                 <TouchableOpacity style={styles.modalBtn} onPress={handleModalOk}>
                   <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 16 }}>OK</Text>
@@ -253,12 +287,12 @@ export default function GrupoReportScreen() {
             style={[
               styles.sendBtn,
               {
-                backgroundColor: local && categoria ? severityColor : '#FF3B30',
-                opacity: local && categoria ? 1 : 0.65
+                backgroundColor: isBtnActive ? severityColor : '#FF3B30',
+                opacity: isBtnActive ? 1 : 0.65
               }
             ]}
             onPress={handleSend}
-            disabled={!local || !categoria}
+            disabled={!isBtnActive}
           >
             <Send size={20} color="#fff" style={{ marginRight: 8 }} />
             <Text style={styles.sendBtnText}>Enviar alerta</Text>
@@ -301,14 +335,32 @@ const styles = StyleSheet.create({
   },
   categoriaText: { color: "#22C55E", fontWeight: "500", fontSize: 15 },
   label: { color: '#fff', marginBottom: 4, marginTop: 12 },
-  input: { borderWidth: 1, borderColor: "#353840", backgroundColor: "#222", color: "#fff", padding: 12, borderRadius: 7, marginBottom: 10 },
-  row: { flexDirection: 'row', gap: 10, marginBottom: 7 },
-  readonlyField: { flex: 1, backgroundColor: '#22252b', borderRadius: 7, padding: 10, alignItems: 'center' },
-  readonlyLabel: { color: '#bbb', fontSize: 13 },
-  readonlyValue: { color: '#fff', fontWeight: 'bold', fontSize: 15, marginTop: 2 },
-  cepBox: { backgroundColor: "#181A20", borderRadius: 9, padding: 14, alignItems: 'center', marginVertical: 9, borderWidth: 1, borderColor: "#333" },
+  input: {
+    borderWidth: 1,
+    borderColor: "#353840",
+    backgroundColor: "#222",
+    color: "#fff",
+    padding: 12,
+    borderRadius: 7,
+    marginBottom: 10
+  },
+  cepBox: {
+    backgroundColor: "#181A20",
+    borderRadius: 9,
+    padding: 14,
+    alignItems: 'center',
+    marginVertical: 9,
+    borderWidth: 1,
+    borderColor: "#333"
+  },
   cepText: { fontSize: 20, color: "#22C55E", fontWeight: "bold", letterSpacing: 1 },
-  map: { width: '100%', height: 130, borderRadius: 10, marginBottom: 12, marginTop: 2 },
+  map: {
+    width: '100%',
+    height: 130,
+    borderRadius: 10,
+    marginBottom: 12,
+    marginTop: 2
+  },
   sendBtn: {
     borderRadius: 10,
     padding: 17,
@@ -318,10 +370,26 @@ const styles = StyleSheet.create({
     justifyContent: "center"
   },
   sendBtnText: { color: "#fff", fontWeight: "bold", fontSize: 18 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.46)', justifyContent: 'center', alignItems: 'center' },
-  modalContent: { backgroundColor: "#23262F", borderRadius: 15, padding: 28, alignItems: 'center', width: '85%' },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.46)',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  modalContent: {
+    backgroundColor: "#23262F",
+    borderRadius: 15,
+    padding: 28,
+    alignItems: 'center',
+    width: '85%'
+  },
   modalText: { color: '#fff', fontSize: 17, marginBottom: 18, textAlign: 'center' },
-  modalBtn: { backgroundColor: '#22C55E', borderRadius: 8, paddingVertical: 12, paddingHorizontal: 28 },
+  modalBtn: {
+    backgroundColor: '#22C55E',
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 28
+  },
   locBtn: {
     backgroundColor: "#e6f2ff",
     borderRadius: 8,
