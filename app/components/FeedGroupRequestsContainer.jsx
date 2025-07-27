@@ -158,7 +158,13 @@ export default function FeedGroupRequestsContainer({ groupId }) {
     >
       <Coachmark />
 
-      {/* 1️⃣ — Bouton “Nova Demanda” */}
+       <View style={{ flex: 1 }}>
+      {/* 1--- Header “Ajuda” + bouton */}
+      <View style={styles.headerAjuda}>
+        <Text style={styles.titreAjuda}>Ajudas</Text>
+      </View>
+
+      {/*  — Bouton “Nova Demanda” */}
       <TouchableOpacity style={styles.novaBtn} onPress={() => setCreateModalVisible(true)} activeOpacity={0.86}>
         <Feather name="plus-circle" size={22} color="#FFD600" />
         <Text style={styles.novaBtnText}>Nova demanda</Text>
@@ -231,6 +237,7 @@ export default function FeedGroupRequestsContainer({ groupId }) {
         confirmLabel="Sim, cancelar"
         cancelLabel="Voltar"
       />
+      </View>
     </ScrollView>
   );
 }
@@ -239,6 +246,19 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: "#181A20",
     flex: 1,
+  },
+  headerAjuda: {
+    marginTop: 8,
+    marginBottom: 17,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  titreAjuda: {
+    fontSize: 35,
+    fontWeight: "bold",
+    color: "#FFD600",
+    letterSpacing: 0.5,
+    textAlign: "center",
   },
   novaBtn: {
     flexDirection: "row",
