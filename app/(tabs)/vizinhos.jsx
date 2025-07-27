@@ -20,8 +20,7 @@ import { useUserStore } from "../../store/users";
 import { useGrupoDetails } from "../../hooks/useGrupoDetails";
 import { leaveGroup } from "../../services/groupService";
 import QuitGroupModal from "../components/QuitGroupModal";
-import GroupHelpSection from "../components/GroupHelpSection";
-import FeedGroupRequests from "../components/FeedGroupRequests";
+import FeedGroupRequestsContainer from "../components/FeedGroupRequestsContainer";
 import { useRouter } from "expo-router";
 import dayjs from "dayjs";
 import { useAuthGuard } from "../../hooks/useAuthGuard";
@@ -93,7 +92,7 @@ export default function VizinhosScreen() {
             </Text>
             <Text style={styles.noGroupText}>
               Você ainda não está vinculado a um grupo de vizinhos do seu CEP.{"\n\n"}
-              Para criar um novo grupo, volte à página inicial e clique no botão{" "}
+              Para criar um novo grupo, volte à página inicial et clique no botão{" "}
               <Text style={{ color: "#4F8DFF", fontWeight: "bold" }}>
                 Criar novo grupo com seu CEP
               </Text>.
@@ -103,17 +102,8 @@ export default function VizinhosScreen() {
               onPress={() => router.replace("/(tabs)/home")}
               activeOpacity={0.87}
             >
-              <Feather
-                name="arrow-left-circle"
-                size={18}
-                color="#fff"
-                style={{ marginRight: 8 }}
-              />
-              <Text
-                style={styles.goHomeBtnText}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-              >
+              <Feather name="arrow-left-circle" size={18} color="#fff" style={{ marginRight: 8 }} />
+              <Text style={styles.goHomeBtnText} numberOfLines={1} adjustsFontSizeToFit>
                 Voltar para a página inicial
               </Text>
             </TouchableOpacity>
@@ -124,6 +114,12 @@ export default function VizinhosScreen() {
   }
 
   // ---- AFFICHAGE DU GROUPE ----
+  let criador =
+    grupo.creatorUserId === user.uid
+      ? user.apelido || user.username || "Você"
+      : grupo.creatorNome || grupo.creatorApelido || "Desconhecido";
+
+  // --- Handler quitter groupe (optionnel, à ajuster selon ton flow admin)
   const handleQuit = async () => {
     try {
       const isCreator = user.uid === grupo.creatorUserId;
@@ -162,14 +158,6 @@ export default function VizinhosScreen() {
       </View>
     );
 
-  let criador =
-    grupo.creatorUserId === user.uid
-      ? user.apelido || user.username || "Você"
-      : grupo.creatorNome ||
-        grupo.creatorApelido ||
-        (Array.isArray(grupo.members) && grupo.members[0]?.apelido) ||
-        "Desconhecido";
-
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#181A20" }}>
       <KeyboardAvoidingView
@@ -189,13 +177,7 @@ export default function VizinhosScreen() {
             <View style={styles.infoRow}>
               <Feather name="users" size={20} color="#00C859" />
               <Text style={styles.infoText}>
-                <Text
-                  style={{
-                    color: "#00C859",
-                    fontWeight: "bold",
-                    fontSize: 19,
-                  }}
-                >
+                <Text style={{ color: "#00C859", fontWeight: "bold", fontSize: 19 }}>
                   {grupo.members?.length || 1} / {grupo.maxMembers || 30}
                 </Text>{" "}
                 vizinhos
@@ -203,47 +185,28 @@ export default function VizinhosScreen() {
             </View>
             <View style={styles.infoRow}>
               <Feather name="user-check" size={20} color="#00C859" />
-              <Text
-                style={[
-                  styles.infoText,
-                  { color: "#00C859", fontWeight: "bold" },
-                ]}
-              >
+              <Text style={[styles.infoText, { color: "#00C859", fontWeight: "bold" }]}>
                 Criador:{" "}
-                <Text style={{ color: "#fff", fontWeight: "bold" }}>
-                  {criador}
-                </Text>
+                <Text style={{ color: "#fff", fontWeight: "bold" }}>{criador}</Text>
               </Text>
             </View>
             <View style={styles.infoRow}>
               <Feather name="map-pin" size={19} color="#00C859" />
-              <Text
-                style={[
-                  styles.infoText,
-                  { color: "#00C859", fontWeight: "bold" },
-                ]}
-              >
+              <Text style={[styles.infoText, { color: "#00C859", fontWeight: "bold" }]}>
                 CEP:{" "}
-                <Text style={{ color: "#fff", fontWeight: "bold" }}>
-                  {grupo.cep}
-                </Text>
+                <Text style={{ color: "#fff", fontWeight: "bold" }}>{grupo.cep}</Text>
               </Text>
             </View>
           </View>
 
-          {/* --- BOUTON QUITTER --- */}
+          {/* --- BOUTON QUITTER GROUPE --- */}
           <View style={styles.quitBtnWrapper}>
             <TouchableOpacity
               style={styles.quitBtn}
               onPress={() => setQuitModalVisible(true)}
               activeOpacity={0.87}
             >
-              <MaterialIcons
-                name="logout"
-                size={21}
-                color="#FFD600"
-                style={{ marginRight: 11 }}
-              />
+              <MaterialIcons name="logout" size={21} color="#FFD600" style={{ marginRight: 11 }} />
               <Text
                 style={styles.quitBtnText}
                 numberOfLines={1}
@@ -257,12 +220,11 @@ export default function VizinhosScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* --- SECTION ENTRAIDE / AJUDA --- */}
-           <FeedGroupRequests groupId={groupId} />
-          <GroupHelpSection groupId={groupId} />
+          {/* --- FEED DES DEMANDES --- */}
+          <FeedGroupRequestsContainer userId={user.id} groupId={groupId} />
         </ScrollView>
 
-        {/* MODALE QUITTER */}
+        {/* --- Modale quitter groupe (optionnelle) */}
         <QuitGroupModal
           visible={quitModalVisible}
           groupName={grupo.name}
