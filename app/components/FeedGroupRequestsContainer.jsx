@@ -1,14 +1,13 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from "react-native";
+import { Feather } from "@expo/vector-icons";
 import { useUserStore } from "../../store/users";
-import { getUserRequests, getGroupRequests, hideGroupHelpForUser, hideAllGroupHelpsForUser, acceptGroupHelp, cancelGroupHelp, updateGroupHelp, createGroupHelp } from "../../services/groupHelpService";
-import CardHelpRequest from "./CardHelpRequest";
+import { getUserRequests, getGroupRequests, hideGroupHelpForUser, hideAllGroupHelpsForUser, acceptGroupHelp, cancelGroupHelp, updateGroupHelpMessage, createGroupHelp } from "../../services/groupHelpService";
+import CardHelpRequest from "../components/CardHelpRequest";
 import EditHelpModal from "../components/EditHelpModal";
-import CreateHelpModal from "../components/modals/CreateHelpModal";
-import ConfirmModal from "../components/modals/ConfirmModal";
 import Coachmark from "../components/Coachmark";
 import Toast from "react-native-toast-message";
-import { Feather } from "@expo/vector-icons";
+import CreateHelpModal from "../components/modals/CreateHelpModal";
 
 export default function FeedGroupRequestsContainer({ groupId }) {
   const { user } = useUserStore();
@@ -18,10 +17,9 @@ export default function FeedGroupRequestsContainer({ groupId }) {
   const [editingRequest, setEditingRequest] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Nouveaux états modale création/confirmation
-  const [createModalVisible, setCreateModalVisible] = useState(false);
-  const [confirmCancelVisible, setConfirmCancelVisible] = useState(false);
-  const [cancelTarget, setCancelTarget] = useState(null);
+  // 👉 Pour la modale création
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [loadingCreate, setLoadingCreate] = useState(false);
 
   // --- Fetch mes demandes
   const fetchMyRequests = useCallback(async () => {
@@ -29,10 +27,8 @@ export default function FeedGroupRequestsContainer({ groupId }) {
     try {
       const data = await getUserRequests({ userId: user.id, groupId });
       setMyRequests(data || []);
-      console.log("[MY REQUESTS]", data);
-    } catch (e) {
+    } catch (_) {
       setMyRequests([]);
-      console.log("[MY REQUESTS ERROR]", e);
     }
   }, [user, groupId]);
 
@@ -42,10 +38,8 @@ export default function FeedGroupRequestsContainer({ groupId }) {
     try {
       const data = await getGroupRequests({ groupId, userId: user.id });
       setGroupRequests(data || []);
-      console.log("[GROUP REQUESTS]", data);
-    } catch (e) {
+    } catch (_) {
       setGroupRequests([]);
-      console.log("[GROUP REQUESTS ERROR]", e);
     }
   }, [groupId, user]);
 
@@ -72,7 +66,7 @@ export default function FeedGroupRequestsContainer({ groupId }) {
   const handleEditSave = async (newMsg) => {
     if (!editingRequest) return;
     try {
-      await updateGroupHelp(editingRequest.id, { message: newMsg });
+      await updateGroupHelpMessage(editingRequest.id, newMsg);
       Toast.show({ type: "success", text1: "Demanda atualizada!" });
       setEditModalVisible(false);
       setEditingRequest(null);
@@ -82,18 +76,10 @@ export default function FeedGroupRequestsContainer({ groupId }) {
     }
   };
 
-  const handleCancel = (id) => {
-    setCancelTarget(id);
-    setConfirmCancelVisible(true);
-  };
-
-  const handleCancelConfirm = async () => {
-    if (!cancelTarget) return;
+  const handleCancel = async (id) => {
     try {
-      await cancelGroupHelp(cancelTarget);
+      await cancelGroupHelp(id, user.id);
       Toast.show({ type: "success", text1: "Demanda cancelada!" });
-      setConfirmCancelVisible(false);
-      setCancelTarget(null);
       onRefresh();
     } catch (e) {
       Toast.show({ type: "error", text1: "Erro ao cancelar", text2: e.message });
@@ -102,7 +88,7 @@ export default function FeedGroupRequestsContainer({ groupId }) {
 
   const handleAccept = async (id) => {
     try {
-      await acceptGroupHelp(id, user);
+      await acceptGroupHelp({ demandaId: id, acceptedById: user.id, acceptedByApelido: user.apelido });
       Toast.show({ type: "success", text1: "Você aceitou ajudar!" });
       onRefresh();
     } catch (e) {
@@ -130,23 +116,25 @@ export default function FeedGroupRequestsContainer({ groupId }) {
     }
   };
 
-  // --- Création d'une nouvelle demande d'aide ---
-  const handleCreateHelp = async (desc) => {
+  // --- Handler création
+  const handleCreateHelp = async (payload) => {
+    setLoadingCreate(true);
     try {
       await createGroupHelp({
         groupId,
         userId: user.id,
         apelido: user.apelido,
-        message: desc,
-        isScheduled: false, // ou ajoute le scheduling si tu veux
-        dateHelp: null,
+        message: payload.message,
+        isScheduled: !!payload.isScheduled,
+        dateHelp: payload.dateHelp || null
       });
-      Toast.show({ type: "success", text1: "Demanda criada!" });
-      setCreateModalVisible(false);
+      setShowCreateModal(false);
+      Toast.show({ type: "success", text1: "Pedido criado com sucesso!" });
       onRefresh();
     } catch (e) {
-      Toast.show({ type: "error", text1: "Erro ao criar demanda", text2: e.message });
+      Toast.show({ type: "error", text1: "Erro ao criar pedido", text2: e.message });
     }
+    setLoadingCreate(false);
   };
 
   return (
@@ -158,10 +146,15 @@ export default function FeedGroupRequestsContainer({ groupId }) {
     >
       <Coachmark />
 
-      {/* 1️⃣ — Bouton “Nova Demanda” */}
-      <TouchableOpacity style={styles.novaBtn} onPress={() => setCreateModalVisible(true)} activeOpacity={0.86}>
-        <Feather name="plus-circle" size={22} color="#FFD600" />
-        <Text style={styles.novaBtnText}>Nova demanda</Text>
+      {/* --- Section AJUDAR + bouton --- */}
+      <Text style={styles.titleAjudar}>Ajudar</Text>
+      <TouchableOpacity
+        style={styles.btnCreate}
+        onPress={() => setShowCreateModal(true)}
+        activeOpacity={0.88}
+      >
+        <Feather name="plus-circle" size={22} color="#FFD600" style={{ marginRight: 9 }} />
+        <Text style={styles.btnCreateText}>Nova demanda</Text>
       </TouchableOpacity>
 
       {/* --- Minhas demandas --- */}
@@ -210,26 +203,19 @@ export default function FeedGroupRequestsContainer({ groupId }) {
         )}
       </View>
 
-      {/* --- MODALES --- */}
+      {/* --- Modale création + édition --- */}
+      <CreateHelpModal
+        visible={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onCreate={handleCreateHelp}
+        loading={loadingCreate}
+      />
+
       <EditHelpModal
         visible={editModalVisible}
         demanda={editingRequest}
         onClose={() => setEditModalVisible(false)}
         onSave={handleEditSave}
-      />
-      <CreateHelpModal
-        visible={createModalVisible}
-        onClose={() => setCreateModalVisible(false)}
-        onCreate={handleCreateHelp}
-      />
-      <ConfirmModal
-        visible={confirmCancelVisible}
-        title="Cancelar pedido?"
-        description="Tem certeza que deseja cancelar esta demanda de ajuda?"
-        onCancel={() => setConfirmCancelVisible(false)}
-        onConfirm={handleCancelConfirm}
-        confirmLabel="Sim, cancelar"
-        cancelLabel="Voltar"
       />
     </ScrollView>
   );
@@ -240,36 +226,45 @@ const styles = StyleSheet.create({
     backgroundColor: "#181A20",
     flex: 1,
   },
-  novaBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "center",
-    backgroundColor: "#22242D",
-    paddingHorizontal: 18,
-    paddingVertical: 9,
-    borderRadius: 19,
-    marginBottom: 8,
-    marginTop: 10,
-    borderWidth: 2,
-    borderColor: "#FFD600",
-    shadowColor: "#FFD600",
-    shadowOpacity: 0.06,
-    shadowRadius: 9,
-  },
-  novaBtnText: {
+  titleAjudar: {
     color: "#FFD600",
     fontWeight: "bold",
-    fontSize: 16.3,
-    marginLeft: 9,
-    letterSpacing: 0.13,
+    fontSize: 25,
+    textAlign: "center",
+    marginTop: 17,
+    marginBottom: 6,
+    letterSpacing: 0.8,
   },
+btnCreate: {
+  flexDirection: "row",
+  alignItems: "center",
+  alignSelf: "center",
+  backgroundColor: "#22242D",
+  paddingHorizontal: 18,
+  paddingVertical: 9,
+  borderRadius: 19,
+  marginBottom: 8,
+  marginTop: 10,
+  borderWidth: 2,
+  borderColor: "#FFD600",
+  shadowColor: "#FFD600",
+  shadowOpacity: 0.06,
+  shadowRadius: 9,
+},
+btnCreateText: {
+  color: "#FFD600",
+  fontWeight: "bold",
+  fontSize: 16.3,
+  marginLeft: 9,
+  letterSpacing: 0.13,
+},
   sectionTitle: {
     color: "#FFD600",
     fontWeight: "bold",
     fontSize: 21,
     textAlign: "center",
-    marginTop: 18,
-    marginBottom: 12,
+    marginTop: 23,
+    marginBottom: 9,
     letterSpacing: 0.4,
   },
   sectionBox: {
@@ -289,7 +284,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: 10,
+    marginTop: 12,
     marginBottom: 0,
     paddingRight: 16,
   },
