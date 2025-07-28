@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useRef } from "react";
 import {
   Modal,
   KeyboardAvoidingView,
@@ -14,30 +14,32 @@ import {
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 
-export default function EditHelpModal({ visible, demanda, onClose, onSave }) {
-  const [desc, setDesc] = useState(demanda ? demanda.message : "");
+export default function NovaDemandaModal({ visible, onClose, onCreate }) {
+  const [desc, setDesc] = useState("");
   const [loading, setLoading] = useState(false);
   const inputRef = useRef();
 
-  // Reset la description quand on ouvre une nouvelle demande
-  useEffect(() => {
-    setDesc(demanda?.message || "");
-  }, [demanda, visible]);
+  // Reset à l'ouverture
+  React.useEffect(() => {
+    if (visible) setDesc("");
+  }, [visible]);
 
-  // Gère la fermeture de la modale (clic en dehors)
+  // Fermer sur backdrop
   function handleBackdropPress() {
     Keyboard.dismiss();
-    setTimeout(() => onClose && onClose(), 120);
+    setTimeout(() => onClose && onClose(), 100);
   }
 
-  // Gère l’envoi
-  async function handleSave() {
+  // Création
+  async function handleCreate() {
     if (!desc.trim()) return;
     setLoading(true);
     try {
-      await onSave(desc.trim());
-    } catch (_err) {
-      // Optionnel : toast d’erreur ici
+      await onCreate(desc.trim());
+      setDesc("");
+      onClose();
+    } catch (_) {
+      // Toast d’erreur possible ici
     }
     setLoading(false);
   }
@@ -60,7 +62,7 @@ export default function EditHelpModal({ visible, demanda, onClose, onSave }) {
           >
             <TouchableWithoutFeedback>
               <View style={styles.modalBox}>
-                <Text style={styles.title}>Modificar sua demanda</Text>
+                <Text style={styles.title}>Nova demanda de ajuda</Text>
                 <ScrollView
                   contentContainerStyle={{ flexGrow: 1 }}
                   keyboardShouldPersistTaps="handled"
@@ -70,12 +72,13 @@ export default function EditHelpModal({ visible, demanda, onClose, onSave }) {
                     ref={inputRef}
                     style={styles.input}
                     placeholder="Explique sua necessidade..."
+                    placeholderTextColor="#999"
                     value={desc}
                     onChangeText={setDesc}
                     multiline
                     maxLength={200}
                     returnKeyType="done"
-                    onSubmitEditing={handleSave}
+                    onSubmitEditing={handleCreate}
                   />
                   <View style={styles.btnRow}>
                     <TouchableOpacity
@@ -83,17 +86,21 @@ export default function EditHelpModal({ visible, demanda, onClose, onSave }) {
                       onPress={onClose}
                       disabled={loading}
                     >
-                      <Feather name="x" size={17} color="#FFD600" />
+                      <Feather name="x" size={20} color="#FFD600" />
                       <Text style={styles.btnCancelText}>Cancelar</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[styles.btn, styles.btnSave]}
-                      onPress={handleSave}
+                      style={[
+                        styles.btn,
+                        styles.btnCreate,
+                        !desc.trim() && { opacity: 0.7 },
+                      ]}
+                      onPress={handleCreate}
                       disabled={loading || !desc.trim()}
                     >
-                      <Feather name="check" size={17} color="#fff" />
-                      <Text style={styles.btnSaveText}>
-                        {loading ? "Salvando..." : "Salvar"}
+                      <Feather name="check" size={20} color="#fff" />
+                      <Text style={styles.btnCreateText}>
+                        {loading ? "Criando..." : "Criar"}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -128,7 +135,7 @@ const styles = StyleSheet.create({
     shadowRadius: 13,
   },
   title: {
-    fontSize: 21,
+    fontSize: 23,
     fontWeight: "bold",
     color: "#FFD600",
     marginBottom: 16,
@@ -159,7 +166,7 @@ const styles = StyleSheet.create({
   btn: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 9,
+    paddingVertical: 11,
     paddingHorizontal: 20,
     borderRadius: 9,
   },
@@ -171,16 +178,16 @@ const styles = StyleSheet.create({
   btnCancelText: {
     color: "#FFD600",
     fontWeight: "bold",
-    fontSize: 15,
+    fontSize: 18,
     marginLeft: 7,
   },
-  btnSave: {
+  btnCreate: {
     backgroundColor: "#00C859",
   },
-  btnSaveText: {
+  btnCreateText: {
     color: "#fff",
     fontWeight: "bold",
-    fontSize: 15,
+    fontSize: 18,
     marginLeft: 7,
   },
 });
