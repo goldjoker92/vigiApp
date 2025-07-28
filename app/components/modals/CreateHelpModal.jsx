@@ -1,21 +1,31 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Modal, View, Text, TextInput, TouchableOpacity,
-  StyleSheet, KeyboardAvoidingView, Platform, Dimensions, ScrollView
+  StyleSheet, KeyboardAvoidingView, Platform, Dimensions, ScrollView, Animated, Keyboard, TouchableWithoutFeedback 
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Feather } from "@expo/vector-icons";
 import dayjs from "dayjs";
 import "dayjs/locale/pt-br";
 
+
 const MODAL_WIDTH = Math.min(Dimensions.get("window").width * 0.97, 410);
 
 export default function CreateHelpModal({ visible, onClose, onCreate, loading }) {
   const [desc, setDesc] = useState("");
-  const [showPicker, setShowPicker] = useState(false);
-  const [pickerMode, setPickerMode] = useState("date");
+
+  // States pour la validation double
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [tempDate, setTempDate] = useState(null);
   const [pickedDate, setPickedDate] = useState(null);
-  const [dateConfirmed, setDateConfirmed] = useState(false);
+  const [tempTime, setTempTime] = useState(null);
+  const [pickedTime, setPickedTime] = useState(null);
+
+  // Animations
+  const dateBtnAnim = useRef(new Animated.Value(1)).current;
+  const timeBtnAnim = useRef(new Animated.Value(1)).current;
+  const scrollRef = useRef(null);
 
   // Min/max dates : today -> +4 days
   const minDate = new Date();
@@ -25,58 +35,53 @@ export default function CreateHelpModal({ visible, onClose, onCreate, loading })
   useEffect(() => {
     if (visible) {
       setDesc("");
-      setShowPicker(false);
+      setShowDatePicker(false);
+      setShowTimePicker(false);
+      setTempDate(null);
       setPickedDate(null);
-      setDateConfirmed(false);
+      setTempTime(null);
+      setPickedTime(null);
     }
   }, [visible]);
 
-  function formatDateWithHour(date) {
-    return dayjs(date)
+  // Format “Terça-feira, 30 de julho de 2025 às 17:45”
+  function formatDateTime(date, time) {
+    if (!date || !time) return "";
+    const merged = new Date(date);
+    merged.setHours(time.getHours());
+    merged.setMinutes(time.getMinutes());
+    return dayjs(merged)
       .locale("pt-br")
-      .format("dddd, D [de] MMMM [às] HH:mm")
+      .format("dddd, D [de] MMMM [de] YYYY [às] HH:mm")
       .replace(/^./, m => m.toUpperCase());
   }
 
-  // --- Sélection DATE puis HEURE ---
-  const handleOpenDatePicker = () => {
-    setPickerMode("date");
-    setShowPicker(true);
-    setDateConfirmed(false);
-  };
-
-  function onDateChange(event, selected) {
-    if (pickerMode === "date" && selected) {
-      // Stocke la date choisie, puis passe au picker heure
-      const tempDate = new Date(selected);
-      setPickedDate(tempDate);
-      setPickerMode("time");
-      setShowPicker(true);
-      return;
+  // --- SCROLL + ANIMATION BUTTONS ---
+  // Fait défiler la ScrollView jusqu'au bouton et anime le bouton
+  function scrollToAndPulse(refAnim, position = 330) {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({ y: position, animated: true });
     }
-    if (pickerMode === "time" && selected) {
-      // Fusionne heure choisie à la date déjà choisie
-      const newDate = new Date(pickedDate);
-      newDate.setHours(selected.getHours());
-      newDate.setMinutes(selected.getMinutes());
-      newDate.setSeconds(0);
-      setPickedDate(newDate);
-      setDateConfirmed(true);
-      setShowPicker(false);
-      return;
-    }
-    // Si l'utilisateur annule
-    setShowPicker(false);
+    Animated.sequence([
+      Animated.timing(refAnim, { toValue: 1.11, duration: 200, useNativeDriver: true }),
+      Animated.spring(refAnim, { toValue: 1, friction: 3, useNativeDriver: true }),
+    ]).start();
   }
 
+  // Création immédiate
   function handleCreateImmediate() {
     if (!desc.trim()) return;
     onCreate({ message: desc.trim(), isScheduled: false });
   }
 
+  // Création planifiée
   function handleCreateScheduled() {
-    if (!desc.trim() || !pickedDate) return;
-    onCreate({ message: desc.trim(), isScheduled: true, dateHelp: pickedDate });
+    if (!desc.trim() || !pickedDate || !pickedTime) return;
+    const finalDate = new Date(pickedDate);
+    finalDate.setHours(pickedTime.getHours());
+    finalDate.setMinutes(pickedTime.getMinutes());
+    finalDate.setSeconds(0);
+    onCreate({ message: desc.trim(), isScheduled: true, dateHelp: finalDate });
   }
 
   return (
@@ -84,13 +89,15 @@ export default function CreateHelpModal({ visible, onClose, onCreate, loading })
       <KeyboardAvoidingView
         style={styles.avoider}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 48 : 0} // ← Descend la modale ici si besoin
+        keyboardVerticalOffset={Platform.OS === "ios" ? 38 : 0}
       >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
         <View style={styles.overlay}>
           <ScrollView
             contentContainerStyle={styles.modalBox}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
+            ref={scrollRef}
           >
             <Text style={styles.emoji}>🤝</Text>
             <Text style={styles.title}>Nova demanda de ajuda</Text>
@@ -106,6 +113,8 @@ export default function CreateHelpModal({ visible, onClose, onCreate, loading })
               maxLength={240}
               editable={!loading}
               autoFocus
+              onSubmitEditing={Keyboard.dismiss}
+              returnKeyType="done"
               blurOnSubmit
             />
 
@@ -127,7 +136,11 @@ export default function CreateHelpModal({ visible, onClose, onCreate, loading })
                   styles.btn, styles.btnSchedule,
                   !desc.trim() && { opacity: 0.45 }
                 ]}
-                onPress={handleOpenDatePicker}
+                onPress={() => {
+                  setShowDatePicker(true);
+                  setTempDate(pickedDate || minDate);
+                  setTimeout(() => scrollToAndPulse(dateBtnAnim, 330), 350);
+                }}
                 disabled={!desc.trim() || loading}
                 activeOpacity={0.86}
               >
@@ -136,43 +149,87 @@ export default function CreateHelpModal({ visible, onClose, onCreate, loading })
               </TouchableOpacity>
             </View>
 
-            {/* Picker Date+Time */}
-            {showPicker && (
-              <DateTimePicker
-                value={pickedDate || minDate}
-                mode={pickerMode}
-                display={Platform.OS === "ios" ? "spinner" : "default"}
-                minimumDate={minDate}
-                maximumDate={maxDate}
-                onChange={onDateChange}
-                locale="pt-BR"
-                themeVariant="dark"
-                style={{ alignSelf: "center" }}
-              />
-            )}
-
-            {/* Affichage date choisie */}
-            {pickedDate && dateConfirmed && (
-              <View style={styles.selectedDateBox}>
-                <Feather name="calendar" size={19} color="#00C859" style={{ marginRight: 5 }} />
-                <Text style={styles.selectedDate}>{formatDateWithHour(pickedDate)}</Text>
+            {/* Step 1 — Picker DATE + bouton valider + ANIM */}
+            {showDatePicker && (
+              <View style={{ alignSelf: "stretch", alignItems: "center", marginTop: 9 }}>
+                <DateTimePicker
+                  value={tempDate || minDate}
+                  mode="date"
+                  display={Platform.OS === "ios" ? "spinner" : "calendar"}
+                  minimumDate={minDate}
+                  maximumDate={maxDate}
+                  onChange={(e, d) => {
+                    if (d) setTempDate(d);
+                    setTimeout(() => scrollToAndPulse(dateBtnAnim, 330), 280);
+                  }}
+                  locale="pt-BR"
+                  themeVariant="dark"
+                />
+                <Animated.View style={{ transform: [{ scale: dateBtnAnim }] }}>
+                  <TouchableOpacity
+                    style={styles.btnValidate}
+                    onPress={() => {
+                      setPickedDate(tempDate);
+                      setShowDatePicker(false);
+                      setTimeout(() => {
+                        setShowTimePicker(true);
+                        setTempTime(pickedTime || new Date());
+                        setTimeout(() => scrollToAndPulse(timeBtnAnim, 440), 350);
+                      }, 200);
+                    }}
+                  >
+                    <Text style={styles.btnValidateText}>Validar data</Text>
+                  </TouchableOpacity>
+                </Animated.View>
               </View>
             )}
 
-            {/* Valider agendamento */}
-            {pickedDate && dateConfirmed && (
-              <TouchableOpacity
-                style={[
-                  styles.btnScheduleCreate,
-                  !desc.trim() && { opacity: 0.55 },
-                ]}
-                onPress={handleCreateScheduled}
-                disabled={!desc.trim() || loading}
-                activeOpacity={0.85}
-              >
-                <Feather name="check-circle" size={20} color="#fff" style={{ marginRight: 7 }} />
-                <Text style={styles.btnTextSchedule}>Confirmar agendamento</Text>
-              </TouchableOpacity>
+            {/* Step 2 — Picker HEURE + bouton valider + ANIM */}
+            {showTimePicker && (
+              <View style={{ alignSelf: "stretch", alignItems: "center", marginTop: 10 }}>
+                <DateTimePicker
+                  value={tempTime || new Date()}
+                  mode="time"
+                  display={Platform.OS === "ios" ? "spinner" : "clock"}
+                  onChange={(e, t) => {
+                    if (t) setTempTime(t);
+                    setTimeout(() => scrollToAndPulse(timeBtnAnim, 440), 280);
+                  }}
+                  locale="pt-BR"
+                  themeVariant="dark"
+                  is24Hour
+                />
+                <Animated.View style={{ transform: [{ scale: timeBtnAnim }] }}>
+                  <TouchableOpacity
+                    style={[styles.btnValidate, { marginTop: 6 }]}
+                    onPress={() => {
+                      setPickedTime(tempTime);
+                      setShowTimePicker(false);
+                    }}
+                  >
+                    <Text style={styles.btnValidateText}>Validar hora</Text>
+                  </TouchableOpacity>
+                </Animated.View>
+              </View>
+            )}
+
+            {/* Résumé + bouton final valider */}
+            {pickedDate && pickedTime && (
+              <View style={styles.selectedDateBox}>
+                <Feather name="calendar" size={19} color="#00C859" style={{ marginRight: 5 }} />
+                <Text style={styles.selectedDate}>
+                  {formatDateTime(pickedDate, pickedTime)}
+                </Text>
+                <TouchableOpacity
+                  style={styles.btnScheduleCreate}
+                  onPress={handleCreateScheduled}
+                  disabled={!desc.trim() || loading}
+                  activeOpacity={0.85}
+                >
+                  <Feather name="check-circle" size={20} color="#fff" style={{ marginRight: 7 }} />
+                  <Text style={styles.btnTextSchedule}>Confirmar agendamento</Text>
+                </TouchableOpacity>
+              </View>
             )}
 
             <TouchableOpacity
@@ -185,6 +242,7 @@ export default function CreateHelpModal({ visible, onClose, onCreate, loading })
             </TouchableOpacity>
           </ScrollView>
         </View>
+        </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -204,7 +262,7 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     backgroundColor: "#191C22",
     paddingHorizontal: 22,
-    paddingTop: 23, // ← Ajuste ici si tu veux descendre le contenu
+    paddingTop: 17,
     paddingBottom: 29,
     alignItems: "center",
     elevation: 11,
@@ -273,6 +331,27 @@ const styles = StyleSheet.create({
   btnTextAlt: {
     color: "#13d872", fontWeight: "bold", fontSize: 19, letterSpacing: 0.1,
   },
+  btnValidate: {
+    marginTop: 13,
+    backgroundColor: "#191C22",
+    borderColor: "#FFD600",
+    borderWidth: 2,
+    borderRadius: 12,
+    paddingHorizontal: 25,
+    paddingVertical: 10,
+    // --- boxShadow doux jaune ---
+    shadowColor: "#FFD600",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.22,
+    shadowRadius: 7,
+    elevation: 7,
+  },
+  btnValidateText: {
+    color: "#FFD600",
+    fontWeight: "bold",
+    fontSize: 17,
+    letterSpacing: 0.06,
+  },
   btnScheduleCreate: {
     flexDirection: "row",
     alignItems: "center",
@@ -281,14 +360,13 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 22,
     width: "100%",
-    marginTop: 11,
+    marginTop: 14,
     justifyContent: "center",
   },
   btnTextSchedule: {
     color: "#fff", fontWeight: "bold", fontSize: 18, letterSpacing: 0.05,
   },
   selectedDateBox: {
-    flexDirection: "row",
     alignItems: "center",
     marginTop: 13,
     marginBottom: -2,
@@ -296,16 +374,18 @@ const styles = StyleSheet.create({
     borderWidth: 1.2,
     borderColor: "#13d872",
     borderRadius: 9,
-    paddingVertical: 7,
+    paddingVertical: 10,
     paddingHorizontal: 15,
     alignSelf: "center"
   },
   selectedDate: {
     color: "#13d872",
     fontWeight: "bold",
-    fontSize: 16.5,
+    fontSize: 17,
     letterSpacing: 0.04,
-    marginLeft: 4,
+    marginLeft: 7,
+    marginRight: 7,
+    textAlign: "center"
   },
   btnCancel: {
     flexDirection: "row",
