@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Animated } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import dayjs from "dayjs";
@@ -25,10 +25,13 @@ function formatHojeOuData(date) {
   return `${d.locale("pt-br").format("dddd, D [de] MMMM")} às ${d.format("HH:mm")}`;
 }
 
-// --- COMPONENTE PRINCIPAL ---
+// Génère un ID alphanumérique aléatoire de 4 caractères
+function generateRandomId(length = 4) {
+  return Math.random().toString(36).substr(2, length).toUpperCase();
+}
+
 export default function CardHelpRequest({
   demanda,
-  numPedido,
   isMine = false,
   onCancel,
   onClose,
@@ -38,19 +41,23 @@ export default function CardHelpRequest({
   showHide,
   loading,
 }) {
-  const [fadeAnim] = React.useState(new Animated.Value(0));
-  React.useEffect(() => {
-    Animated.timing(fadeAnim, { toValue: 1, duration: 320, useNativeDriver: true }).start();
+  const [fadeAnim] = useState(new Animated.Value(0));
+  // Génère un ID à 4 caractères pour le badge
+  const [randomId] = useState(() => generateRandomId());
+
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 320,
+      useNativeDriver: true,
+    }).start();
   }, [fadeAnim]);
 
   // Parse des dates
   const dateHelp = parseFirestoreDate(demanda.dateHelp);
   const createdAt = parseFirestoreDate(demanda.createdAt);
 
-  // Débug
-  console.log("[CardHelpRequest] dateHelp:", dateHelp, "| createdAt:", createdAt, "| status:", demanda.status);
-
-  // Type de demande
+  // Types de demande
   const isAgendada = demanda.status === "scheduled" && dateHelp;
   const isRapido = demanda.status === "open" && !demanda.dateHelp;
   const isCancelada = demanda.status === "cancelled";
@@ -60,8 +67,8 @@ export default function CardHelpRequest({
   const color = isCancelada
     ? "#ff5d5d"
     : isAgendada
-      ? "#ffd13a"
-      : "#7fd06e";
+    ? "#ffd13a"
+    : "#7fd06e";
   const borderColor = color;
   const shadowColor = color + "55";
 
@@ -69,20 +76,15 @@ export default function CardHelpRequest({
     <Animated.View
       style={[
         styles.card,
-        {
-          borderColor,
-          shadowColor,
-          opacity: fadeAnim,
-          backgroundColor: "#181a20",
-        }
+        { borderColor, shadowColor, opacity: fadeAnim, backgroundColor: "#181a20" },
       ]}
     >
-      {/* Numéro de la demande */}
+      {/* Badge alphanumérique */}
       <View style={[styles.numBulle, { borderColor, shadowColor }]}> 
-        <Text style={styles.numPedido}>{`#${numPedido}`}</Text>
+        <Text style={styles.numPedido}>{`#${randomId}`}</Text>
       </View>
 
-      {/* Appelido */}
+      {/* Apelido */}
       <Text style={styles.apelido}>{demanda.apelido || "—"}</Text>
 
       {/* Message */}
@@ -105,9 +107,7 @@ export default function CardHelpRequest({
       )}
 
       {/* Annulée */}
-      {isCancelada && (
-        <Text style={styles.cancelada}>Cancelada</Text>
-      )}
+      {isCancelada && <Text style={styles.cancelada}>Cancelada</Text>}
 
       {/* Actions */}
       <View style={styles.actions}>
@@ -215,7 +215,7 @@ const styles = StyleSheet.create({
     fontStyle: "italic",
     marginBottom: 2,
     marginTop: 1,
-    fontWeight: "500"
+    fontWeight: "500",
   },
   criadaEm: {
     color: "#aaa",
@@ -250,7 +250,7 @@ const styles = StyleSheet.create({
     shadowColor: "#232628",
     shadowOpacity: 0.11,
     shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 }
+    shadowOffset: { width: 0, height: 1 },
   },
   btnText: {
     fontWeight: "bold",
