@@ -32,9 +32,10 @@ export async function createGroupHelp({
   message,
   isScheduled,
   dateHelp, // Peut être Date JS, string, Timestamp ou null
+  badgeId,  // <-- AJOUTÉ pour le badge unique
 }) {
   if (!groupId || !userId) throw new Error("Paramètre manquant à createGroupHelp");
-  console.log("[createGroupHelp] REÇU:", { groupId, userId, apelido, message, isScheduled, dateHelp });
+  console.log("[createGroupHelp] REÇU:", { groupId, userId, apelido, message, isScheduled, dateHelp, badgeId });
 
   const docData = {
     groupId,
@@ -52,6 +53,7 @@ export async function createGroupHelp({
     closedReason: null,
     cancelledAt: null,
     hiddenBy: [],
+    badgeId, // <--- NOUVEAU CHAMP badgeId
     history: [
       { action: isScheduled ? "scheduled" : "open", by: userId, at: dayjs().toISOString() },
     ],

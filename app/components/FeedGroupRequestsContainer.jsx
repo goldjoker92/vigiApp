@@ -20,6 +20,11 @@ import Coachmark from "../components/Coachmark";
 import Toast from "react-native-toast-message";
 import CreateHelpModal from "../components/modals/CreateHelpModal";
 
+// Génère un ID alphanumérique de 4 caractères
+function generateRandomId(length = 4) {
+  return Math.random().toString(36).substr(2, length).toUpperCase();
+}
+
 export default function FeedGroupRequestsContainer({ groupId }) {
   const { user } = useUserStore();
   const [myRequests, setMyRequests] = useState([]);
@@ -28,11 +33,9 @@ export default function FeedGroupRequestsContainer({ groupId }) {
   const [editingRequest, setEditingRequest] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  // 👉 Modale création
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [loadingCreate, setLoadingCreate] = useState(false);
 
-  // --- Fetch mes demandes
   const fetchMyRequests = useCallback(async () => {
     if (!user?.id || !groupId) return;
     try {
@@ -43,7 +46,6 @@ export default function FeedGroupRequestsContainer({ groupId }) {
     }
   }, [user, groupId]);
 
-  // --- Fetch demandes groupe
   const fetchGroupRequests = useCallback(async () => {
     if (!groupId || !user?.id) return;
     try {
@@ -54,7 +56,6 @@ export default function FeedGroupRequestsContainer({ groupId }) {
     }
   }, [groupId, user]);
 
-  // --- Refresh
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     Promise.all([fetchMyRequests(), fetchGroupRequests()]).finally(() =>
@@ -62,13 +63,37 @@ export default function FeedGroupRequestsContainer({ groupId }) {
     );
   }, [fetchMyRequests, fetchGroupRequests]);
 
-  // --- Initial fetch
   useEffect(() => {
     fetchMyRequests();
     fetchGroupRequests();
   }, [groupId, user, fetchGroupRequests, fetchMyRequests]);
 
-  // --- Handlers ---
+  // --- Handler création ---
+  const handleCreateHelp = async (payload) => {
+    setLoadingCreate(true);
+    try {
+      // Génère badgeId FRONT ici
+      const badgeId = generateRandomId(4);
+      await createGroupHelp({
+        groupId,
+        userId: user.id,
+        apelido: user.apelido,
+        message: payload.message,
+        isScheduled: !!payload.isScheduled,
+        dateHelp: payload.dateHelp || null,
+        badgeId, // Passe au back (ou stocke en front si tu veux pure front)
+      });
+      setShowCreateModal(false);
+      Toast.show({ type: "success", text1: "Pedido criado com sucesso!" });
+      onRefresh();
+    } catch (e) {
+      Toast.show({ type: "error", text1: "Erro ao criar pedido", text2: e.message });
+    }
+    setLoadingCreate(false);
+  };
+
+  // Les autres handlers sont inchangés (edit, cancel, accept, hide, hideAll...)
+
   const handleEditSave = async (newMsg) => {
     if (!editingRequest) return;
     try {
@@ -122,27 +147,6 @@ export default function FeedGroupRequestsContainer({ groupId }) {
     }
   };
 
-  // --- Handler création
-  const handleCreateHelp = async (payload) => {
-    setLoadingCreate(true);
-    try {
-      await createGroupHelp({
-        groupId,
-        userId: user.id,
-        apelido: user.apelido,
-        message: payload.message,
-        isScheduled: !!payload.isScheduled,
-        dateHelp: payload.dateHelp || null
-      });
-      setShowCreateModal(false);
-      Toast.show({ type: "success", text1: "Pedido criado com sucesso!" });
-      onRefresh();
-    } catch (e) {
-      Toast.show({ type: "error", text1: "Erro ao criar pedido", text2: e.message });
-    }
-    setLoadingCreate(false);
-  };
-
   return (
     <ScrollView
       style={styles.container}
@@ -173,6 +177,7 @@ export default function FeedGroupRequestsContainer({ groupId }) {
             <CardHelpRequest
               key={demanda.id}
               demanda={demanda}
+              badgeId={demanda.badgeId}   // <--- badgeId utilisé ici !
               numPedido={idx + 1}
               isMine
               onCancel={() => handleCancel(demanda.id)}
@@ -198,6 +203,7 @@ export default function FeedGroupRequestsContainer({ groupId }) {
             <CardHelpRequest
               key={demanda.id}
               demanda={demanda}
+              badgeId={demanda.badgeId}   // <--- badgeId utilisé ici aussi !
               numPedido={idx + 1}
               onAccept={() => handleAccept(demanda.id)}
               onHide={() => handleHide(demanda.id)}
@@ -208,7 +214,6 @@ export default function FeedGroupRequestsContainer({ groupId }) {
         )}
       </View>
 
-      {/* --- Modale création + édition --- */}
       <CreateHelpModal
         visible={showCreateModal}
         onClose={() => setShowCreateModal(false)}
