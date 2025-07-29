@@ -1,9 +1,27 @@
 import React from "react";
-import { View, Text, TouchableOpacity, StyleSheet, Animated, useWindowDimensions } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, Animated } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import dayjs from "dayjs";
 import "dayjs/locale/pt-br";
 
+// --- HELPERS ---
+function parseFirestoreDate(val) {
+  if (!val) return null;
+  if (typeof val.toDate === "function") return val.toDate();
+  if (typeof val === "string" || typeof val === "number") return new Date(val);
+  return val; // déjà une Date JS
+}
+
+function formatHojeOuData(date) {
+  const d = dayjs(date);
+  const now = dayjs();
+  if (d.isSame(now, "day")) {
+    return `Hoje às ${d.format("HH:mm")}`;
+  }
+  return `${d.locale("pt-br").format("dddd, D [de] MMMM")} às ${d.format("HH:mm")}`;
+}
+
+// --- MAIN ---
 export default function CardHelpRequest({
   demanda,
   numPedido,
@@ -17,81 +35,114 @@ export default function CardHelpRequest({
   loading,
 }) {
   const [fadeAnim] = React.useState(new Animated.Value(0));
-  const { width } = useWindowDimensions();
-
   React.useEffect(() => {
-    Animated.timing(fadeAnim, { toValue: 1, duration: 340, useNativeDriver: true }).start();
+    Animated.timing(fadeAnim, { toValue: 1, duration: 320, useNativeDriver: true }).start();
   }, [fadeAnim]);
 
-  function getStatus(status) {
-    switch (status) {
-      case "open": return { label: "Aberta", color: "#00C859", emoji: "🟩" };
-      case "scheduled": return { label: "Agendada", color: "#FFD600", emoji: "🟡" };
-      case "accepted": return { label: "Aceita", color: "#4F8DFF", emoji: "🔵" };
-      case "cancelled": return { label: "Cancelada", color: "#FF4D4F", emoji: "🔴" };
-      case "closed": return { label: "Fechada", color: "#aaa", emoji: "⚫️" };
-      default: return { label: status, color: "#eee", emoji: "❔" };
-    }
-  }
-  const status = getStatus(demanda.status);
+  // Parse dates
+  const dateHelp = parseFirestoreDate(demanda.dateHelp);
+  const createdAt = parseFirestoreDate(demanda.createdAt);
 
-  // Date affichée
-  let dateString = "";
-  if (demanda.dateHelp) {
-    const date = dayjs(demanda.dateHelp.toDate?.() || demanda.dateHelp).locale("pt-br");
-    dateString = `${status.emoji} ${status.label} para ${date.format("dddd, D [de] MMMM [às] HH:mm")}`;
-  } else {
-    const date = dayjs(demanda.createdAt?.toDate?.() || demanda.createdAt).locale("pt-br");
-    dateString = `${status.emoji} ${status.label} — ${date.format("DD/MM/YYYY, HH:mm")}`;
-  }
+  // Logs debug pour voir la valeur
+  console.log("[CardHelpRequest] dateHelp:", dateHelp, "| createdAt:", createdAt, "| status:", demanda.status);
 
-  // Responsive : passe en colonne sous 370px de largeur
-  const actionsFlexDirection = width < 370 ? "column" : "row";
+  // Détection du type de demande
+  const isAgendada = demanda.status === "scheduled" && dateHelp;
+  const isRapido = demanda.status === "open" && !demanda.dateHelp;
+  const isCancelada = demanda.status === "cancelled";
+  const isAberta = demanda.status === "open" && !isCancelada && !isAgendada;
+
+  // Couleurs dynamiques
+  const color = isCancelada
+    ? "#ff5d5d"
+    : isAgendada
+      ? "#ffd13a"
+      : "#7fd06e";
+
+  // Styles dynamiques
+  const borderColor = color;
+  const shadowColor = color + "55";
 
   return (
-    <Animated.View style={[
-      styles.card,
-      { borderColor: status.color, opacity: fadeAnim, shadowColor: status.color }
-    ]}>
-      <View style={styles.numBulle}>
+    <Animated.View
+      style={[
+        styles.card,
+        {
+          borderColor,
+          shadowColor,
+          opacity: fadeAnim,
+          backgroundColor: "#181a20",
+        }
+      ]}
+    >
+      {/* Numéro demande */}
+      <View style={[styles.numBulle, { borderColor: color, shadowColor }]}>
         <Text style={styles.numPedido}>{`#${numPedido}`}</Text>
       </View>
+      {/* APPELIDO */}
+      <Text style={styles.apelido}>{demanda.apelido || "—"}</Text>
+      {/* MESSAGE */}
       <Text style={styles.message}>{demanda.message}</Text>
-      <Text style={styles.by}><Text style={styles.apelido}>{`Por ${demanda.apelido || "?"}`}</Text></Text>
-      <Text style={[styles.date, { fontWeight: "bold", color: "#13d872" }]}>{dateString}</Text>
-      <View style={[styles.actions, { flexDirection: actionsFlexDirection }]}>
-        {isMine && (demanda.status === "open" || demanda.status === "scheduled") && (
+
+      {/* AGENDADA */}
+      {isAgendada && (
+        <Text style={styles.agendada}>
+          <Text style={styles.agendadaEmoji}>🟡</Text>
+          {` Agendada para ${dayjs(dateHelp).locale("pt-br").format("dddd, D [de] MMMM [às] HH:mm")}`}
+        </Text>
+      )}
+
+      {/* O MAIS RÁPIDO POSSÍVEL */}
+      {isRapido && (
+        <>
+          <Text style={styles.rapido}>
+            O mais rápido possível, por favor 🙏
+          </Text>
+          <Text style={styles.criadaEm}>
+            {formatHojeOuData(createdAt)}
+          </Text>
+        </>
+      )}
+
+      {/* CANCELADA */}
+      {isCancelada && (
+        <Text style={styles.cancelada}>Cancelada</Text>
+      )}
+
+      {/* --- BOUTONS ACTIONS --- */}
+      <View style={styles.actions}>
+        {isMine && (isAberta || isAgendada) && (
           <>
             <TouchableOpacity
-              style={[styles.actionBtn, styles.cloturerBtn]}
+              style={[styles.btn, styles.cloturerBtn]}
               onPress={onClose}
               disabled={loading === "close"}
-              activeOpacity={0.85}
+              activeOpacity={0.86}
             >
-              <Feather name="check-circle" size={19} color="#13d872" />
-              <Text style={[styles.actionText, { color: "#13d872" }]}>Clôturer</Text>
+              <Feather name="check-circle" size={18} color="#43b57b" />
+              <Text style={[styles.btnText, { color: "#43b57b" }]}>Clôturer</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.actionBtn, styles.cancelarBtn]}
+              style={[styles.btn, styles.cancelarBtn]}
               onPress={onCancel}
               disabled={loading === "cancel"}
-              activeOpacity={0.85}
+              activeOpacity={0.86}
             >
-              <Feather name="x-circle" size={19} color="#FF4D4F" />
-              <Text style={[styles.actionText, { color: "#FF4D4F" }]}>Cancelar</Text>
+              <Feather name="x-circle" size={18} color="#b55a43" />
+              <Text style={[styles.btnText, { color: "#b55a43" }]}>Cancelar</Text>
             </TouchableOpacity>
           </>
         )}
         {!isMine && showAccept && (
-          <TouchableOpacity style={[styles.actionBtn, styles.acceptBtn]} onPress={onAccept}>
-            <Feather name="handshake" size={18} color="#00C859" />
-            <Text style={[styles.actionText, { color: "#00C859" }]}>Aceitar</Text>
+          <TouchableOpacity style={[styles.btn, styles.acceptBtn]} onPress={onAccept}>
+            <Feather name="user-check" size={17} color="#43b57b" />
+            <Text style={[styles.btnText, { color: "#43b57b" }]}>Aceitar</Text>
           </TouchableOpacity>
         )}
         {!isMine && showHide && (
-          <TouchableOpacity style={[styles.actionBtn, styles.hideBtn]} onPress={onHide}>
-            <Feather name="eye-off" size={18} color="#FFD600" />
-            <Text style={[styles.actionText, { color: "#FFD600" }]}>Ocultar</Text>
+          <TouchableOpacity style={[styles.btn, styles.hideBtn]} onPress={onHide}>
+            <Feather name="eye-off" size={17} color="#FFD600" />
+            <Text style={[styles.btnText, { color: "#FFD600" }]}>Ocultar</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -102,30 +153,30 @@ export default function CardHelpRequest({
 const styles = StyleSheet.create({
   card: {
     borderWidth: 2,
-    borderRadius: 15,
+    borderRadius: 17,
     padding: 16,
-    marginBottom: 16,
-    backgroundColor: "#181A20",
-    shadowOpacity: 0.13,
-    shadowRadius: 13,
+    marginBottom: 18,
+    minHeight: 112,
+    shadowOpacity: 0.17,
+    shadowRadius: 14,
     shadowOffset: { width: 0, height: 4 },
     elevation: 6,
-    minHeight: 128,
     position: "relative",
+    backgroundColor: "#181a20",
   },
   numBulle: {
     position: "absolute",
-    top: -18,
-    left: -13,
+    top: -19,
+    left: -11,
     backgroundColor: "#FFD600",
-    borderRadius: 15,
+    borderRadius: 13,
     paddingHorizontal: 13,
     paddingVertical: 2,
-    zIndex: 3,
+    zIndex: 5,
     borderWidth: 3,
-    borderColor: "#13151A",
+    borderColor: "#FFD600",
     shadowColor: "#FFD600",
-    shadowOpacity: 0.38,
+    shadowOpacity: 0.39,
     shadowRadius: 7,
     elevation: 4,
   },
@@ -136,56 +187,94 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     textAlign: "center",
   },
-  message: { color: "#fff", fontSize: 18.5, marginBottom: 6, fontWeight: "bold" },
-  apelido: { color: "#FFD600", fontWeight: "bold", fontSize: 15.5 },
-  by: { marginBottom: 2, marginTop: 2 },
-  date: { color: "#b9b9b9", fontSize: 14.5, fontWeight: "500", marginBottom: 3 },
-  actions: {
-    marginTop: 7,
-    gap: 12,
-    width: "100%",
-    alignItems: "center",
-    justifyContent: "flex-start",
+  apelido: {
+    color: "#b2ec6b",
+    fontWeight: "bold",
+    fontSize: 17,
+    marginBottom: 2,
+    letterSpacing: 0.09,
+    marginTop: 5,
   },
-  actionBtn: {
+  message: {
+    color: "#ededed",
+    fontSize: 17.7,
+    marginBottom: 7,
+    fontWeight: "500",
+  },
+  agendada: {
+    color: "#ffd13a",
+    fontWeight: "bold",
+    fontSize: 15.9,
+    marginBottom: 2,
+  },
+  agendadaEmoji: {
+    fontSize: 16,
+    marginRight: 2,
+  },
+  rapido: {
+    color: "#92be78",
+    fontSize: 15.4,
+    fontStyle: "italic",
+    marginBottom: 2,
+    marginTop: 1,
+    fontWeight: "500"
+  },
+  criadaEm: {
+    color: "#aaa",
+    fontSize: 13.6,
+    fontStyle: "italic",
+    marginBottom: 1,
+  },
+  cancelada: {
+    color: "#ff5d5d",
+    fontWeight: "bold",
+    fontSize: 15.7,
+    marginBottom: 2,
+  },
+  actions: {
+    marginTop: 10,
+    gap: 13,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    width: "100%",
+  },
+  btn: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 7,
-    paddingHorizontal: 18,
-    borderRadius: 12,
+    backgroundColor: "#232628",
+    borderColor: "#6ea98d",
     borderWidth: 2,
-    minWidth: 108,
-    justifyContent: "center",
-    shadowColor: "#000",
+    borderRadius: 13,
+    paddingVertical: 8,
+    paddingHorizontal: 19,
+    marginRight: 9,
+    marginBottom: 0,
+    shadowColor: "#232628",
     shadowOpacity: 0.11,
     shadowRadius: 4,
-    elevation: 2,
-    marginBottom: 0,
-    backgroundColor: "#222",
+    shadowOffset: { width: 0, height: 1 }
+  },
+  btnText: {
+    fontWeight: "bold",
+    fontSize: 15.2,
+    marginLeft: 7,
+    letterSpacing: 0.08,
   },
   cloturerBtn: {
-    borderColor: "#13d872",
-    backgroundColor: "#eafff2",
-    shadowColor: "#13d872",
+    borderColor: "#43b57b",
+    backgroundColor: "#192d23",
   },
   cancelarBtn: {
-    borderColor: "#FF4D4F",
-    backgroundColor: "#fff0f2",
-    shadowColor: "#FF4D4F",
+    borderColor: "#b55a43",
+    backgroundColor: "#2a1916",
   },
   acceptBtn: {
-    borderColor: "#00C859",
-    backgroundColor: "#eafff2",
-    shadowColor: "#00C859",
+    borderColor: "#43b57b",
+    backgroundColor: "#192d23",
   },
   hideBtn: {
     borderColor: "#FFD600",
-    backgroundColor: "#fffbe4",
-    shadowColor: "#FFD600",
-  },
-  actionText: {
-    fontWeight: "bold",
-    fontSize: 16,
-    marginLeft: 7,
+    backgroundColor: "#181a20",
   },
 });
