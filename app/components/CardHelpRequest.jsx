@@ -12,6 +12,10 @@ function parseFirestoreDate(val) {
   return val; // déjà une Date JS
 }
 
+/**
+ * Retourne "Hoje às HH:mm" si la date est aujourd'hui,
+ * sinon "dddd, D de MMMM às HH:mm" en portugais.
+ */
 function formatHojeOuData(date) {
   const d = dayjs(date);
   const now = dayjs();
@@ -21,7 +25,7 @@ function formatHojeOuData(date) {
   return `${d.locale("pt-br").format("dddd, D [de] MMMM")} às ${d.format("HH:mm")}`;
 }
 
-// --- MAIN ---
+// --- COMPONENTE PRINCIPAL ---
 export default function CardHelpRequest({
   demanda,
   numPedido,
@@ -39,14 +43,14 @@ export default function CardHelpRequest({
     Animated.timing(fadeAnim, { toValue: 1, duration: 320, useNativeDriver: true }).start();
   }, [fadeAnim]);
 
-  // Parse dates
+  // Parse des dates
   const dateHelp = parseFirestoreDate(demanda.dateHelp);
   const createdAt = parseFirestoreDate(demanda.createdAt);
 
-  // Logs debug pour voir la valeur
+  // Débug
   console.log("[CardHelpRequest] dateHelp:", dateHelp, "| createdAt:", createdAt, "| status:", demanda.status);
 
-  // Détection du type de demande
+  // Type de demande
   const isAgendada = demanda.status === "scheduled" && dateHelp;
   const isRapido = demanda.status === "open" && !demanda.dateHelp;
   const isCancelada = demanda.status === "cancelled";
@@ -58,8 +62,6 @@ export default function CardHelpRequest({
     : isAgendada
       ? "#ffd13a"
       : "#7fd06e";
-
-  // Styles dynamiques
   const borderColor = color;
   const shadowColor = color + "55";
 
@@ -75,41 +77,39 @@ export default function CardHelpRequest({
         }
       ]}
     >
-      {/* Numéro demande */}
-      <View style={[styles.numBulle, { borderColor: color, shadowColor }]}>
+      {/* Numéro de la demande */}
+      <View style={[styles.numBulle, { borderColor, shadowColor }]}> 
         <Text style={styles.numPedido}>{`#${numPedido}`}</Text>
       </View>
-      {/* APPELIDO */}
+
+      {/* Appelido */}
       <Text style={styles.apelido}>{demanda.apelido || "—"}</Text>
-      {/* MESSAGE */}
+
+      {/* Message */}
       <Text style={styles.message}>{demanda.message}</Text>
 
-      {/* AGENDADA */}
+      {/* Demande programmée */}
       {isAgendada && (
         <Text style={styles.agendada}>
           <Text style={styles.agendadaEmoji}>🟡</Text>
-          {` Agendada para ${dayjs(dateHelp).locale("pt-br").format("dddd, D [de] MMMM [às] HH:mm")}`}
+          {` Agendada para ${formatHojeOuData(dateHelp)}`}
         </Text>
       )}
 
-      {/* O MAIS RÁPIDO POSSÍVEL */}
+      {/* Demande urgente */}
       {isRapido && (
         <>
-          <Text style={styles.rapido}>
-            O mais rápido possível, por favor 🙏
-          </Text>
-          <Text style={styles.criadaEm}>
-            {formatHojeOuData(createdAt)}
-          </Text>
+          <Text style={styles.rapido}>O mais rápido possível, por favor 🙏</Text>
+          <Text style={styles.criadaEm}>{formatHojeOuData(createdAt)}</Text>
         </>
       )}
 
-      {/* CANCELADA */}
+      {/* Annulée */}
       {isCancelada && (
         <Text style={styles.cancelada}>Cancelada</Text>
       )}
 
-      {/* --- BOUTONS ACTIONS --- */}
+      {/* Actions */}
       <View style={styles.actions}>
         {isMine && (isAberta || isAgendada) && (
           <>
@@ -162,7 +162,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 6,
     position: "relative",
-    backgroundColor: "#181a20",
   },
   numBulle: {
     position: "absolute",
@@ -174,7 +173,6 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     zIndex: 5,
     borderWidth: 3,
-    borderColor: "#FFD600",
     shadowColor: "#FFD600",
     shadowOpacity: 0.39,
     shadowRadius: 7,
@@ -249,7 +247,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 19,
     marginRight: 9,
-    marginBottom: 0,
     shadowColor: "#232628",
     shadowOpacity: 0.11,
     shadowRadius: 4,
