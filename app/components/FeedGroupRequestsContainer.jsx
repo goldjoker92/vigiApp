@@ -1,8 +1,19 @@
+// components/FeedGroupRequestsContainer.jsx
+
 import React, { useState, useEffect, useCallback } from "react";
 import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { useUserStore } from "../../store/users";
-import { getUserRequests, getGroupRequests, hideGroupHelpForUser, hideAllGroupHelpsForUser, acceptGroupHelp, cancelGroupHelp, updateGroupHelpMessage, createGroupHelp } from "../../services/groupHelpService";
+import {
+  getUserRequests,
+  getGroupRequests,
+  hideGroupHelpForUser,
+  hideAllGroupHelpsForUser,
+  acceptGroupHelp,
+  cancelGroupHelp,
+  updateGroupHelpMessage,
+  createGroupHelp
+} from "../../services/groupHelpService";
 import CardHelpRequest from "../components/CardHelpRequest";
 import EditHelpModal from "../components/EditHelpModal";
 import Coachmark from "../components/Coachmark";
@@ -17,7 +28,7 @@ export default function FeedGroupRequestsContainer({ groupId }) {
   const [editingRequest, setEditingRequest] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  // 👉 Pour la modale création
+  // 👉 Modale création
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [loadingCreate, setLoadingCreate] = useState(false);
 
@@ -58,11 +69,6 @@ export default function FeedGroupRequestsContainer({ groupId }) {
   }, [groupId, user, fetchGroupRequests, fetchMyRequests]);
 
   // --- Handlers ---
-  const handleEdit = (demanda) => {
-    setEditingRequest(demanda);
-    setEditModalVisible(true);
-  };
-
   const handleEditSave = async (newMsg) => {
     if (!editingRequest) return;
     try {
@@ -169,7 +175,6 @@ export default function FeedGroupRequestsContainer({ groupId }) {
               demanda={demanda}
               numPedido={idx + 1}
               isMine
-              onEdit={() => handleEdit(demanda)}
               onCancel={() => handleCancel(demanda.id)}
             />
           ))
@@ -235,29 +240,29 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     letterSpacing: 0.8,
   },
-btnCreate: {
-  flexDirection: "row",
-  alignItems: "center",
-  alignSelf: "center",
-  backgroundColor: "#22242D",
-  paddingHorizontal: 18,
-  paddingVertical: 9,
-  borderRadius: 19,
-  marginBottom: 8,
-  marginTop: 10,
-  borderWidth: 2,
-  borderColor: "#FFD600",
-  shadowColor: "#FFD600",
-  shadowOpacity: 0.06,
-  shadowRadius: 9,
-},
-btnCreateText: {
-  color: "#FFD600",
-  fontWeight: "bold",
-  fontSize: 16.3,
-  marginLeft: 9,
-  letterSpacing: 0.13,
-},
+  btnCreate: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "center",
+    backgroundColor: "#22242D",
+    paddingHorizontal: 18,
+    paddingVertical: 9,
+    borderRadius: 19,
+    marginBottom: 8,
+    marginTop: 10,
+    borderWidth: 2,
+    borderColor: "#FFD600",
+    shadowColor: "#FFD600",
+    shadowOpacity: 0.06,
+    shadowRadius: 9,
+  },
+  btnCreateText: {
+    color: "#FFD600",
+    fontWeight: "bold",
+    fontSize: 16.3,
+    marginLeft: 9,
+    letterSpacing: 0.13,
+  },
   sectionTitle: {
     color: "#FFD600",
     fontWeight: "bold",

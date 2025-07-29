@@ -1,243 +1,277 @@
-import React from "react";
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
-import { Feather, MaterialIcons } from "@expo/vector-icons";
+import React, { useState, useEffect } from "react";
+import { View, Text, TouchableOpacity, StyleSheet, Animated } from "react-native";
+import { Feather } from "@expo/vector-icons";
 import dayjs from "dayjs";
+import "dayjs/locale/pt-br";
+
+// --- HELPERS ---
+function parseFirestoreDate(val) {
+  if (!val) return null;
+  if (typeof val.toDate === "function") return val.toDate();
+  if (typeof val === "string" || typeof val === "number") return new Date(val);
+  return val; // déjà une Date JS
+}
+
+/**
+ * Retourne "Hoje às HH:mm" si la date est aujourd'hui,
+ * sinon "dddd, D de MMMM às HH:mm" en portugais.
+ */
+function formatHojeOuData(date) {
+  const d = dayjs(date);
+  const now = dayjs();
+  if (d.isSame(now, "day")) {
+    return `Hoje às ${d.format("HH:mm")}`;
+  }
+  return `${d.locale("pt-br").format("dddd, D [de] MMMM")} às ${d.format("HH:mm")}`;
+}
+
+// Génère un ID alphanumérique aléatoire de 4 caractères
+function generateRandomId(length = 4) {
+  return Math.random().toString(36).substr(2, length).toUpperCase();
+}
 
 export default function CardHelpRequest({
   demanda,
-  numPedido,
   isMine = false,
-  onEdit,
   onCancel,
   onClose,
   onAccept,
   onHide,
-  showEdit,
-  showCancel,
   showAccept,
   showHide,
+  loading,
 }) {
-  if (!demanda) return null;
+  const [fadeAnim] = useState(new Animated.Value(0));
+  // Génère un ID à 4 caractères pour le badge
+  const [randomId] = useState(() => generateRandomId());
 
-  // Statut : “aberta” ou “fechada”
-  const status = demanda.status || "aberta";
-  const isClosed = status === "fechada" || status === "closed";
-  const canEdit = isMine && !isClosed;
-  const canCancel = isMine && !isClosed;
-  const canClose = isMine && !isClosed;
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 320,
+      useNativeDriver: true,
+    }).start();
+  }, [fadeAnim]);
 
-  // Pour afficher la date joliment
-  const createdAt =
-    demanda.createdAt?.toDate?.() ||
-    demanda.createdAt ||
-    demanda.dateHelp?.toDate?.() ||
-    demanda.dateHelp ||
-    new Date();
+  // Parse des dates
+  const dateHelp = parseFirestoreDate(demanda.dateHelp);
+  const createdAt = parseFirestoreDate(demanda.createdAt);
+
+  // Types de demande
+  const isAgendada = demanda.status === "scheduled" && dateHelp;
+  const isRapido = demanda.status === "open" && !demanda.dateHelp;
+  const isCancelada = demanda.status === "cancelled";
+  const isAberta = demanda.status === "open" && !isCancelada && !isAgendada;
+
+  // Couleurs dynamiques
+  const color = isCancelada
+    ? "#ff5d5d"
+    : isAgendada
+    ? "#ffd13a"
+    : "#7fd06e";
+  const borderColor = color;
+  const shadowColor = color + "55";
 
   return (
-    <View
+    <Animated.View
       style={[
         styles.card,
-        isMine ? styles.cardMine : {},
-        isClosed ? styles.cardClosed : {},
+        { borderColor, shadowColor, opacity: fadeAnim, backgroundColor: "#181a20" },
       ]}
     >
-      <Text style={styles.numPedido}>#{numPedido}</Text>
-      <Text style={styles.message}>{demanda.message}</Text>
-      <Text style={styles.by}>
-        por {demanda.apelido || "?"} — {dayjs(createdAt).format("DD/MM/YYYY, HH:mm")}
-      </Text>
-      {/* Status */}
-      <View style={styles.statusRow}>
-        <Text
-          style={[
-            styles.status,
-            isClosed ? styles.statusClosed : styles.statusOpen,
-          ]}
-        >
-          {isClosed ? "Fechada" : "Aberta"}
-        </Text>
+      {/* Badge alphanumérique */}
+      <View style={[styles.numBulle, { borderColor, shadowColor }]}> 
+        <Text style={styles.numPedido}>{`#${randomId}`}</Text>
       </View>
+
+      {/* Apelido */}
+      <Text style={styles.apelido}>{demanda.apelido || "—"}</Text>
+
+      {/* Message */}
+      <Text style={styles.message}>{demanda.message}</Text>
+
+      {/* Demande programmée */}
+      {isAgendada && (
+        <Text style={styles.agendada}>
+          <Text style={styles.agendadaEmoji}>🟡</Text>
+          {` Agendada para ${formatHojeOuData(dateHelp)}`}
+        </Text>
+      )}
+
+      {/* Demande urgente */}
+      {isRapido && (
+        <>
+          <Text style={styles.rapido}>O mais rápido possível, por favor 🙏</Text>
+          <Text style={styles.criadaEm}>{formatHojeOuData(createdAt)}</Text>
+        </>
+      )}
+
+      {/* Annulée */}
+      {isCancelada && <Text style={styles.cancelada}>Cancelada</Text>}
+
       {/* Actions */}
       <View style={styles.actions}>
-        {canEdit && (
-          <TouchableOpacity style={styles.btnEdit} onPress={onEdit}>
-            <Feather name="edit-3" size={18} color="#222" />
-            <Text style={styles.btnEditText}>Modificar</Text>
-          </TouchableOpacity>
+        {isMine && (isAberta || isAgendada) && (
+          <>
+            <TouchableOpacity
+              style={[styles.btn, styles.cloturerBtn]}
+              onPress={onClose}
+              disabled={loading === "close"}
+              activeOpacity={0.86}
+            >
+              <Feather name="check-circle" size={18} color="#43b57b" />
+              <Text style={[styles.btnText, { color: "#43b57b" }]}>Clôturer</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.btn, styles.cancelarBtn]}
+              onPress={onCancel}
+              disabled={loading === "cancel"}
+              activeOpacity={0.86}
+            >
+              <Feather name="x-circle" size={18} color="#b55a43" />
+              <Text style={[styles.btnText, { color: "#b55a43" }]}>Cancelar</Text>
+            </TouchableOpacity>
+          </>
         )}
-        {canCancel && (
-          <TouchableOpacity style={styles.btnCancel} onPress={onCancel}>
-            <MaterialIcons name="cancel" size={18} color="#fff" />
-            <Text style={styles.btnCancelText}>Cancelar</Text>
-          </TouchableOpacity>
-        )}
-        {canClose && (
-          <TouchableOpacity style={styles.btnClose} onPress={onClose}>
-            <Feather name="check-circle" size={18} color="#fff" />
-            <Text style={styles.btnCloseText}>Clôturer</Text>
-          </TouchableOpacity>
-        )}
-        {/* Pour les autres utilisateurs */}
         {!isMine && showAccept && (
-          <TouchableOpacity style={styles.btnAccept} onPress={onAccept}>
-            <Feather name="handshake" size={18} color="#fff" />
-            <Text style={styles.btnAcceptText}>Ajudar</Text>
+          <TouchableOpacity style={[styles.btn, styles.acceptBtn]} onPress={onAccept}>
+            <Feather name="user-check" size={17} color="#43b57b" />
+            <Text style={[styles.btnText, { color: "#43b57b" }]}>Aceitar</Text>
           </TouchableOpacity>
         )}
         {!isMine && showHide && (
-          <TouchableOpacity style={styles.btnHide} onPress={onHide}>
-            <Feather name="eye-off" size={18} color="#FFD600" />
-            <Text style={styles.btnHideText}>Ocultar</Text>
+          <TouchableOpacity style={[styles.btn, styles.hideBtn]} onPress={onHide}>
+            <Feather name="eye-off" size={17} color="#FFD600" />
+            <Text style={[styles.btnText, { color: "#FFD600" }]}>Ocultar</Text>
           </TouchableOpacity>
         )}
       </View>
-    </View>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: "#23262F",
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 13,
     borderWidth: 2,
-    borderColor: "#FFD600",
+    borderRadius: 17,
+    padding: 16,
+    marginBottom: 18,
+    minHeight: 112,
+    shadowOpacity: 0.17,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+    position: "relative",
   },
-  cardMine: {
-    backgroundColor: "#183924",
-    borderColor: "#FFD600",
-  },
-  cardClosed: {
-    opacity: 0.67,
-    borderColor: "#AAA",
-    backgroundColor: "#282828",
+  numBulle: {
+    position: "absolute",
+    top: -19,
+    left: -11,
+    backgroundColor: "#FFD600",
+    borderRadius: 13,
+    paddingHorizontal: 13,
+    paddingVertical: 2,
+    zIndex: 5,
+    borderWidth: 3,
+    shadowColor: "#FFD600",
+    shadowOpacity: 0.39,
+    shadowRadius: 7,
+    elevation: 4,
   },
   numPedido: {
-    position: "absolute",
-    left: 5,
-    top: 5,
-    backgroundColor: "#FFD600",
     color: "#222",
     fontWeight: "bold",
-    paddingHorizontal: 8,
-    borderRadius: 10,
-    fontSize: 15,
-    zIndex: 1,
+    fontSize: 18.5,
+    letterSpacing: 1,
+    textAlign: "center",
+  },
+  apelido: {
+    color: "#b2ec6b",
+    fontWeight: "bold",
+    fontSize: 17,
+    marginBottom: 2,
+    letterSpacing: 0.09,
+    marginTop: 5,
   },
   message: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "600",
-    marginTop: 12,
-    marginBottom: 8,
+    color: "#ededed",
+    fontSize: 17.7,
+    marginBottom: 7,
+    fontWeight: "500",
   },
-  by: {
-    color: "#ccc",
-    fontSize: 13,
-    marginBottom: 6,
-  },
-  statusRow: { flexDirection: "row", alignItems: "center", marginBottom: 8 },
-  status: {
+  agendada: {
+    color: "#ffd13a",
     fontWeight: "bold",
+    fontSize: 15.9,
+    marginBottom: 2,
+  },
+  agendadaEmoji: {
     fontSize: 16,
-    paddingHorizontal: 10,
-    paddingVertical: 2,
-    borderRadius: 8,
-    backgroundColor: "#222",
-    alignSelf: "flex-start",
-    marginRight: 8,
+    marginRight: 2,
   },
-  statusOpen: {
-    color: "#2dd36f",
-    backgroundColor: "#111",
+  rapido: {
+    color: "#92be78",
+    fontSize: 15.4,
+    fontStyle: "italic",
+    marginBottom: 2,
+    marginTop: 1,
+    fontWeight: "500",
   },
-  statusClosed: {
+  criadaEm: {
     color: "#aaa",
-    backgroundColor: "#444",
+    fontSize: 13.6,
+    fontStyle: "italic",
+    marginBottom: 1,
   },
-  actions: { flexDirection: "row", marginTop: 4, flexWrap: "wrap" },
-  btnEdit: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFD600",
-    borderRadius: 7,
-    paddingVertical: 5,
-    paddingHorizontal: 14,
-    marginRight: 10,
-    marginBottom: 6,
-  },
-  btnEditText: {
-    color: "#222",
+  cancelada: {
+    color: "#ff5d5d",
     fontWeight: "bold",
-    fontSize: 15,
-    marginLeft: 6,
+    fontSize: 15.7,
+    marginBottom: 2,
   },
-  btnCancel: {
+  actions: {
+    marginTop: 10,
+    gap: 13,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    width: "100%",
+  },
+  btn: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#D32F2F",
-    borderRadius: 7,
-    paddingVertical: 5,
-    paddingHorizontal: 14,
-    marginRight: 10,
-    marginBottom: 6,
-  },
-  btnCancelText: {
-    color: "#fff",
-    fontWeight: "bold",
-    fontSize: 15,
-    marginLeft: 6,
-  },
-  btnClose: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#333",
-    borderRadius: 7,
-    paddingVertical: 5,
-    paddingHorizontal: 14,
-    marginRight: 10,
-    marginBottom: 6,
-  },
-  btnCloseText: {
-    color: "#fff",
-    fontWeight: "bold",
-    fontSize: 15,
-    marginLeft: 6,
-  },
-  btnAccept: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#00C859",
-    borderRadius: 7,
-    paddingVertical: 5,
-    paddingHorizontal: 14,
-    marginRight: 10,
-    marginBottom: 6,
-  },
-  btnAcceptText: {
-    color: "#fff",
-    fontWeight: "bold",
-    fontSize: 15,
-    marginLeft: 6,
-  },
-  btnHide: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#23262F",
-    borderColor: "#FFD600",
+    backgroundColor: "#232628",
+    borderColor: "#6ea98d",
     borderWidth: 2,
-    borderRadius: 7,
-    paddingVertical: 5,
-    paddingHorizontal: 14,
-    marginRight: 10,
-    marginBottom: 6,
+    borderRadius: 13,
+    paddingVertical: 8,
+    paddingHorizontal: 19,
+    marginRight: 9,
+    shadowColor: "#232628",
+    shadowOpacity: 0.11,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
   },
-  btnHideText: {
-    color: "#FFD600",
+  btnText: {
     fontWeight: "bold",
-    fontSize: 15,
-    marginLeft: 6,
+    fontSize: 15.2,
+    marginLeft: 7,
+    letterSpacing: 0.08,
+  },
+  cloturerBtn: {
+    borderColor: "#43b57b",
+    backgroundColor: "#192d23",
+  },
+  cancelarBtn: {
+    borderColor: "#b55a43",
+    backgroundColor: "#2a1916",
+  },
+  acceptBtn: {
+    borderColor: "#43b57b",
+    backgroundColor: "#192d23",
+  },
+  hideBtn: {
+    borderColor: "#FFD600",
+    backgroundColor: "#181a20",
   },
 });
