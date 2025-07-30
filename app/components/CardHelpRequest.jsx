@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Animated } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import dayjs from "dayjs";
@@ -12,10 +12,6 @@ function parseFirestoreDate(val) {
   return val; // déjà une Date JS
 }
 
-/**
- * Retourne "Hoje às HH:mm" si la date est aujourd'hui,
- * sinon "dddd, D de MMMM às HH:mm" en portugais.
- */
 function formatHojeOuData(date) {
   const d = dayjs(date);
   const now = dayjs();
@@ -25,13 +21,9 @@ function formatHojeOuData(date) {
   return `${d.locale("pt-br").format("dddd, D [de] MMMM")} às ${d.format("HH:mm")}`;
 }
 
-// Génère un ID alphanumérique aléatoire de 4 caractères
-function generateRandomId(length = 4) {
-  return Math.random().toString(36).substr(2, length).toUpperCase();
-}
-
 export default function CardHelpRequest({
   demanda,
+  badgeId, // <--- récupéré du parent
   isMine = false,
   onCancel,
   onClose,
@@ -40,10 +32,9 @@ export default function CardHelpRequest({
   showAccept,
   showHide,
   loading,
+  numPedido,
 }) {
   const [fadeAnim] = useState(new Animated.Value(0));
-  // Génère un ID à 4 caractères pour le badge
-  const [randomId] = useState(() => generateRandomId());
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -80,8 +71,8 @@ export default function CardHelpRequest({
       ]}
     >
       {/* Badge alphanumérique */}
-      <View style={[styles.numBulle, { borderColor, shadowColor }]}> 
-        <Text style={styles.numPedido}>{`#${randomId}`}</Text>
+      <View style={[styles.numBulle, { borderColor, shadowColor }]}>
+        <Text style={styles.numPedido}>{`#${badgeId || "----"}`}</Text>
       </View>
 
       {/* Apelido */}
@@ -151,6 +142,7 @@ export default function CardHelpRequest({
 }
 
 const styles = StyleSheet.create({
+
   card: {
     borderWidth: 2,
     borderRadius: 17,
