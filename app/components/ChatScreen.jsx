@@ -63,7 +63,7 @@ export default function ChatScreen() {
         system: false,
       });
       setInput("");
-    } catch (e) {
+    } catch (_) {
       // Toast ou Alerte ici si besoin
     }
     setSending(false);
