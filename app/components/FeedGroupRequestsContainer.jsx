@@ -1,47 +1,58 @@
-// components/FeedGroupRequestsContainer.jsx
+// src/components/FeedGroupRequestsContainer.jsx
 
 import React, { useState, useEffect, useCallback } from "react";
 import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { useUserStore } from "../../store/users";
+import CardHelpRequest from "./CardHelpRequest";
+import Toast from "react-native-toast-message";
+import CreateHelpModal from "./modals/CreateHelpModal";
+import EditHelpModal from "./EditHelpModal";
+import { useRouter } from "expo-router";
+
+// -- Import Firestore helpers/services --
 import {
   getUserRequests,
   getGroupRequests,
   hideGroupHelpForUser,
   hideAllGroupHelpsForUser,
-  acceptGroupHelp,
   cancelGroupHelp,
   updateGroupHelpMessage,
   createGroupHelp
 } from "../../services/groupHelpService";
-import CardHelpRequest from "../components/CardHelpRequest";
-import EditHelpModal from "../components/EditHelpModal";
-import Coachmark from "../components/Coachmark";
-import Toast from "react-native-toast-message";
-import CreateHelpModal from "../components/modals/CreateHelpModal";
 
-// Génère un ID alphanumérique de 4 caractères
+// -- Chat helper (Firestore) --
+import { createChatOnAccept } from "../../utils/chatHelpers";
+
+// -- Utilitaire pour badgeId random (4 lettres/chiffres) --
 function generateRandomId(length = 4) {
   return Math.random().toString(36).substr(2, length).toUpperCase();
 }
 
+/**
+ * Composant principal qui affiche les demandes d'aide (perso + groupe),
+ * propose l'action de création, d'acceptation (qui ouvre le chat), d'édition et d'annulation.
+ */
 export default function FeedGroupRequestsContainer({ groupId }) {
   const { user } = useUserStore();
+  const router = useRouter();
+
+  // States pour les demandes
   const [myRequests, setMyRequests] = useState([]);
   const [groupRequests, setGroupRequests] = useState([]);
-  const [editModalVisible, setEditModalVisible] = useState(false);
-  const [editingRequest, setEditingRequest] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
-
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [loadingCreate, setLoadingCreate] = useState(false);
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editingRequest, setEditingRequest] = useState(null);
 
+  // --- Récupération des données ---
   const fetchMyRequests = useCallback(async () => {
     if (!user?.id || !groupId) return;
     try {
       const data = await getUserRequests({ userId: user.id, groupId });
       setMyRequests(data || []);
-    } catch (_) {
+    } catch {
       setMyRequests([]);
     }
   }, [user, groupId]);
@@ -51,7 +62,7 @@ export default function FeedGroupRequestsContainer({ groupId }) {
     try {
       const data = await getGroupRequests({ groupId, userId: user.id });
       setGroupRequests(data || []);
-    } catch (_) {
+    } catch {
       setGroupRequests([]);
     }
   }, [groupId, user]);
@@ -68,11 +79,10 @@ export default function FeedGroupRequestsContainer({ groupId }) {
     fetchGroupRequests();
   }, [groupId, user, fetchGroupRequests, fetchMyRequests]);
 
-  // --- Handler création ---
+  // --- Création d'une demande d'aide ---
   const handleCreateHelp = async (payload) => {
     setLoadingCreate(true);
     try {
-      // Génère badgeId FRONT ici
       const badgeId = generateRandomId(4);
       await createGroupHelp({
         groupId,
@@ -81,7 +91,7 @@ export default function FeedGroupRequestsContainer({ groupId }) {
         message: payload.message,
         isScheduled: !!payload.isScheduled,
         dateHelp: payload.dateHelp || null,
-        badgeId, // Passe au back (ou stocke en front si tu veux pure front)
+        badgeId,
       });
       setShowCreateModal(false);
       Toast.show({ type: "success", text1: "Pedido criado com sucesso!" });
@@ -92,8 +102,7 @@ export default function FeedGroupRequestsContainer({ groupId }) {
     setLoadingCreate(false);
   };
 
-  // Les autres handlers sont inchangés (edit, cancel, accept, hide, hideAll...)
-
+  // --- Edition ---
   const handleEditSave = async (newMsg) => {
     if (!editingRequest) return;
     try {
@@ -107,6 +116,7 @@ export default function FeedGroupRequestsContainer({ groupId }) {
     }
   };
 
+  // --- Annulation ---
   const handleCancel = async (id) => {
     try {
       await cancelGroupHelp(id, user.id);
@@ -117,16 +127,22 @@ export default function FeedGroupRequestsContainer({ groupId }) {
     }
   };
 
-  const handleAccept = async (id) => {
+  // --- Acceptation (création du chat et ouverture de la page chat) ---
+  const handleAccept = async (demanda) => {
     try {
-      await acceptGroupHelp({ demandaId: id, acceptedById: user.id, acceptedByApelido: user.apelido });
-      Toast.show({ type: "success", text1: "Você aceitou ajudar!" });
+      if (!user) throw new Error("Vous devez être connecté.");
+      // Crée le chat Firestore et retourne l'id du chat
+      const chatId = await createChatOnAccept(demanda, user);
+      Toast.show({ type: "success", text1: "Chat criado, redirecionando..." });
+      // Redirige vers la page chat
+      router.push({ pathname: "/chat", params: { chatId } });
       onRefresh();
     } catch (e) {
-      Toast.show({ type: "error", text1: "Erro ao aceitar", text2: e.message });
+      Toast.show({ type: "error", text1: "Erro ao abrir chat", text2: e.message });
     }
   };
 
+  // --- Cacher une demande ---
   const handleHide = async (id) => {
     try {
       await hideGroupHelpForUser(id, user.id);
@@ -137,6 +153,7 @@ export default function FeedGroupRequestsContainer({ groupId }) {
     }
   };
 
+  // --- Cacher toutes les demandes ---
   const handleHideAll = async () => {
     try {
       await hideAllGroupHelpsForUser(groupId, user.id);
@@ -154,9 +171,7 @@ export default function FeedGroupRequestsContainer({ groupId }) {
       contentContainerStyle={{ paddingBottom: 48 }}
       keyboardShouldPersistTaps="handled"
     >
-      <Coachmark />
-
-      {/* --- Section AJUDAR + bouton --- */}
+      {/* --- Section création d'une nouvelle demande --- */}
       <Text style={styles.titleAjudar}>Ajudar</Text>
       <TouchableOpacity
         style={styles.btnCreate}
@@ -167,7 +182,7 @@ export default function FeedGroupRequestsContainer({ groupId }) {
         <Text style={styles.btnCreateText}>Nova demanda</Text>
       </TouchableOpacity>
 
-      {/* --- Minhas demandas --- */}
+      {/* --- Mes demandes (moi) --- */}
       <Text style={styles.sectionTitle}>Minhas demandas</Text>
       <View style={styles.sectionBox}>
         {myRequests.length === 0 ? (
@@ -177,16 +192,17 @@ export default function FeedGroupRequestsContainer({ groupId }) {
             <CardHelpRequest
               key={demanda.id}
               demanda={demanda}
-              badgeId={demanda.badgeId}   // <--- badgeId utilisé ici !
+              badgeId={demanda.badgeId}
               numPedido={idx + 1}
               isMine
               onCancel={() => handleCancel(demanda.id)}
+              onEdit={() => { setEditModalVisible(true); setEditingRequest(demanda); }}
             />
           ))
         )}
       </View>
 
-      {/* --- Demandas do grupo --- */}
+      {/* --- Demandas du groupe --- */}
       <View style={styles.sectionHeaderRow}>
         <Text style={styles.sectionTitle}>Demandas do grupo</Text>
         {groupRequests.length > 0 && (
@@ -203,9 +219,9 @@ export default function FeedGroupRequestsContainer({ groupId }) {
             <CardHelpRequest
               key={demanda.id}
               demanda={demanda}
-              badgeId={demanda.badgeId}   // <--- badgeId utilisé ici aussi !
+              badgeId={demanda.badgeId}
               numPedido={idx + 1}
-              onAccept={() => handleAccept(demanda.id)}
+              onAccept={() => handleAccept(demanda)}
               onHide={() => handleHide(demanda.id)}
               showAccept
               showHide
@@ -214,6 +230,7 @@ export default function FeedGroupRequestsContainer({ groupId }) {
         )}
       </View>
 
+      {/* --- Modales --- */}
       <CreateHelpModal
         visible={showCreateModal}
         onClose={() => setShowCreateModal(false)}
@@ -231,80 +248,37 @@ export default function FeedGroupRequestsContainer({ groupId }) {
   );
 }
 
+// --- Styles ---
 const styles = StyleSheet.create({
-  container: {
-    backgroundColor: "#181A20",
-    flex: 1,
-  },
+  container: { backgroundColor: "#181A20", flex: 1 },
   titleAjudar: {
-    color: "#FFD600",
-    fontWeight: "bold",
-    fontSize: 25,
-    textAlign: "center",
-    marginTop: 17,
-    marginBottom: 6,
-    letterSpacing: 0.8,
+    color: "#FFD600", fontWeight: "bold", fontSize: 25, textAlign: "center",
+    marginTop: 17, marginBottom: 6, letterSpacing: 0.8,
   },
   btnCreate: {
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "center",
-    backgroundColor: "#22242D",
-    paddingHorizontal: 18,
-    paddingVertical: 9,
-    borderRadius: 19,
-    marginBottom: 8,
-    marginTop: 10,
-    borderWidth: 2,
-    borderColor: "#FFD600",
-    shadowColor: "#FFD600",
-    shadowOpacity: 0.06,
-    shadowRadius: 9,
+    flexDirection: "row", alignItems: "center", alignSelf: "center", backgroundColor: "#22242D",
+    paddingHorizontal: 18, paddingVertical: 9, borderRadius: 19, marginBottom: 8, marginTop: 10,
+    borderWidth: 2, borderColor: "#FFD600", shadowColor: "#FFD600", shadowOpacity: 0.06, shadowRadius: 9,
   },
   btnCreateText: {
-    color: "#FFD600",
-    fontWeight: "bold",
-    fontSize: 16.3,
-    marginLeft: 9,
-    letterSpacing: 0.13,
+    color: "#FFD600", fontWeight: "bold", fontSize: 16.3, marginLeft: 9, letterSpacing: 0.13,
   },
   sectionTitle: {
-    color: "#FFD600",
-    fontWeight: "bold",
-    fontSize: 21,
-    textAlign: "center",
-    marginTop: 23,
-    marginBottom: 9,
-    letterSpacing: 0.4,
+    color: "#FFD600", fontWeight: "bold", fontSize: 21, textAlign: "center",
+    marginTop: 23, marginBottom: 9, letterSpacing: 0.4,
   },
   sectionBox: {
-    backgroundColor: "#13151A",
-    borderRadius: 14,
-    padding: 12,
-    marginBottom: 10,
+    backgroundColor: "#13151A", borderRadius: 14, padding: 12, marginBottom: 10,
   },
   emptyText: {
-    color: "#888",
-    textAlign: "center",
-    marginVertical: 14,
-    fontSize: 16,
-    fontStyle: "italic",
+    color: "#888", textAlign: "center", marginVertical: 14, fontSize: 16, fontStyle: "italic",
   },
   sectionHeaderRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 12,
-    marginBottom: 0,
-    paddingRight: 16,
+    flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+    marginTop: 12, marginBottom: 0, paddingRight: 16,
   },
   hideAllBtn: {
-    color: "#FFD600",
-    fontWeight: "bold",
-    fontSize: 15,
-    textDecorationLine: "underline",
-    padding: 6,
-    borderRadius: 9,
-    overflow: "hidden",
+    color: "#FFD600", fontWeight: "bold", fontSize: 15, textDecorationLine: "underline",
+    padding: 6, borderRadius: 9, overflow: "hidden",
   },
 });
