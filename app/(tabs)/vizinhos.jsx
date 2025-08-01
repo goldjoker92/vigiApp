@@ -14,94 +14,100 @@ import {
 } from "react-native";
 import { MaterialIcons, Feather } from "@expo/vector-icons";
 import Toast from "react-native-toast-message";
-import { doc, updateDoc } from "firebase/firestore";
-import { db } from "../../firebase";
 import { useUserStore } from "../../store/users";
 import { useGrupoDetails } from "../../hooks/useGrupoDetails";
 import { leaveGroup } from "../../services/groupService";
 import QuitGroupModal from "../components/QuitGroupModal";
-import FeedGroupRequestsContainer from "../components/FeedGroupRequestsContainer";
+import CardHelpRequest from "../components/CardHelpRequest";
 import { useRouter } from "expo-router";
-import dayjs from "dayjs";
 import { useAuthGuard } from "../../hooks/useAuthGuard";
+import { useRealtimeGroupHelps } from "../../hooks/useRealtimeGroupHelps";
+import { useRealtimeMyGroupHelps } from "../../hooks/useRealtimeMyGroupHelps";
+import CreateHelpModal from "../components/modals/CreateHelpModal";
+import {
+  acceptGroupHelp,
+  hideGroupHelpForUser,
+} from "../../services/groupHelpService";
 
 const SCREEN_HEIGHT = Dimensions.get("window").height;
-
-// ----- ADMIN REASSIGNMENT -----
-async function startAdminReassignment(grupo, user, groupId) {
-  try {
-    const apelidosSorted = [...(grupo.apelidos || [])].filter(a => a !== user.apelido).sort();
-    const membres = grupo.membrosDetalhados || [];
-    const candidates = apelidosSorted
-      .map(apelido => membres.find(m => m.apelido === apelido))
-      .filter(Boolean);
-    for (let i = 0; i < candidates.length; i++) {
-      const membro = candidates[i];
-      await updateDoc(doc(db, "groups", groupId), {
-        propostaAdmin: {
-          apelido: membro.apelido,
-          userId: membro.id,
-          status: "pending",
-        },
-      });
-    }
-    const deleteAt = dayjs().add(7, "day").toISOString();
-    await updateDoc(doc(db, "groups", groupId), {
-      adminApelido: null,
-      deleteAt,
-      propostaAdmin: null,
-      deleteWarningSent: false,
-    });
-  } catch (err) {
-    console.log("[ADMIN ERROR]", err);
-  }
-}
 
 export default function VizinhosScreen() {
   const { groupId, setGroupId } = useUserStore();
   const user = useAuthGuard();
   const { grupo, loading } = useGrupoDetails(groupId);
   const router = useRouter();
+
   const [quitModalVisible, setQuitModalVisible] = useState(false);
+  const [isQuitting, setIsQuitting] = useState(false);
+
+  // --- Hooks temps réel
+  const [groupHelps, loadingGroupHelps] = useRealtimeGroupHelps(groupId, user?.id);
+  const [myRequests, loadingMyRequests] = useRealtimeMyGroupHelps(groupId, user?.id);
+
+  // --- Modale création demande
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [loadingCreate, setLoadingCreate] = useState(false);
+
+  // Création d'une demande d'aide
+  const handleCreateHelp = async (payload) => {
+    setLoadingCreate(true);
+    try {
+      // await createGroupHelp({ ...payload, groupId, userId: user.id, apelido: user.apelido });
+      setShowCreateModal(false);
+      Toast.show({ type: "success", text1: "Pedido criado com sucesso!" });
+    } catch (e) {
+      Toast.show({ type: "error", text1: "Erro ao criar pedido", text2: e.message });
+    }
+    setLoadingCreate(false);
+  };
+
+  // Handler QUITTER
+  const handleQuit = async () => {
+    try {
+      setIsQuitting(true);
+      await leaveGroup({ groupId, userId: user.id, apelido: user.apelido });
+      setGroupId(null);
+      setQuitModalVisible(false);
+      Vibration.vibrate([0, 60, 60, 60]);
+      setTimeout(() => {
+        router.replace({ pathname: "/(tabs)/home", params: { quitGroup: grupo?.name || "" } });
+      }, 200);
+    } catch (e) {
+      Toast.show({ type: "error", text1: "Erro ao sair", text2: e.message });
+      Vibration.vibrate([0, 100, 50, 100]);
+    } finally {
+      setIsQuitting(false);
+    }
+  };
 
   if (user === undefined)
     return <ActivityIndicator style={{ flex: 1 }} color="#22C55E" />;
-  if (!user) return null;
-
-  // --- CAS USER NON RATTACHÉ À AUCUN GROUPE ---
+  if (!user)
+    return (
+      <View style={styles.centered}>
+        <ActivityIndicator color="#22C55E" size="large" />
+      </View>
+    );
+  if (loading || !grupo) {
+    return (
+      <View style={styles.centered}>
+        <ActivityIndicator color="#22C55E" size="large" />
+      </View>
+    );
+  }
   if (!loading && !grupo) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: "#181A20" }}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={{ flex: 1 }}
-        >
-          <ScrollView
-            contentContainerStyle={styles.noGroupContainer}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
-            <Feather
-              name="alert-triangle"
-              size={42}
-              color="#FFD600"
-              style={{ marginBottom: 14 }}
-            />
-            <Text style={styles.noGroupTitle}>
-              Você não está em nenhum grupo
-            </Text>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+          <ScrollView contentContainerStyle={styles.noGroupContainer} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            <Feather name="alert-triangle" size={42} color="#FFD600" style={{ marginBottom: 14 }} />
+            <Text style={styles.noGroupTitle}>Você não está em nenhum grupo</Text>
             <Text style={styles.noGroupText}>
               Você ainda não está vinculado a um grupo de vizinhos do seu CEP.{"\n\n"}
               Para criar um novo grupo, volte à página inicial et clique no botão{" "}
-              <Text style={{ color: "#4F8DFF", fontWeight: "bold" }}>
-                Criar novo grupo com seu CEP
-              </Text>.
+              <Text style={{ color: "#4F8DFF", fontWeight: "bold" }}>Criar novo grupo com seu CEP</Text>.
             </Text>
-            <TouchableOpacity
-              style={styles.goHomeBtn}
-              onPress={() => router.replace("/(tabs)/home")}
-              activeOpacity={0.87}
-            >
+            <TouchableOpacity style={styles.goHomeBtn} onPress={() => router.replace("/(tabs)/home")} activeOpacity={0.87}>
               <Feather name="arrow-left-circle" size={18} color="#fff" style={{ marginRight: 8 }} />
               <Text style={styles.goHomeBtnText} numberOfLines={1} adjustsFontSizeToFit>
                 Voltar para a página inicial
@@ -113,72 +119,30 @@ export default function VizinhosScreen() {
     );
   }
 
-  // ---- AFFICHAGE DU GROUPE ----
-  let criador =
-    grupo.creatorUserId === user.uid
-      ? user.apelido || user.username || "Você"
-      : grupo.creatorNome || grupo.creatorApelido || "Desconhecido";
-
-  // --- Handler quitter groupe (optionnel, à ajuster selon ton flow admin)
-  const handleQuit = async () => {
-    try {
-      const isCreator = user.uid === grupo.creatorUserId;
-      if (isCreator) await startAdminReassignment(grupo, user, groupId);
-      await leaveGroup({ groupId, userId: user.id, apelido: user.apelido });
-      setGroupId(null);
-      setQuitModalVisible(false);
-      Vibration.vibrate([0, 60, 60, 60]);
-      setTimeout(() => {
-        router.replace({
-          pathname: "/(tabs)/home",
-          params: { quitGroup: grupo.name },
-        });
-      }, 900);
-    } catch (e) {
-      Toast.show({
-        type: "error",
-        text1: "Erro ao sair",
-        text2: e.message,
-      });
-      Vibration.vibrate([0, 100, 50, 100]);
-    }
-  };
-
-  if (loading || !grupo)
-    return (
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: "#181A20",
-          justifyContent: "center",
-          alignItems: "center",
-        }}
-      >
-        <ActivityIndicator color="#22C55E" size="large" />
-      </View>
-    );
+  // Calcul du nom créateur
+  let criador = "Desconhecido";
+  if (grupo && user) {
+    criador =
+      grupo.creatorUserId === user.uid
+        ? user.apelido || user.username || "Você"
+        : grupo.creatorNome || grupo.creatorApelido || "Desconhecido";
+  }
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#181A20" }}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={{ flex: 1 }}
-      >
-        <ScrollView
-          contentContainerStyle={styles.content}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+
           {/* --- INFOS GROUPE --- */}
           <View style={styles.header}>
-            <Text style={styles.groupName}>{grupo.name}</Text>
+            <Text style={styles.groupName}>{grupo?.name || ""}</Text>
           </View>
           <View style={styles.infoBox}>
             <View style={styles.infoRow}>
               <Feather name="users" size={20} color="#00C859" />
               <Text style={styles.infoText}>
                 <Text style={{ color: "#00C859", fontWeight: "bold", fontSize: 19 }}>
-                  {grupo.members?.length || 1} / {grupo.maxMembers || 30}
+                  {grupo?.members?.length || 1} / {grupo?.maxMembers || 30}
                 </Text>{" "}
                 vizinhos
               </Text>
@@ -186,25 +150,24 @@ export default function VizinhosScreen() {
             <View style={styles.infoRow}>
               <Feather name="user-check" size={20} color="#00C859" />
               <Text style={[styles.infoText, { color: "#00C859", fontWeight: "bold" }]}>
-                Criador:{" "}
-                <Text style={{ color: "#fff", fontWeight: "bold" }}>{criador}</Text>
+                Criador: <Text style={{ color: "#fff", fontWeight: "bold" }}>{criador}</Text>
               </Text>
             </View>
             <View style={styles.infoRow}>
               <Feather name="map-pin" size={19} color="#00C859" />
               <Text style={[styles.infoText, { color: "#00C859", fontWeight: "bold" }]}>
-                CEP:{" "}
-                <Text style={{ color: "#fff", fontWeight: "bold" }}>{grupo.cep}</Text>
+                CEP: <Text style={{ color: "#fff", fontWeight: "bold" }}>{grupo?.cep || ""}</Text>
               </Text>
             </View>
           </View>
 
-          {/* --- BOUTON QUITTER GROUPE --- */}
+          {/* --- BOUTON SAIR DO GRUPO juste SOUS la card groupe --- */}
           <View style={styles.quitBtnWrapper}>
             <TouchableOpacity
               style={styles.quitBtn}
               onPress={() => setQuitModalVisible(true)}
               activeOpacity={0.87}
+              disabled={isQuitting}
             >
               <MaterialIcons name="logout" size={21} color="#FFD600" style={{ marginRight: 11 }} />
               <Text
@@ -215,22 +178,86 @@ export default function VizinhosScreen() {
                 minimumFontScale={0.85}
                 allowFontScaling
               >
-                Sair do grupo
+                {isQuitting ? "Saindo..." : "Sair do grupo"}
               </Text>
             </TouchableOpacity>
           </View>
 
-          {/* --- FEED DES DEMANDES --- */}
-          <FeedGroupRequestsContainer userId={user.id} groupId={groupId} />
-        </ScrollView>
+          {/* --- BOUTON PEDIR AJUDA --- */}
+          <TouchableOpacity
+            style={styles.btnCreate}
+            onPress={() => setShowCreateModal(true)}
+            activeOpacity={0.88}
+          >
+            <Feather name="plus-circle" size={22} color="#FFD600" style={{ marginRight: 9 }} />
+            <Text style={styles.btnCreateText}>Nova demanda</Text>
+          </TouchableOpacity>
 
-        {/* --- Modale quitter groupe (optionnelle) */}
-        <QuitGroupModal
-          visible={quitModalVisible}
-          groupName={grupo.name}
-          onConfirm={handleQuit}
-          onCancel={() => setQuitModalVisible(false)}
-        />
+          {/* --- TES DEMANDES (“Minhas demandas”) --- */}
+          <Text style={styles.sectionTitle}>Minhas demandas</Text>
+          <View style={styles.sectionBox}>
+            {loadingMyRequests ? (
+              <ActivityIndicator color="#FFD600" style={{ marginTop: 12 }} />
+            ) : myRequests.length === 0 ? (
+              <Text style={styles.emptyText}>Você não fez nenhum pedido ainda.</Text>
+            ) : (
+              myRequests.map((demanda, idx) => (
+                <CardHelpRequest
+                  key={demanda.id}
+                  demanda={demanda}
+                  badgeId={demanda.badgeId}
+                  numPedido={idx + 1}
+                  isMine={true}
+                  showAccept={false}
+                  showHide={true}
+                  onAccept={() => acceptGroupHelp({ demandaId: demanda.id, acceptedById: user.id, acceptedByApelido: user.apelido })}
+                  onHide={() => hideGroupHelpForUser(demanda.id, user.id)}
+                />
+              ))
+            )}
+          </View>
+
+          {/* --- DEMANDES DU GROUPE (“Demandas do grupo”) --- */}
+          <Text style={styles.sectionTitle}>Demandas do grupo</Text>
+          <View style={styles.sectionBox}>
+            {loadingGroupHelps ? (
+              <ActivityIndicator color="#FFD600" style={{ marginTop: 12 }} />
+            ) : groupHelps.length === 0 ? (
+              <Text style={styles.emptyText}>Nenhuma demanda disponível.</Text>
+            ) : (
+              groupHelps.map((demanda, idx) => (
+                <CardHelpRequest
+                  key={demanda.id}
+                  demanda={demanda}
+                  badgeId={demanda.badgeId}
+                  numPedido={idx + 1}
+                  isMine={demanda.userId === user.id}
+                  showAccept={demanda.userId !== user.id}
+                  showHide={demanda.userId !== user.id}
+                  onAccept={() => acceptGroupHelp({ demandaId: demanda.id, acceptedById: user.id, acceptedByApelido: user.apelido })}
+                  onHide={() => hideGroupHelpForUser(demanda.id, user.id)}
+                />
+              ))
+            )}
+          </View>
+
+          {/* --- MODALE CRÉER DEMANDE --- */}
+          <CreateHelpModal
+            visible={showCreateModal}
+            onClose={() => setShowCreateModal(false)}
+            onCreate={handleCreateHelp}
+            loading={loadingCreate}
+          />
+
+          {/* --- MODALE QUITTER GROUPE --- */}
+          <QuitGroupModal
+            visible={quitModalVisible}
+            groupName={grupo?.name || ""}
+            onConfirm={handleQuit}
+            onCancel={() => setQuitModalVisible(false)}
+            loading={isQuitting}
+          />
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -280,8 +307,8 @@ const styles = StyleSheet.create({
   quitBtnWrapper: {
     width: "100%",
     alignItems: "center",
-    marginTop: 14,
-    marginBottom: 18,
+    marginTop: 2,
+    marginBottom: 16,
   },
   quitBtn: {
     backgroundColor: "#FF4D4F",
@@ -349,5 +376,29 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     fontSize: 12.5,
     letterSpacing: 0.09,
+  },
+  centered: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#181A20"
+  },
+  btnCreate: {
+    flexDirection: "row", alignItems: "center", alignSelf: "center", backgroundColor: "#22242D",
+    paddingHorizontal: 18, paddingVertical: 9, borderRadius: 19, marginBottom: 8, marginTop: 4,
+    borderWidth: 2, borderColor: "#FFD600", shadowColor: "#FFD600", shadowOpacity: 0.06, shadowRadius: 9,
+  },
+  btnCreateText: {
+    color: "#FFD600", fontWeight: "bold", fontSize: 16.3, marginLeft: 9, letterSpacing: 0.13,
+  },
+  sectionTitle: {
+    color: "#FFD600", fontWeight: "bold", fontSize: 21, textAlign: "center",
+    marginTop: 23, marginBottom: 9, letterSpacing: 0.4,
+  },
+  sectionBox: {
+    backgroundColor: "#13151A", borderRadius: 14, padding: 12, marginBottom: 10,
+  },
+  emptyText: {
+    color: "#888", textAlign: "center", marginVertical: 14, fontSize: 16, fontStyle: "italic",
   },
 });
