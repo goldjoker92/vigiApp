@@ -1,6 +1,4 @@
-// src/components/FeedGroupRequestsContainer.jsx
-
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { useUserStore } from "../../store/users";
@@ -10,34 +8,30 @@ import CreateHelpModal from "./modals/CreateHelpModal";
 import EditHelpModal from "./EditHelpModal";
 import { useRouter } from "expo-router";
 
+// --- Firestore natif ---
+import { collection, query, where, onSnapshot, orderBy } from "firebase/firestore";
+import { db } from "../../firebase";
+
 // -- Import Firestore helpers/services --
 import {
-  getUserRequests,
-  getGroupRequests,
   hideGroupHelpForUser,
   hideAllGroupHelpsForUser,
   cancelGroupHelp,
   updateGroupHelpMessage,
   createGroupHelp
 } from "../../services/groupHelpService";
-
-// -- Chat helper (Firestore) --
 import { createChatOnAccept } from "../../utils/chatHelpers";
 
-// -- Utilitaire pour badgeId random (4 lettres/chiffres) --
+// Générateur d'ID badge unique
 function generateRandomId(length = 4) {
   return Math.random().toString(36).substr(2, length).toUpperCase();
 }
 
-/**
- * Composant principal qui affiche les demandes d'aide (perso + groupe),
- * propose l'action de création, d'acceptation (qui ouvre le chat), d'édition et d'annulation.
- */
 export default function FeedGroupRequestsContainer({ groupId }) {
   const { user } = useUserStore();
   const router = useRouter();
 
-  // States pour les demandes
+  // States
   const [myRequests, setMyRequests] = useState([]);
   const [groupRequests, setGroupRequests] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -46,38 +40,44 @@ export default function FeedGroupRequestsContainer({ groupId }) {
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editingRequest, setEditingRequest] = useState(null);
 
-  // --- Récupération des données ---
-  const fetchMyRequests = useCallback(async () => {
-    if (!user?.id || !groupId) return;
-    try {
-      const data = await getUserRequests({ userId: user.id, groupId });
-      setMyRequests(data || []);
-    } catch {
-      setMyRequests([]);
-    }
-  }, [user, groupId]);
-
-  const fetchGroupRequests = useCallback(async () => {
-    if (!groupId || !user?.id) return;
-    try {
-      const data = await getGroupRequests({ groupId, userId: user.id });
-      setGroupRequests(data || []);
-    } catch {
-      setGroupRequests([]);
-    }
-  }, [groupId, user]);
-
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    Promise.all([fetchMyRequests(), fetchGroupRequests()]).finally(() =>
-      setTimeout(() => setRefreshing(false), 500)
-    );
-  }, [fetchMyRequests, fetchGroupRequests]);
-
+  // --- Récupération des demandes EN TEMPS REEL pour moi
   useEffect(() => {
-    fetchMyRequests();
-    fetchGroupRequests();
-  }, [groupId, user, fetchGroupRequests, fetchMyRequests]);
+    if (!user?.id || !groupId) return;
+    const q = query(
+      collection(db, "groupHelps"),
+      where("groupId", "==", groupId),
+      where("userId", "==", user.id),
+      orderBy("createdAt", "desc")
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setMyRequests(data);
+      console.log("[MY REQUESTS]", data);
+    });
+    return () => unsub();
+  }, [groupId, user?.id]);
+
+  // --- Récupération demandes DU GROUPE EN TEMPS REEL (hors cachées/hors demandes de l'user)
+  useEffect(() => {
+    if (!user?.id || !groupId) return;
+    const q = query(
+      collection(db, "groupHelps"),
+      where("groupId", "==", groupId),
+      orderBy("createdAt", "desc")
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      // N'affiche pas les demandes de l'user ni celles cachées par lui
+      const data = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(demanda =>
+          demanda.userId !== user.id &&
+          !(demanda.hiddenFor && demanda.hiddenFor.includes(user.id))
+        );
+      setGroupRequests(data);
+      console.log("[GROUP REQUESTS]", data);
+    });
+    return () => unsub();
+  }, [groupId, user?.id]);
 
   // --- Création d'une demande d'aide ---
   const handleCreateHelp = async (payload) => {
@@ -95,7 +95,6 @@ export default function FeedGroupRequestsContainer({ groupId }) {
       });
       setShowCreateModal(false);
       Toast.show({ type: "success", text1: "Pedido criado com sucesso!" });
-      onRefresh();
     } catch (e) {
       Toast.show({ type: "error", text1: "Erro ao criar pedido", text2: e.message });
     }
@@ -110,7 +109,6 @@ export default function FeedGroupRequestsContainer({ groupId }) {
       Toast.show({ type: "success", text1: "Demanda atualizada!" });
       setEditModalVisible(false);
       setEditingRequest(null);
-      onRefresh();
     } catch (e) {
       Toast.show({ type: "error", text1: "Erro ao editar", text2: e.message });
     }
@@ -121,7 +119,6 @@ export default function FeedGroupRequestsContainer({ groupId }) {
     try {
       await cancelGroupHelp(id, user.id);
       Toast.show({ type: "success", text1: "Demanda cancelada!" });
-      onRefresh();
     } catch (e) {
       Toast.show({ type: "error", text1: "Erro ao cancelar", text2: e.message });
     }
@@ -131,12 +128,9 @@ export default function FeedGroupRequestsContainer({ groupId }) {
   const handleAccept = async (demanda) => {
     try {
       if (!user) throw new Error("Vous devez être connecté.");
-      // Crée le chat Firestore et retourne l'id du chat
       const chatId = await createChatOnAccept(demanda, user);
       Toast.show({ type: "success", text1: "Chat criado, redirecionando..." });
-      // Redirige vers la page chat
       router.push({ pathname: "/chat", params: { chatId } });
-      onRefresh();
     } catch (e) {
       Toast.show({ type: "error", text1: "Erro ao abrir chat", text2: e.message });
     }
@@ -147,21 +141,25 @@ export default function FeedGroupRequestsContainer({ groupId }) {
     try {
       await hideGroupHelpForUser(id, user.id);
       Toast.show({ type: "info", text1: "Demanda ocultada do seu feed!" });
-      onRefresh();
     } catch (e) {
       Toast.show({ type: "error", text1: "Erro ao ocultar", text2: e.message });
     }
   };
 
-  // --- Cacher toutes les demandes ---
+  // --- Cacher toutes les demandes du groupe ---
   const handleHideAll = async () => {
     try {
       await hideAllGroupHelpsForUser(groupId, user.id);
       Toast.show({ type: "info", text1: "Todas as demandas ocultadas!" });
-      onRefresh();
     } catch (e) {
       Toast.show({ type: "error", text1: "Erro ao ocultar todas", text2: e.message });
     }
+  };
+
+  // --- Refresh visuel (inutile, les listeners sont temps réel, mais pour pull-to-refresh UX) ---
+  const onRefresh = () => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 600);
   };
 
   return (

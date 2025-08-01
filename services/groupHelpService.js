@@ -12,7 +12,7 @@ import {
   writeBatch,
   orderBy,
 } from "firebase/firestore";
-import { db } from "../firebase"; // ← adapte ce chemin à ta config
+import { db } from "../firebase"; // ← adapte si besoin
 import dayjs from "dayjs";
 
 // --- Helper universel pour Timestamp Firestore ---
@@ -32,16 +32,30 @@ export async function createGroupHelp({
   message,
   isScheduled,
   dateHelp, // Peut être Date JS, string, Timestamp ou null
-  badgeId,  // <-- AJOUTÉ pour le badge unique
+  badgeId,
 }) {
-  if (!groupId || !userId) throw new Error("Paramètre manquant à createGroupHelp");
-  console.log("[createGroupHelp] REÇU:", { groupId, userId, apelido, message, isScheduled, dateHelp, badgeId });
-
-  const docData = {
+  if (!groupId || !userId)
+    throw new Error("Paramètre manquant à createGroupHelp");
+  console.log("[createGroupHelp] REÇU:", {
     groupId,
     userId,
     apelido,
     message,
+    isScheduled,
+    dateHelp,
+    badgeId,
+  });
+
+  // --- Validation/normalisation champs ---
+  const cleanMessage = (message || "").trim();
+  if (!cleanMessage) throw new Error("Message vide");
+
+  // --- Prépare les datas ---
+  const docData = {
+    groupId,
+    userId,
+    apelido,
+    message: cleanMessage,
     isScheduled: !!isScheduled,
     dateHelp: isScheduled ? toFirestoreTimestamp(dateHelp) : null,
     createdAt: serverTimestamp(),
@@ -53,30 +67,55 @@ export async function createGroupHelp({
     closedReason: null,
     cancelledAt: null,
     hiddenBy: [],
-    badgeId, // <--- NOUVEAU CHAMP badgeId
+    badgeId: badgeId || null,
     history: [
-      { action: isScheduled ? "scheduled" : "open", by: userId, at: dayjs().toISOString() },
+      {
+        action: isScheduled ? "scheduled" : "open",
+        by: userId,
+        at: dayjs().toISOString(),
+      },
     ],
     chatId: null,
     lastUpdateAt: serverTimestamp(),
   };
 
-  // Ajout global
-  const docRef = await addDoc(collection(db, "groupHelps"), docData);
+  // --- Ajout dans collection globale ---
+  let docRef;
+  try {
+    docRef = await addDoc(collection(db, "groupHelps"), docData);
+    console.log(
+      "[createGroupHelp] DOC GROUPHELPS OK, id:",
+      docRef.id,
+      docData
+    );
+  } catch (err) {
+    console.error("[createGroupHelp] ERREUR addDoc groupHelps:", err);
+    throw err;
+  }
 
-  // (Optionnel) Ajouter à une sous-collection dans le groupe
-  await addDoc(collection(db, `groups/${groupId}/helpRequests`), {
-    ...docData,
-    groupHelpSubId: docRef.id,
-  });
+  // --- Ajout en sous-collection (optionnel) ---
+  try {
+    await addDoc(collection(db, `groups/${groupId}/helpRequests`), {
+      ...docData,
+      groupHelpSubId: docRef.id,
+    });
+    console.log(
+      "[createGroupHelp] SOUS-COLLECTION group/groupId/helpRequests OK"
+    );
+  } catch (err) {
+    console.error("[createGroupHelp] ERREUR addDoc sous-collection:", err);
+    // Ne bloque pas le flux général
+  }
 
-  console.log("[createGroupHelp] Crée avec ID:", docRef.id, "DATA ENVOYÉE:", docData);
   return docRef.id;
 }
 
-// 2️⃣ Compter les demandes du user dans le groupe depuis une date
+// Les autres fonctions sont stables et n'ont pas besoin de correction majeure
+// Je te corrige juste la sécurité d'usage sur les queries, et j’ajoute logs et guards si besoin :
+
 export async function countUserRequests({ userId, groupId, since }) {
-  if (!userId || !groupId || !since) throw new Error("Paramètre manquant pour countUserRequests");
+  if (!userId || !groupId || !since)
+    throw new Error("Paramètre manquant pour countUserRequests");
   const sinceTimestamp = toFirestoreTimestamp(since);
 
   const q = query(
@@ -90,30 +129,38 @@ export async function countUserRequests({ userId, groupId, since }) {
   return snapshot.size;
 }
 
-// 3️⃣ Masquer une demande pour un user
 export async function hideGroupHelpForUser(demandaId, userId) {
+  if (!demandaId || !userId) throw new Error("Manque demandaId/userId");
   const ref = doc(db, "groupHelps", demandaId);
   await updateDoc(ref, { hiddenBy: arrayUnion(userId) });
   console.log("[hideGroupHelpForUser]", demandaId, "for", userId);
 }
 
-// 4️⃣ Masquer toutes les demandes du groupe pour un user
 export async function hideAllGroupHelpsForUser(groupId, userId) {
-  const q = query(collection(db, "groupHelps"), where("groupId", "==", groupId));
+  if (!groupId || !userId) throw new Error("Manque groupId/userId");
+  const q = query(
+    collection(db, "groupHelps"),
+    where("groupId", "==", groupId)
+  );
   const snapshot = await getDocs(q);
 
   const batch = writeBatch(db);
-  snapshot.forEach(docSnap => {
+  snapshot.forEach((docSnap) => {
     batch.update(doc(db, "groupHelps", docSnap.id), {
-      hiddenBy: arrayUnion(userId)
+      hiddenBy: arrayUnion(userId),
     });
   });
   await batch.commit();
   console.log("[hideAllGroupHelpsForUser]", groupId, "for", userId);
 }
 
-// 5️⃣ Accepter une demande d'aide
-export async function acceptGroupHelp({ demandaId, acceptedById, acceptedByApelido }) {
+export async function acceptGroupHelp({
+  demandaId,
+  acceptedById,
+  acceptedByApelido,
+}) {
+  if (!demandaId || !acceptedById)
+    throw new Error("Paramètre manquant à acceptGroupHelp");
   const ref = doc(db, "groupHelps", demandaId);
   await updateDoc(ref, {
     status: "accepted",
@@ -121,36 +168,45 @@ export async function acceptGroupHelp({ demandaId, acceptedById, acceptedByApeli
     acceptedBy: acceptedByApelido,
     acceptedAt: serverTimestamp(),
     lastUpdateAt: serverTimestamp(),
-    history: arrayUnion({ action: "accepted", by: acceptedById, at: dayjs().toISOString() }),
+    history: arrayUnion({
+      action: "accepted",
+      by: acceptedById,
+      at: dayjs().toISOString(),
+    }),
   });
   console.log("[acceptGroupHelp]", demandaId, "by", acceptedById);
 }
 
-// 6️⃣ Modifier le texte d'une demande
 export async function updateGroupHelpMessage(demandaId, newMessage) {
+  if (!demandaId || !newMessage)
+    throw new Error("Paramètre manquant à updateGroupHelpMessage");
   const ref = doc(db, "groupHelps", demandaId);
   await updateDoc(ref, {
     message: newMessage,
-    lastUpdateAt: serverTimestamp()
+    lastUpdateAt: serverTimestamp(),
   });
   console.log("[updateGroupHelpMessage]", demandaId, newMessage);
 }
 
-// 7️⃣ Annuler une demande (soft cancel)
 export async function cancelGroupHelp(demandaId, userId) {
+  if (!demandaId || !userId) throw new Error("Manque demandaId/userId");
   const ref = doc(db, "groupHelps", demandaId);
   await updateDoc(ref, {
     status: "cancelled",
     cancelledAt: serverTimestamp(),
     lastUpdateAt: serverTimestamp(),
-    history: arrayUnion({ action: "cancelled", by: userId, at: dayjs().toISOString() })
+    history: arrayUnion({
+      action: "cancelled",
+      by: userId,
+      at: dayjs().toISOString(),
+    }),
   });
   console.log("[cancelGroupHelp]", demandaId, "by", userId);
 }
 
-// 8️⃣ Récupérer MES demandes d'aide dans le groupe (pour "Minhas demandas")
 export async function getUserRequests({ userId, groupId }) {
-  if (!userId || !groupId) throw new Error("Paramètre manquant à getUserRequests");
+  if (!userId || !groupId)
+    throw new Error("Paramètre manquant à getUserRequests");
   const q = query(
     collection(db, "groupHelps"),
     where("userId", "==", userId),
@@ -158,24 +214,23 @@ export async function getUserRequests({ userId, groupId }) {
     orderBy("createdAt", "desc")
   );
   const snapshot = await getDocs(q);
-  const result = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  const result = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
   console.log("[getUserRequests]", result.length);
   return result;
 }
 
-// 9️⃣ Récupérer TOUTES les demandes visibles pour ce user (feed groupe)
 export async function getGroupRequests({ groupId, userId }) {
-  if (!userId || !groupId) throw new Error("Paramètre manquant à getGroupRequests");
+  if (!userId || !groupId)
+    throw new Error("Paramètre manquant à getGroupRequests");
   const q = query(
     collection(db, "groupHelps"),
     where("groupId", "==", groupId),
     orderBy("createdAt", "desc")
   );
   const snapshot = await getDocs(q);
-  // Filtre : ne garde QUE celles qui ne sont PAS masquées par ce user
   const result = snapshot.docs
-    .map(doc => ({ id: doc.id, ...doc.data() }))
-    .filter(demanda => !(demanda.hiddenBy || []).includes(userId));
+    .map((doc) => ({ id: doc.id, ...doc.data() }))
+    .filter((demanda) => !(demanda.hiddenBy || []).includes(userId));
   console.log("[getGroupRequests]", result.length);
   return result;
 }
