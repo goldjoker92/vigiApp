@@ -1,3 +1,4 @@
+// src/services/groupHelpService.js
 import {
   collection,
   query,
@@ -12,7 +13,7 @@ import {
   writeBatch,
   orderBy,
 } from "firebase/firestore";
-import { db } from "../firebase"; // ← adapte si besoin
+import { db } from "../firebase"; // adapte le chemin si besoin
 import dayjs from "dayjs";
 
 // --- Helper universel pour Timestamp Firestore ---
@@ -83,25 +84,19 @@ export async function createGroupHelp({
   let docRef;
   try {
     docRef = await addDoc(collection(db, "groupHelps"), docData);
-    console.log(
-      "[createGroupHelp] DOC GROUPHELPS OK, id:",
-      docRef.id,
-      docData
-    );
+    console.log("[createGroupHelp] DOC GROUPHELPS OK, id:", docRef.id, docData);
   } catch (err) {
     console.error("[createGroupHelp] ERREUR addDoc groupHelps:", err);
     throw err;
   }
 
-  // --- Ajout en sous-collection (optionnel) ---
+  // --- Ajout en sous-collection (optionnel, pour historique groupe) ---
   try {
     await addDoc(collection(db, `groups/${groupId}/helpRequests`), {
       ...docData,
       groupHelpSubId: docRef.id,
     });
-    console.log(
-      "[createGroupHelp] SOUS-COLLECTION group/groupId/helpRequests OK"
-    );
+    console.log("[createGroupHelp] SOUS-COLLECTION group/groupId/helpRequests OK");
   } catch (err) {
     console.error("[createGroupHelp] ERREUR addDoc sous-collection:", err);
     // Ne bloque pas le flux général
@@ -110,9 +105,7 @@ export async function createGroupHelp({
   return docRef.id;
 }
 
-// Les autres fonctions sont stables et n'ont pas besoin de correction majeure
-// Je te corrige juste la sécurité d'usage sur les queries, et j’ajoute logs et guards si besoin :
-
+// 2️⃣ Compter le nombre de demandes d’un user (limite/jour/semaine)
 export async function countUserRequests({ userId, groupId, since }) {
   if (!userId || !groupId || !since)
     throw new Error("Paramètre manquant pour countUserRequests");
@@ -129,6 +122,7 @@ export async function countUserRequests({ userId, groupId, since }) {
   return snapshot.size;
 }
 
+// 3️⃣ Cacher une demande pour un user
 export async function hideGroupHelpForUser(demandaId, userId) {
   if (!demandaId || !userId) throw new Error("Manque demandaId/userId");
   const ref = doc(db, "groupHelps", demandaId);
@@ -136,6 +130,7 @@ export async function hideGroupHelpForUser(demandaId, userId) {
   console.log("[hideGroupHelpForUser]", demandaId, "for", userId);
 }
 
+// 4️⃣ Cacher toutes les demandes d’un groupe pour un user
 export async function hideAllGroupHelpsForUser(groupId, userId) {
   if (!groupId || !userId) throw new Error("Manque groupId/userId");
   const q = query(
@@ -154,6 +149,7 @@ export async function hideAllGroupHelpsForUser(groupId, userId) {
   console.log("[hideAllGroupHelpsForUser]", groupId, "for", userId);
 }
 
+// 5️⃣ Accepter une demande d’aide
 export async function acceptGroupHelp({
   demandaId,
   acceptedById,
@@ -177,6 +173,7 @@ export async function acceptGroupHelp({
   console.log("[acceptGroupHelp]", demandaId, "by", acceptedById);
 }
 
+// 6️⃣ Mettre à jour le message d’une demande
 export async function updateGroupHelpMessage(demandaId, newMessage) {
   if (!demandaId || !newMessage)
     throw new Error("Paramètre manquant à updateGroupHelpMessage");
@@ -188,6 +185,7 @@ export async function updateGroupHelpMessage(demandaId, newMessage) {
   console.log("[updateGroupHelpMessage]", demandaId, newMessage);
 }
 
+// 7️⃣ Annuler une demande
 export async function cancelGroupHelp(demandaId, userId) {
   if (!demandaId || !userId) throw new Error("Manque demandaId/userId");
   const ref = doc(db, "groupHelps", demandaId);
@@ -204,6 +202,7 @@ export async function cancelGroupHelp(demandaId, userId) {
   console.log("[cancelGroupHelp]", demandaId, "by", userId);
 }
 
+// 8️⃣ Obtenir toutes les demandes d’un user dans un groupe
 export async function getUserRequests({ userId, groupId }) {
   if (!userId || !groupId)
     throw new Error("Paramètre manquant à getUserRequests");
@@ -219,6 +218,7 @@ export async function getUserRequests({ userId, groupId }) {
   return result;
 }
 
+// 9️⃣ Obtenir toutes les demandes du groupe (hors hiddenBy)
 export async function getGroupRequests({ groupId, userId }) {
   if (!userId || !groupId)
     throw new Error("Paramètre manquant à getGroupRequests");
