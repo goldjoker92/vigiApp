@@ -9,7 +9,8 @@ import { leaveGroup } from "../../services/groupService";
 import QuitGroupModal from "../components/QuitGroupModal";
 import CardHelpRequest from "../components/CardHelpRequest";
 import CreateHelpModal from "../components/modals/CreateHelpModal";
-import { createGroupHelp } from "../../services/groupHelpService";
+import ConfirmModal from "../components/modals/ConfirmModal"; // >>> AJOUT import modal confirmation
+import { createGroupHelp, acceptHelpDemand } from "../../services/groupHelpService"; // >>> AJOUT import acceptHelpDemand
 import { useRouter } from "expo-router";
 
 const SCREEN_HEIGHT = Dimensions.get("window").height;
@@ -28,12 +29,15 @@ export default function VizinhosScreen() {
   const [loadingCreate, setLoadingCreate] = useState(false);
   const router = useRouter();
 
-  // 1 seul hook, split dans le composant
   const [groupHelps, loadingGroupHelps] = useRealtimeGroupHelps(groupId);
 
-  // Sépare tes demandes de celles du groupe
   const minhasDemandas = groupHelps.filter(d => d.userId === user?.id);
   const demandasGrupo = groupHelps.filter(d => d.userId !== user?.id);
+
+  // >>> AJOUT états modale confirmation acceptation
+  const [confirmModalVisible, setConfirmModalVisible] = useState(false);
+  const [selectedDemanda, setSelectedDemanda] = useState(null);
+  const [confirmLoading, setConfirmLoading] = useState(false);
 
   // Créer une nouvelle demande d'aide
   const handleCreateHelp = async (payload) => {
@@ -73,7 +77,34 @@ export default function VizinhosScreen() {
     }
   };
 
-  // Etats de chargement, pas de groupe, etc.
+  // >>> AJOUT : ouverture modale confirmation
+  function onAcceptPress(demanda) {
+    setSelectedDemanda(demanda);
+    setConfirmModalVisible(true);
+  }
+
+  // >>> AJOUT : confirmer acceptation
+  async function handleConfirmAccept() {
+    if (!selectedDemanda) return;
+    setConfirmLoading(true);
+    try {
+      await acceptHelpDemand(selectedDemanda.id, user.id);
+      Toast.show({ type: "success", text1: `Você aceitou ajudar ${selectedDemanda.apelido}` });
+      setConfirmModalVisible(false);
+      setSelectedDemanda(null);
+    } catch (e) {
+      Toast.show({ type: "error", text1: "Erro ao aceitar", text2: e.message });
+      console.error(e);
+    }
+    setConfirmLoading(false);
+  }
+
+  // >>> AJOUT : annuler la modale
+  function handleCancelAccept() {
+    setConfirmModalVisible(false);
+    setSelectedDemanda(null);
+  }
+
   if (user === undefined) return <ActivityIndicator style={{ flex: 1 }} color="#22C55E" />;
   if (!user) return <View style={styles.centered}><ActivityIndicator color="#22C55E" size="large" /></View>;
   if (loading || !grupo) return <View style={styles.centered}><ActivityIndicator color="#22C55E" size="large" /></View>;
@@ -163,6 +194,7 @@ export default function VizinhosScreen() {
                   isMine={false}
                   showAccept={true}
                   showHide={true}
+                  onAcceptPress={() => onAcceptPress(demanda)} // >>> AJOUT : passer la fonction à la carte
                 />
               ))
             )}
@@ -183,6 +215,18 @@ export default function VizinhosScreen() {
             onConfirm={handleQuit}
             onCancel={() => setQuitModalVisible(false)}
             loading={isQuitting}
+          />
+
+          {/* --- Modal confirmation acceptation --- */}
+          <ConfirmModal
+            visible={confirmModalVisible}
+            title="Aceitar ajuda"
+            description={`O vizinho ${selectedDemanda?.apelido || ""} deseja ajudar você. Aceita a ajuda?`}
+            confirmLabel="Sim"
+            cancelLabel="Não"
+            loading={confirmLoading}
+            onConfirm={handleConfirmAccept}
+            onCancel={handleCancelAccept}
           />
         </ScrollView>
       </KeyboardAvoidingView>

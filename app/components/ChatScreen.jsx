@@ -13,7 +13,7 @@ import { useUserStore } from "../../store/users";
 import dayjs from "dayjs";
 import "dayjs/locale/pt-br";
 
-// --- Bannière sticky moderne ---
+// Composant bannière quand chat en attente règlement
 function ChatPendingBanner({ onAccept, canAccept }) {
   return (
     <View style={bannerStyles.banner}>
@@ -61,7 +61,7 @@ const bannerStyles = StyleSheet.create({
   btnText: { color: "#181A20", fontWeight: "bold", fontSize: 13.5 },
 });
 
-// --- Modale règlement stylée ---
+// Modale règlement stylée
 function AcceptRulesModal({ visible, onAccept, onCancel }) {
   return (
     <Modal visible={visible} animationType="fade" transparent>
@@ -97,84 +97,48 @@ const modalStyles = StyleSheet.create({
   cancelBtnText: { color: '#FFD600', textAlign: 'center', fontWeight: 'bold', fontSize: 15, textDecorationLine: 'underline' }
 });
 
-// --- Heure formatée ---
+// Formatage heure messages
 function formatTime(ts) {
   if (!ts) return "";
   const date = ts.toDate ? ts.toDate() : new Date(ts);
   return dayjs(date).format("HH:mm");
 }
 
-// --- Helper interne robuste pour update Firestore
-async function acceptRulesFirestore(chatId, who, chat) {
-  if (!chatId || !chat) throw new Error("chatId ou chat manquant");
-  let data;
-  if (who === "demandeur") {
-    data = {
-      demandeurAccepted: true,
-      status: chat.aidantAccepted === true ? "active" : "pending"
-    };
-  } else if (who === "aidant") {
-    data = {
-      aidantAccepted: true,
-      status: chat.demandeurAccepted === true ? "active" : "pending"
-    };
-  } else {
-    throw new Error("who doit être 'demandeur' ou 'aidant'");
-  }
-  console.log("[UPDATE acceptRulesFirestore]", data);
-  await updateDoc(doc(db, "chats", chatId), data);
-}
-
-// === PAGE PRINCIPALE CHATSCREEN ===
 export default function ChatScreen() {
   const { chatId } = useLocalSearchParams();
   const user = useUserStore(s => s.user);
   const router = useRouter();
+
   const [chat, setChat] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [showRulesModal, setShowRulesModal] = useState(false);
+
   const flatListRef = useRef(null);
 
-  // LOG : User à chaque render
-  useEffect(() => {
-    console.log("[USER]", user);
-  }, [user]);
-
-  // LOG : chatId dès le début
-  useEffect(() => {
-    console.log("[CHAT_ID]", chatId);
-  }, [chatId]);
-
-  // Charger les infos du chat
+  // Chargement chat en temps réel
   useEffect(() => {
     if (!chatId) return;
     const ref = doc(db, "chats", chatId);
-    const unsub = onSnapshot(ref, (snap) => {
-      const chatData = snap.exists() ? { id: snap.id, ...snap.data() } : null;
-      setChat(chatData);
-      console.log("[CHAT DATA]", chatData);
+    const unsub = onSnapshot(ref, snap => {
+      setChat(snap.exists() ? { id: snap.id, ...snap.data() } : null);
     });
     return () => unsub();
   }, [chatId]);
 
-  // Charger les messages
+  // Chargement messages en temps réel
   useEffect(() => {
     if (!chatId) return;
     const q = query(collection(db, "chats", chatId, "messages"), orderBy("createdAt", "asc"));
-    const unsub = onSnapshot(q, (snap) => {
-      const msgs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setMessages(msgs);
-      console.log("[MESSAGES]", msgs);
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 120);
+    const unsub = onSnapshot(q, snap => {
+      setMessages(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
     });
     return () => unsub();
   }, [chatId]);
 
-  // Envoyer un message
+  // Envoi message
   const sendMessage = useCallback(async () => {
     if (!input.trim() || !user || !chat || chat.status !== "active") return;
     setSending(true);
@@ -186,7 +150,6 @@ export default function ChatScreen() {
         createdAt: serverTimestamp(),
         system: false,
       });
-      console.log("[SEND MESSAGE]", input.trim());
       setInput("");
     } catch (e) {
       console.log("[SEND ERROR]", e);
@@ -194,19 +157,21 @@ export default function ChatScreen() {
     setSending(false);
   }, [input, user, chat, chatId]);
 
-  // Acceptation du règlement (demandeur ou aidant)
+  // Acceptation règlement (aideur ou demandeur)
   const handleAcceptRules = async () => {
     if (!chat) return;
     try {
       const who = user.uid === chat.demandeurId ? "demandeur" : "aidant";
-      await acceptRulesFirestore(chatId, who, chat);
+      await updateDoc(doc(db, "chats", chatId), {
+        [who + "Accepted"]: true,
+        status: (who === "demandeur" ? chat.aidantAccepted : chat.demandeurAccepted) ? "active" : "pending",
+      });
       setShowRulesModal(false);
     } catch (e) {
       console.log("[REGLEMENT ERROR]", e);
     }
   };
 
-  // UI logic
   const isDemandeur = user && chat ? user.uid === chat.demandeurId : false;
   const needsAccept = user && chat && chat.status === "pending" && (
     (isDemandeur && !chat.demandeurAccepted) ||
@@ -214,15 +179,7 @@ export default function ChatScreen() {
   );
   const canSend = chat && chat.status === "active";
 
-  // LOG le status du chat et permissions d’envoi
-  useEffect(() => {
-    console.log("[CHAT STATUS]", chat?.status);
-    console.log("[CAN SEND?]", canSend);
-    console.log("[NEEDS ACCEPT]", needsAccept);
-  }, [chat, canSend, needsAccept]);
-
   if (!user || !chat) {
-    console.log("[LOADING] user or chat not ready");
     return (
       <View style={styles.center}>
         <Text style={{ color: "#FFD600", fontWeight: "bold", fontSize: 18 }}>Carregando chat...</Text>
@@ -233,35 +190,25 @@ export default function ChatScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-        {/* --- HEADER --- */}
         <View style={styles.header}>
-          <TouchableOpacity style={styles.headerBack} onPress={() => {
-            router.back();
-            console.log("[NAV] Back pressed");
-          }}>
+          <TouchableOpacity style={styles.headerBack} onPress={() => router.back()}>
             <Feather name="arrow-left" size={22} color="#FFD600" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>VigiApp Chat</Text>
           <View style={{ width: 40 }} />
         </View>
 
-        {/* --- Bannière sticky --- */}
         {chat.status === "pending" && (
           <ChatPendingBanner
             canAccept={needsAccept}
-            onAccept={() => {
-              setShowRulesModal(true);
-              console.log("[MODALE] Ouverture modale règlement");
-            }}
+            onAccept={() => setShowRulesModal(true)}
           />
         )}
 
-        {/* --- Messages --- */}
         <FlatList
           ref={flatListRef}
           data={messages}
           renderItem={({ item }) => {
-            const isMine = item.senderId === user?.uid;
             if (item.system) {
               return (
                 <View style={styles.sysMsgRow}>
@@ -269,10 +216,9 @@ export default function ChatScreen() {
                 </View>
               );
             }
-            // Bulle message
+            const isMine = item.senderId === user.uid;
             return (
               <View style={[styles.msgRow, isMine ? styles.right : styles.left]}>
-                {/* Avatar rond avec initiale */}
                 <View style={[styles.avatarCircle, { backgroundColor: isMine ? "#B2EC6B" : "#FFD600" }]}>
                   <Text style={{ color: "#181A20", fontWeight: "bold", fontSize: 15 }}>
                     {(item.senderApelido?.charAt(0) || "V").toUpperCase()}
@@ -297,7 +243,6 @@ export default function ChatScreen() {
           showsVerticalScrollIndicator={false}
         />
 
-        {/* --- Input désactivé tant que pas accepté --- */}
         <View style={styles.inputRow}>
           <TextInput
             value={input}
@@ -314,21 +259,16 @@ export default function ChatScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* --- Modale règlement --- */}
         <AcceptRulesModal
           visible={showRulesModal}
           onAccept={handleAcceptRules}
-          onCancel={() => {
-            setShowRulesModal(false);
-            console.log("[MODALE] Fermeture modale règlement");
-          }}
+          onCancel={() => setShowRulesModal(false)}
         />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
-// --- Styles : UI dark, branding VigiApp ---
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#101218" },
   center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#181A20" },
