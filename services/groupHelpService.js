@@ -1,4 +1,3 @@
-// src/services/groupHelpService.js
 import {
   collection,
   query,
@@ -12,16 +11,19 @@ import {
   arrayUnion,
   writeBatch,
   orderBy,
+  getDoc,
 } from "firebase/firestore";
-import { db } from "../firebase"; // adapte le chemin si besoin
+import { db } from "../firebase";
 import dayjs from "dayjs";
+import { createChatOnAccept } from "../services/chatService"; // fonction de création de chat
 
 // --- Helper universel pour Timestamp Firestore ---
 function toFirestoreTimestamp(val) {
   if (!val) return null;
   if (val instanceof Timestamp) return val;
   if (val instanceof Date) return Timestamp.fromDate(val);
-  if (typeof val === "string" || typeof val === "number") return Timestamp.fromDate(new Date(val));
+  if (typeof val === "string" || typeof val === "number")
+    return Timestamp.fromDate(new Date(val));
   return null;
 }
 
@@ -32,26 +34,14 @@ export async function createGroupHelp({
   apelido,
   message,
   isScheduled,
-  dateHelp, // Peut être Date JS, string, Timestamp ou null
+  dateHelp,
   badgeId,
 }) {
-  if (!groupId || !userId)
-    throw new Error("Paramètre manquant à createGroupHelp");
-  console.log("[createGroupHelp] REÇU:", {
-    groupId,
-    userId,
-    apelido,
-    message,
-    isScheduled,
-    dateHelp,
-    badgeId,
-  });
+  if (!groupId || !userId) throw new Error("Paramètre manquant à createGroupHelp");
 
-  // --- Validation/normalisation champs ---
   const cleanMessage = (message || "").trim();
   if (!cleanMessage) throw new Error("Message vide");
 
-  // --- Prépare les datas ---
   const docData = {
     groupId,
     userId,
@@ -80,32 +70,30 @@ export async function createGroupHelp({
     lastUpdateAt: serverTimestamp(),
   };
 
-  // --- Ajout dans collection globale ---
   let docRef;
   try {
     docRef = await addDoc(collection(db, "groupHelps"), docData);
-    console.log("[createGroupHelp] DOC GROUPHELPS OK, id:", docRef.id, docData);
+    console.log("[createGroupHelp] DOC GROUPHELPS OK, id:", docRef.id);
   } catch (err) {
     console.error("[createGroupHelp] ERREUR addDoc groupHelps:", err);
     throw err;
   }
 
-  // --- Ajout en sous-collection (optionnel, pour historique groupe) ---
+  // Sous-collection optionnelle pour historique groupe
   try {
     await addDoc(collection(db, `groups/${groupId}/helpRequests`), {
       ...docData,
       groupHelpSubId: docRef.id,
     });
-    console.log("[createGroupHelp] SOUS-COLLECTION group/groupId/helpRequests OK");
+    console.log("[createGroupHelp] SOUS-COLLECTION OK");
   } catch (err) {
-    console.error("[createGroupHelp] ERREUR addDoc sous-collection:", err);
-    // Ne bloque pas le flux général
+    console.error("[createGroupHelp] ERREUR sous-collection:", err);
   }
 
   return docRef.id;
 }
 
-// 2️⃣ Compter le nombre de demandes d’un user (limite/jour/semaine)
+// 2️⃣ Compter demandes user
 export async function countUserRequests({ userId, groupId, since }) {
   if (!userId || !groupId || !since)
     throw new Error("Paramètre manquant pour countUserRequests");
@@ -118,25 +106,20 @@ export async function countUserRequests({ userId, groupId, since }) {
     where("createdAt", ">=", sinceTimestamp)
   );
   const snapshot = await getDocs(q);
-  console.log("[countUserRequests]", snapshot.size);
   return snapshot.size;
 }
 
-// 3️⃣ Cacher une demande pour un user
+// 3️⃣ Cacher demande pour user
 export async function hideGroupHelpForUser(demandaId, userId) {
   if (!demandaId || !userId) throw new Error("Manque demandaId/userId");
   const ref = doc(db, "groupHelps", demandaId);
   await updateDoc(ref, { hiddenBy: arrayUnion(userId) });
-  console.log("[hideGroupHelpForUser]", demandaId, "for", userId);
 }
 
-// 4️⃣ Cacher toutes les demandes d’un groupe pour un user
+// 4️⃣ Cacher toutes demandes groupe pour user
 export async function hideAllGroupHelpsForUser(groupId, userId) {
   if (!groupId || !userId) throw new Error("Manque groupId/userId");
-  const q = query(
-    collection(db, "groupHelps"),
-    where("groupId", "==", groupId)
-  );
+  const q = query(collection(db, "groupHelps"), where("groupId", "==", groupId));
   const snapshot = await getDocs(q);
 
   const batch = writeBatch(db);
@@ -146,15 +129,10 @@ export async function hideAllGroupHelpsForUser(groupId, userId) {
     });
   });
   await batch.commit();
-  console.log("[hideAllGroupHelpsForUser]", groupId, "for", userId);
 }
 
-// 5️⃣ Accepter une demande d’aide
-export async function acceptGroupHelp({
-  demandaId,
-  acceptedById,
-  acceptedByApelido,
-}) {
+// 5️⃣ Accepter une demande d’aide (ancienne méthode simple)
+export async function acceptGroupHelp({ demandaId, acceptedById, acceptedByApelido }) {
   if (!demandaId || !acceptedById)
     throw new Error("Paramètre manquant à acceptGroupHelp");
   const ref = doc(db, "groupHelps", demandaId);
@@ -173,7 +151,7 @@ export async function acceptGroupHelp({
   console.log("[acceptGroupHelp]", demandaId, "by", acceptedById);
 }
 
-// 6️⃣ Mettre à jour le message d’une demande
+// 6️⃣ Mettre à jour message d’une demande
 export async function updateGroupHelpMessage(demandaId, newMessage) {
   if (!demandaId || !newMessage)
     throw new Error("Paramètre manquant à updateGroupHelpMessage");
@@ -204,8 +182,7 @@ export async function cancelGroupHelp(demandaId, userId) {
 
 // 8️⃣ Obtenir toutes les demandes d’un user dans un groupe
 export async function getUserRequests({ userId, groupId }) {
-  if (!userId || !groupId)
-    throw new Error("Paramètre manquant à getUserRequests");
+  if (!userId || !groupId) throw new Error("Paramètre manquant à getUserRequests");
   const q = query(
     collection(db, "groupHelps"),
     where("userId", "==", userId),
@@ -214,14 +191,12 @@ export async function getUserRequests({ userId, groupId }) {
   );
   const snapshot = await getDocs(q);
   const result = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-  console.log("[getUserRequests]", result.length);
   return result;
 }
 
 // 9️⃣ Obtenir toutes les demandes du groupe (hors hiddenBy)
 export async function getGroupRequests({ groupId, userId }) {
-  if (!userId || !groupId)
-    throw new Error("Paramètre manquant à getGroupRequests");
+  if (!userId || !groupId) throw new Error("Paramètre manquant à getGroupRequests");
   const q = query(
     collection(db, "groupHelps"),
     where("groupId", "==", groupId),
@@ -231,6 +206,68 @@ export async function getGroupRequests({ groupId, userId }) {
   const result = snapshot.docs
     .map((doc) => ({ id: doc.id, ...doc.data() }))
     .filter((demanda) => !(demanda.hiddenBy || []).includes(userId));
-  console.log("[getGroupRequests]", result.length);
   return result;
+}
+
+// === NOUVELLES FONCTIONS POUR ACCEPTATION EN DEUX ÉTAPES ET CHAT ===
+
+// Accepter la demande côté aidant (clic bouton Accepter)
+export async function acceptHelpDemand(demandaId, aidantId) {
+  const docRef = doc(db, "groupHelps", demandaId);
+  await updateDoc(docRef, {
+    status: "pending",
+    aidantAcceptedRegulation: false,
+    demandeurAcceptedRegulation: false,
+    aidantId,
+    lastUpdateAt: serverTimestamp(),
+  });
+  console.log("[acceptHelpDemand] Demande mise en pending, aidant:", aidantId);
+}
+
+// Aidant accepte le règlement
+export async function aidantAcceptRegulation(demandaId) {
+  const docRef = doc(db, "groupHelps", demandaId);
+  await updateDoc(docRef, {
+    aidantAcceptedRegulation: true,
+    lastUpdateAt: serverTimestamp(),
+  });
+  console.log("[aidantAcceptRegulation] Aidant a accepté le règlement:", demandaId);
+  // TODO : notifier demandeur
+}
+
+// Demandeur accepte règlement + création chat si aidant déjà ok
+export async function demandeurAcceptRegulation(demandaId, demandeur) {
+  const docRef = doc(db, "groupHelps", demandaId);
+  const snap = await getDoc(docRef);
+  if (!snap.exists()) throw new Error("Demande introuvable");
+  const data = snap.data();
+
+  if (data.aidantAcceptedRegulation) {
+    await updateDoc(docRef, {
+      demandeurAcceptedRegulation: true,
+      status: "accepted",
+      lastUpdateAt: serverTimestamp(),
+    });
+    console.log("[demandeurAcceptRegulation] Demande acceptée, création chat", demandaId);
+    // Création du chat et mise à jour du chatId dans la demande
+    const chatId = await createChatOnAccept(data, demandeur);
+    await updateDoc(docRef, { chatId, lastUpdateAt: serverTimestamp() });
+  } else {
+    await updateDoc(docRef, {
+      demandeurAcceptedRegulation: true,
+      lastUpdateAt: serverTimestamp(),
+    });
+    console.log("[demandeurAcceptRegulation] Demandeur accepté règlement, en attente aidant");
+  }
+}
+
+// Refuser la demande
+export async function refuseHelpDemand(demandaId, who) {
+  const docRef = doc(db, "groupHelps", demandaId);
+  await updateDoc(docRef, {
+    status: "refused",
+    refusedBy: who,
+    lastUpdateAt: serverTimestamp(),
+  });
+  console.log("[refuseHelpDemand] Demande refusée par", who);
 }
