@@ -271,3 +271,23 @@ export async function refuseHelpDemand(demandaId, who) {
   });
   console.log("[refuseHelpDemand] Demande refusée par", who);
 }
+
+// 🔟 Proposer son aide (ajoute volunteerId & volunteerApelido à une demande)
+export async function proposeHelp({ demandaId, volunteerId, volunteerApelido }) {
+  if (!demandaId || !volunteerId || !volunteerApelido) {
+    throw new Error("[proposeHelp] Paramètre manquant");
+  }
+  const demandaRef = doc(db, "groupHelps", demandaId);
+  await updateDoc(demandaRef, {
+    volunteerId,
+    volunteerApelido,
+    status: "pending", // optionnel
+    updatedAt: serverTimestamp(),
+    history: arrayUnion({
+      action: "proposed",
+      by: volunteerId,
+      at: dayjs().toISOString(),
+    }),
+  });
+  console.log("[proposeHelp] Demande", demandaId, "volunteer:", volunteerApelido, volunteerId);
+}

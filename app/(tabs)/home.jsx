@@ -64,6 +64,8 @@ export default function HomeScreen() {
   const { grupo, loading: loadingGrupo } = useGrupoDetails(groupId);
   const { grupos, loading: loadingGrupos } = useGruposPorCep(user?.cep);
   const router = useRouter();
+  console.log('[DEBUG][HomeScreen] Zustand user:', useUserStore.getState().user);
+
   useUserGroupEffect();
   const { quitGroup } = useLocalSearchParams();
 
@@ -98,6 +100,9 @@ export default function HomeScreen() {
 
   // --- Loader user pas chargé
   if (!user) {
+    console.log('[DEBUG][HomeScreen] Zustand user:', useUserStore.getState().user);
+    console.trace();
+
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color="#00C859" />

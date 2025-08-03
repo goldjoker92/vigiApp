@@ -12,10 +12,15 @@ import { isProfileIncomplete } from '../../utils/isProfileIncomplete';
 export default function TabsLayout() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const { user } = useUserStore();
+  console.log('[LAYOUT] setUser', user);
+  console.trace();
+
   const router = useRouter();
 
   useEffect(() => {
-    console.log('USER DANS LAYOUT :', user);
+    console.log('[LAYOUT] setUser', user);
+    console.trace();
+
     if (isProfileIncomplete(user)) {
       router.replace('/auth/profile-onboarding');
     }
