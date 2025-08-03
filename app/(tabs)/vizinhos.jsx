@@ -1,5 +1,16 @@
-import React, { useState } from "react";
-import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet, KeyboardAvoidingView, SafeAreaView, ScrollView, Dimensions, Platform } from "react-native";
+import React, { useState, useEffect } from "react";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  ActivityIndicator,
+  StyleSheet,
+  KeyboardAvoidingView,
+  SafeAreaView,
+  ScrollView,
+  Dimensions,
+  Platform,
+} from "react-native";
 import { MaterialIcons, Feather } from "@expo/vector-icons";
 import Toast from "react-native-toast-message";
 import { useUserStore } from "../../store/users";
@@ -9,8 +20,8 @@ import { leaveGroup } from "../../services/groupService";
 import QuitGroupModal from "../components/QuitGroupModal";
 import CardHelpRequest from "../components/CardHelpRequest";
 import CreateHelpModal from "../components/modals/CreateHelpModal";
-import ConfirmModal from "../components/modals/ConfirmModal"; // >>> AJOUT import modal confirmation
-import { createGroupHelp, acceptHelpDemand } from "../../services/groupHelpService"; // >>> AJOUT import acceptHelpDemand
+import ConfirmModal from "../components/modals/ConfirmModal";
+import { createGroupHelp, proposeHelp, acceptHelpDemand, refuseHelpDemand } from "../../services/groupHelpService";
 import { useRouter } from "expo-router";
 
 const SCREEN_HEIGHT = Dimensions.get("window").height;
@@ -20,8 +31,9 @@ function generateRandomId(length = 4) {
 }
 
 export default function VizinhosScreen() {
+  // -- State user/groupe --
   const { groupId, setGroupId } = useUserStore();
-  const user = useUserStore(state => state.user);
+  const user = useUserStore((state) => state.user);
   const { grupo, loading } = useGrupoDetails(groupId);
   const [quitModalVisible, setQuitModalVisible] = useState(false);
   const [isQuitting, setIsQuitting] = useState(false);
@@ -31,15 +43,31 @@ export default function VizinhosScreen() {
 
   const [groupHelps, loadingGroupHelps] = useRealtimeGroupHelps(groupId);
 
-  const minhasDemandas = groupHelps.filter(d => d.userId === user?.id);
-  const demandasGrupo = groupHelps.filter(d => d.userId !== user?.id);
+  // --- Mapping demandes
+  const minhasDemandas = groupHelps.filter((d) => d.userId === user?.id);
+  const demandasGrupo = groupHelps.filter((d) => d.userId !== user?.id);
 
-  // >>> AJOUT états modale confirmation acceptation
+  // --- Modale acceptation d'aide (uniquement CHEZ LE DEMANDEUR)
   const [confirmModalVisible, setConfirmModalVisible] = useState(false);
   const [selectedDemanda, setSelectedDemanda] = useState(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
 
-  // Créer une nouvelle demande d'aide
+  // --- Logique : modale qui s'ouvre SEULEMENT chez le demandeur SI volunteerId renseigné & status pending
+  useEffect(() => {
+    if (confirmModalVisible) return;
+    const demandeEnAttente = minhasDemandas.find(
+      (d) =>
+        d.status === "pending" &&
+        d.volunteerId &&
+        (d.volunteerAccepted === undefined || d.volunteerAccepted === null)
+    );
+    if (demandeEnAttente) {
+      setSelectedDemanda(demandeEnAttente);
+      setConfirmModalVisible(true);
+    }
+  }, [groupHelps, minhasDemandas, confirmModalVisible]);
+
+  // --- Création demande d'aide
   const handleCreateHelp = async (payload) => {
     setLoadingCreate(true);
     try {
@@ -60,7 +88,7 @@ export default function VizinhosScreen() {
     setLoadingCreate(false);
   };
 
-  // Quitter le groupe
+  // --- Quitter le groupe
   const handleQuit = async () => {
     try {
       setIsQuitting(true);
@@ -77,37 +105,78 @@ export default function VizinhosScreen() {
     }
   };
 
-  // >>> AJOUT : ouverture modale confirmation
-  function onAcceptPress(demanda) {
-    setSelectedDemanda(demanda);
-    setConfirmModalVisible(true);
+  
+ // --- QUAND on clique "Aceitar" sur une demande (helper)
+async function onAcceptPress(demanda) {
+  try {
+    await proposeHelp({
+      demandaId: demanda.id,
+      volunteerId: user.id,
+      volunteerApelido: user.apelido,
+    });
+    Toast.show({ type: "success", text1: "Votre proposition d'aide a été envoyée !" });
+    // NE PAS ouvrir de modale ici.
+  } catch (e) {
+    Toast.show({ type: "error", text1: "Erreur", text2: e.message });
   }
+}
 
-  // >>> AJOUT : confirmer acceptation
+  // --- QUAND le DEMANDEUR accepte/refuse l'aide (modale confirm)
   async function handleConfirmAccept() {
     if (!selectedDemanda) return;
     setConfirmLoading(true);
     try {
-      await acceptHelpDemand(selectedDemanda.id, user.id);
-      Toast.show({ type: "success", text1: `Você aceitou ajudar ${selectedDemanda.apelido}` });
+      await acceptHelpDemand(selectedDemanda.id, selectedDemanda.volunteerId, selectedDemanda.volunteerApelido, true);
+      Toast.show({ type: "success", text1: `Ajuda confirmada com sucesso!` });
       setConfirmModalVisible(false);
       setSelectedDemanda(null);
     } catch (e) {
-      Toast.show({ type: "error", text1: "Erro ao aceitar", text2: e.message });
-      console.error(e);
+      Toast.show({ type: "error", text1: "Erro ao confirmar", text2: e.message });
+    }
+    setConfirmLoading(false);
+  }
+  async function handleCancelAccept() {
+    if (!selectedDemanda) return;
+    setConfirmLoading(true);
+    try {
+      await refuseHelpDemand(selectedDemanda.id);
+      setConfirmModalVisible(false);
+      setSelectedDemanda(null);
+      Toast.show({ type: "info", text1: "Aide refusée." });
+    } catch (e) {
+      Toast.show({ type: "error", text1: "Erreur", text2: e.message });
     }
     setConfirmLoading(false);
   }
 
-  // >>> AJOUT : annuler la modale
-  function handleCancelAccept() {
-    setConfirmModalVisible(false);
-    setSelectedDemanda(null);
-  }
-
+  // --- Guards
   if (user === undefined) return <ActivityIndicator style={{ flex: 1 }} color="#22C55E" />;
   if (!user) return <View style={styles.centered}><ActivityIndicator color="#22C55E" size="large" /></View>;
   if (loading || !grupo) return <View style={styles.centered}><ActivityIndicator color="#22C55E" size="large" /></View>;
+
+  // --- Mapping demandes du groupe (helpers)
+  function mapDemandasGrupo() {
+    return demandasGrupo.map((demanda, idx) => {
+      const isMine = demanda.userId === user.id;
+      // showAccept: on peut aider si (ce n'est pas sa demande) && pas déjà un volunteerId
+      const showAccept =
+        !isMine &&
+        (!demanda.volunteerId || demanda.volunteerId === "") &&
+        (demanda.status === "open" || demanda.status === "pending");
+      return (
+        <CardHelpRequest
+          key={demanda.id}
+          demanda={demanda}
+          badgeId={demanda.badgeId}
+          numPedido={idx + 1}
+          isMine={isMine}
+          showAccept={showAccept}
+          showHide={true}
+          onAccept={() => onAcceptPress(demanda)}
+        />
+      );
+    });
+  }
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#181A20" }}>
@@ -143,7 +212,12 @@ export default function VizinhosScreen() {
 
           {/* --- Bouton quitter groupe --- */}
           <View style={styles.quitBtnWrapper}>
-            <TouchableOpacity style={styles.quitBtn} onPress={() => setQuitModalVisible(true)} activeOpacity={0.87} disabled={isQuitting}>
+            <TouchableOpacity
+              style={styles.quitBtn}
+              onPress={() => setQuitModalVisible(true)}
+              activeOpacity={0.87}
+              disabled={isQuitting}
+            >
               <MaterialIcons name="logout" size={21} color="#FFD600" style={{ marginRight: 11 }} />
               <Text style={styles.quitBtnText}>{isQuitting ? "Saindo..." : "Sair do grupo"}</Text>
             </TouchableOpacity>
@@ -185,18 +259,7 @@ export default function VizinhosScreen() {
             ) : demandasGrupo.length === 0 ? (
               <Text style={styles.emptyText}>Nenhuma demanda disponível.</Text>
             ) : (
-              demandasGrupo.map((demanda, idx) => (
-                <CardHelpRequest
-                  key={demanda.id}
-                  demanda={demanda}
-                  badgeId={demanda.badgeId}
-                  numPedido={idx + 1}
-                  isMine={false}
-                  showAccept={true}
-                  showHide={true}
-                  onAcceptPress={() => onAcceptPress(demanda)} // >>> AJOUT : passer la fonction à la carte
-                />
-              ))
+              mapDemandasGrupo()
             )}
           </View>
 
@@ -217,11 +280,15 @@ export default function VizinhosScreen() {
             loading={isQuitting}
           />
 
-          {/* --- Modal confirmation acceptation --- */}
+          {/* --- Modal confirmation acceptation CHEZ LE DEMANDEUR --- */}
           <ConfirmModal
             visible={confirmModalVisible}
             title="Aceitar ajuda"
-            description={`O vizinho ${selectedDemanda?.apelido || ""} deseja ajudar você. Aceita a ajuda?`}
+            description={
+              selectedDemanda?.volunteerApelido
+                ? `O vizinho ${selectedDemanda?.volunteerApelido} deseja ajudar você. Aceita a ajuda?`
+                : "Um vizinho deseja vous aider. Aceita a ajuda?"
+            }
             confirmLabel="Sim"
             cancelLabel="Não"
             loading={confirmLoading}
@@ -235,19 +302,113 @@ export default function VizinhosScreen() {
 }
 
 const styles = StyleSheet.create({
-  content: { paddingHorizontal: 18, paddingTop: 35, paddingBottom: 35, backgroundColor: "#181A20", minHeight: SCREEN_HEIGHT * 0.93 },
+  content: {
+    paddingHorizontal: 18,
+    paddingTop: 35,
+    paddingBottom: 35,
+    backgroundColor: "#181A20",
+    minHeight: SCREEN_HEIGHT * 0.93,
+  },
   header: { alignItems: "center", marginBottom: 12, marginTop: 0 },
-  groupName: { color: "#00C859", fontWeight: "bold", fontSize: 30, marginTop: 0, textAlign: "center", letterSpacing: 1.1 },
-  infoBox: { marginTop: 12, borderRadius: 15, backgroundColor: "#23262F", paddingVertical: 19, paddingHorizontal: 16, marginBottom: 15, alignItems: "flex-start" },
+  groupName: {
+    color: "#00C859",
+    fontWeight: "bold",
+    fontSize: 30,
+    marginTop: 0,
+    textAlign: "center",
+    letterSpacing: 1.1,
+  },
+  infoBox: {
+    marginTop: 12,
+    borderRadius: 15,
+    backgroundColor: "#23262F",
+    paddingVertical: 19,
+    paddingHorizontal: 16,
+    marginBottom: 15,
+    alignItems: "flex-start",
+  },
   infoRow: { flexDirection: "row", alignItems: "center", marginBottom: 13 },
   infoText: { color: "#eee", fontSize: 16.5, marginLeft: 10, fontWeight: "700" },
-  quitBtnWrapper: { width: "100%", alignItems: "center", marginTop: 2, marginBottom: 16 },
-  quitBtn: { backgroundColor: "#FF4D4F", borderRadius: 15, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 11, paddingHorizontal: 18, minWidth: 160, maxWidth: 280, width: "67%", alignSelf: "center", shadowColor: "#FF4D4F", shadowOpacity: 0.10, shadowRadius: 7 },
-  quitBtnText: { color: "#fff", fontWeight: "bold", fontSize: 14, letterSpacing: 0.25, flexShrink: 1, includeFontPadding: false, textAlignVertical: "center" },
-  btnCreate: { flexDirection: "row", alignItems: "center", alignSelf: "center", backgroundColor: "#22242D", paddingHorizontal: 18, paddingVertical: 9, borderRadius: 19, marginBottom: 8, marginTop: 4, borderWidth: 2, borderColor: "#FFD600", shadowColor: "#FFD600", shadowOpacity: 0.06, shadowRadius: 9 },
-  btnCreateText: { color: "#FFD600", fontWeight: "bold", fontSize: 16.3, marginLeft: 9, letterSpacing: 0.13 },
-  sectionTitle: { color: "#FFD600", fontWeight: "bold", fontSize: 21, textAlign: "center", marginTop: 23, marginBottom: 9, letterSpacing: 0.4 },
-  sectionBox: { backgroundColor: "#13151A", borderRadius: 14, padding: 12, marginBottom: 10 },
-  emptyText: { color: "#888", textAlign: "center", marginVertical: 14, fontSize: 16, fontStyle: "italic" },
-  centered: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#181A20" }
+  quitBtnWrapper: {
+    width: "100%",
+    alignItems: "center",
+    marginTop: 2,
+    marginBottom: 16,
+  },
+  quitBtn: {
+    backgroundColor: "#FF4D4F",
+    borderRadius: 15,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 11,
+    paddingHorizontal: 18,
+    minWidth: 160,
+    maxWidth: 280,
+    width: "67%",
+    alignSelf: "center",
+    shadowColor: "#FF4D4F",
+    shadowOpacity: 0.1,
+    shadowRadius: 7,
+  },
+  quitBtnText: {
+    color: "#fff",
+    fontWeight: "bold",
+    fontSize: 14,
+    letterSpacing: 0.25,
+    flexShrink: 1,
+    includeFontPadding: false,
+    textAlignVertical: "center",
+  },
+  btnCreate: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "center",
+    backgroundColor: "#22242D",
+    paddingHorizontal: 18,
+    paddingVertical: 9,
+    borderRadius: 19,
+    marginBottom: 8,
+    marginTop: 4,
+    borderWidth: 2,
+    borderColor: "#FFD600",
+    shadowColor: "#FFD600",
+    shadowOpacity: 0.06,
+    shadowRadius: 9,
+  },
+  btnCreateText: {
+    color: "#FFD600",
+    fontWeight: "bold",
+    fontSize: 16.3,
+    marginLeft: 9,
+    letterSpacing: 0.13,
+  },
+  sectionTitle: {
+    color: "#FFD600",
+    fontWeight: "bold",
+    fontSize: 21,
+    textAlign: "center",
+    marginTop: 23,
+    marginBottom: 9,
+    letterSpacing: 0.4,
+  },
+  sectionBox: {
+    backgroundColor: "#13151A",
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 10,
+  },
+  emptyText: {
+    color: "#888",
+    textAlign: "center",
+    marginVertical: 14,
+    fontSize: 16,
+    fontStyle: "italic",
+  },
+  centered: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#181A20",
+  },
 });

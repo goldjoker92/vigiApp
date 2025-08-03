@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -13,8 +13,9 @@ import { useUserStore } from "../../store/users";
 import CardHelpRequest from "./CardHelpRequest";
 import Toast from "react-native-toast-message";
 import CreateHelpModal from "./modals/CreateHelpModal";
+import ConfirmModal from "./modals/ConfirmModal";
 import { useRealtimeGroupHelps } from "../../hooks/useRealtimeGroupHelps";
-import { createGroupHelp } from "../../services/groupHelpService";
+import { createGroupHelp, proposeHelp, acceptHelp } from "../../services/groupHelpService";
 
 // Générateur d'ID badge unique
 function generateRandomId(length = 4) {
@@ -24,14 +25,16 @@ function generateRandomId(length = 4) {
 export default function FeedGroupRequests({ groupId }) {
   const { user } = useUserStore();
 
-  // Hook : toutes les demandes (filtrées automatiquement)
+  // Toutes les demandes du groupe
   const [groupHelps, loadingGroupHelps] = useRealtimeGroupHelps(groupId, user?.id);
 
-  // Modale création demande
+  // Etats modales et loading
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [loadingCreate, setLoadingCreate] = useState(false);
+  const [pendingVolunteer, setPendingVolunteer] = useState(null);
+  const [loadingConfirm, setLoadingConfirm] = useState(false);
 
-  // Refresh (factice, juste pour UX)
+  // Refresh
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = () => {
     setRefreshing(true);
@@ -61,57 +64,125 @@ export default function FeedGroupRequests({ groupId }) {
     setLoadingCreate(false);
   };
 
+  // Quand un volontaire propose son aide
+  const handleOfferHelp = async (demanda) => {
+    try {
+      await proposeHelp({
+        demandaId: demanda.id,
+        volunteerId: user.id,
+        volunteerApelido: user.apelido,
+      });
+      Toast.show({ type: "success", text1: "Você se propôs para ajudar!" });
+      console.log("[handleOfferHelp] Proposta enviada:", {
+        demandaId: demanda.id,
+        volunteerId: user.id,
+        volunteerApelido: user.apelido,
+      });
+    } catch (e) {
+      Toast.show({ type: "error", text1: "Erro ao propor ajuda", text2: e.message });
+      console.error("[handleOfferHelp] ERREUR", e);
+    }
+  };
+
+  // Effet: ouvre la modale QUE chez le créateur si une demande a volunteerId
+  useEffect(() => {
+    if (!pendingVolunteer) {
+      console.log('[MODALE] Rendu pour user.id:', user.id, '| apelido:', user.apelido);
+      const mine = groupHelps.find(
+        h => h.userId === user.id && h.volunteerId
+      );
+      if (mine) {
+        setPendingVolunteer(mine);
+        console.log("[useEffect] Modale ouverte chez le créateur, volunteer:", mine.volunteerApelido);
+      }
+    }
+  }, [groupHelps, user.id, user.apelido, pendingVolunteer]);
+
+  // Confirmation de l'aide par le créateur
+  const handleConfirmHelp = async () => {
+    if (!pendingVolunteer) return;
+    setLoadingConfirm(true);
+    try {
+      await acceptHelp({
+        demandaId: pendingVolunteer.id,
+        volunteerId: pendingVolunteer.volunteerId,
+      });
+      Toast.show({ type: "success", text1: "Ajuda aceita!" });
+      console.log("[handleConfirmHelp] Ajuda aceita pour volunteer:", pendingVolunteer.volunteerApelido);
+    } catch (e) {
+      Toast.show({ type: "error", text1: "Erro ao aceitar ajuda", text2: e.message });
+      console.error("[handleConfirmHelp] ERREUR", e);
+    }
+    setLoadingConfirm(false);
+    setPendingVolunteer(null);
+  };
+
   return (
-    <ScrollView
-      style={styles.container}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-      contentContainerStyle={{ paddingBottom: 48 }}
-      keyboardShouldPersistTaps="handled"
-    >
-      {/* Bouton création */}
-      <TouchableOpacity
-        style={styles.btnCreate}
-        onPress={() => setShowCreateModal(true)}
-        activeOpacity={0.88}
+    <>
+      <ScrollView
+        style={styles.container}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        contentContainerStyle={{ paddingBottom: 48 }}
+        keyboardShouldPersistTaps="handled"
       >
-        <Feather name="plus-circle" size={22} color="#FFD600" style={{ marginRight: 9 }} />
-        <Text style={styles.btnCreateText}>Nova demanda</Text>
-      </TouchableOpacity>
+        {/* Bouton création */}
+        <TouchableOpacity
+          style={styles.btnCreate}
+          onPress={() => setShowCreateModal(true)}
+          activeOpacity={0.88}
+        >
+          <Feather name="plus-circle" size={22} color="#FFD600" style={{ marginRight: 9 }} />
+          <Text style={styles.btnCreateText}>Nova demanda</Text>
+        </TouchableOpacity>
 
-      {/* Liste demandes */}
-      <Text style={styles.sectionTitle}>Demandas do grupo</Text>
-      <View style={styles.sectionBox}>
-        {loadingGroupHelps ? (
-          <ActivityIndicator color="#FFD600" style={{ marginTop: 12 }} />
-        ) : groupHelps.length === 0 ? (
-          <Text style={styles.emptyText}>Nenhuma demanda disponível.</Text>
-        ) : (
-          groupHelps.map((demanda, idx) => {
-            console.log("[AFFICHAGE DEMANDA]", demanda);
-            return (
-              <CardHelpRequest
-                key={demanda.id}
-                demanda={demanda}
-                badgeId={demanda.badgeId}
-                numPedido={idx + 1}
-                isMine={demanda.userId === user.id}
-                showAccept={demanda.userId !== user.id}
-                showHide={demanda.userId !== user.id}
-                // Optionnel : Ajoute les handlers onAccept/onHide ici si besoin
-              />
-            );
-          })
-        )}
-      </View>
+        {/* Liste demandes */}
+        <Text style={styles.sectionTitle}>Demandas do grupo</Text>
+        <View style={styles.sectionBox}>
+          {loadingGroupHelps ? (
+            <ActivityIndicator color="#FFD600" style={{ marginTop: 12 }} />
+          ) : groupHelps.length === 0 ? (
+            <Text style={styles.emptyText}>Nenhuma demanda disponível.</Text>
+          ) : (
+            groupHelps.map((demanda, idx) => {
+              console.log("[AFFICHAGE DEMANDA]", demanda);
+              return (
+                <CardHelpRequest
+                  key={demanda.id}
+                  demanda={demanda}
+                  badgeId={demanda.badgeId}
+                  numPedido={idx + 1}
+                  isMine={demanda.userId === user.id}
+                  showAccept={demanda.userId !== user.id}
+                  showHide={demanda.userId !== user.id}
+                  onAccept={handleOfferHelp}
+                  onHide={(d) => console.log("[Ocultar]", d.id)}
+                />
+              );
+            })
+          )}
+        </View>
 
-      {/* Modale création */}
-      <CreateHelpModal
-        visible={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
-        onCreate={handleCreateHelp}
-        loading={loadingCreate}
-      />
-    </ScrollView>
+        {/* Modale création */}
+        <CreateHelpModal
+          visible={showCreateModal}
+          onClose={() => setShowCreateModal(false)}
+          onCreate={handleCreateHelp}
+          loading={loadingCreate}
+        />
+      </ScrollView>
+
+      {/* Modale d'acceptation d'aide : ouverte UNIQUEMENT chez le créateur */}
+      {pendingVolunteer && (
+<ConfirmModal
+    title="Proposta de ajuda"
+    visible={!!pendingVolunteer}
+    description={`O vizinho ${pendingVolunteer.volunteerApelido} deseja ajudar você. Aceita a ajuda?`}
+    loading={loadingConfirm}
+    onConfirm={handleConfirmHelp}
+    onCancel={() => setPendingVolunteer(null)}
+        />
+      )}
+    </>
   );
 }
 

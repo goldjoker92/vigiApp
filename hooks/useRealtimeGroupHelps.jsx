@@ -16,23 +16,38 @@ export function useRealtimeGroupHelps(groupId) {
     if (!groupId) {
       setGroupHelps([]);
       setLoading(false);
+      console.log("[useRealtimeGroupHelps] No groupId fourni, aucun listener.");
       return;
     }
     setLoading(true);
+
     const q = query(
       collection(db, "groupHelps"),
       where("groupId", "==", groupId),
       orderBy("createdAt", "desc")
     );
+
+    console.log("[useRealtimeGroupHelps] Listen path: /groupHelps | groupId =", groupId);
+
     const unsub = onSnapshot(q, (snap) => {
       const arr = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setGroupHelps(arr);
       setLoading(false);
+
+      // LOGS ULTRA PRÉCIS
+      console.log(`[useRealtimeGroupHelps] ${arr.length} demandes reçues pour groupId=${groupId}`);
+      arr.forEach((dem, idx) => {
+        console.log(`[useRealtimeGroupHelps] [${idx}] id: ${dem.id} | userId: ${dem.userId} | status: ${dem.status} | volunteerId: ${dem.volunteerId} | volunteerApelido: ${dem.volunteerApelido || "--"}`);
+      });
     }, (err) => {
       setLoading(false);
       console.error("[useRealtimeGroupHelps] Firestore ERROR", err);
     });
-    return () => unsub();
+
+    return () => {
+      unsub();
+      console.log("[useRealtimeGroupHelps] Unsubscribe from groupId:", groupId);
+    };
   }, [groupId]);
 
   return [groupHelps, loading];
