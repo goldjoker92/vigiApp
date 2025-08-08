@@ -21,20 +21,62 @@ function formatHojeOuData(date) {
   return `${d.locale("pt-br").format("dddd, D [de] MMMM")} às ${d.format("HH:mm")}`;
 }
 
+/**
+ * @typedef {Object} Demanda
+ * @property {string} id
+ * @property {string} apelido
+ * @property {string} message
+ * @property {string} status
+ * @property {any} [dateHelp]
+ * @property {any} createdAt
+ * @property {string} [volunteerId]
+ * @property {string} [volunteerApelido]
+ */
+
+/**
+ * @typedef {Object} Props
+ * @property {Demanda} demanda
+ * @property {string} [badgeId]
+ * @property {boolean} [isMine]
+ * @property {boolean} [showAccept]
+ * @property {boolean} [showHide]
+ * @property {"close"|"cancel"} [loading]
+ * @property {number} [numPedido]
+ * @property {(demanda: Demanda) => void} [onAccept]
+ * @property {(demanda: Demanda) => void} [onHide]
+ * @property {(demanda: Demanda) => void} [onCancel]
+ * @property {(demanda: Demanda) => void} [onClose]
+ */
+
 export default function CardHelpRequest({
   demanda,
-  badgeId, // <--- récupéré du parent
+  badgeId,
   isMine = false,
   onCancel,
   onClose,
   onAccept,
   onHide,
-  showAccept,
-  showHide,
+  showAccept = false,
+  showHide = false,
   loading,
   numPedido,
 }) {
   const [fadeAnim] = useState(new Animated.Value(0));
+
+  // --- LOG complet à chaque rendu (pour debug)
+  useEffect(() => {
+    console.log("[CardHelpRequest] Render", {
+      id: demanda?.id,
+      apelido: demanda?.apelido,
+      isMine,
+      showAccept,
+      showHide,
+      badgeId,
+      numPedido,
+      loading,
+      hasOnAccept: !!onAccept,
+    });
+  }, [demanda, isMine, showAccept, showHide, badgeId, numPedido, loading, onAccept]);
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -42,19 +84,16 @@ export default function CardHelpRequest({
       duration: 320,
       useNativeDriver: true,
     }).start();
-  }, [fadeAnim]);
+  }, [fadeAnim, demanda.id]);
 
-  // Parse des dates
   const dateHelp = parseFirestoreDate(demanda.dateHelp);
   const createdAt = parseFirestoreDate(demanda.createdAt);
 
-  // Types de demande
   const isAgendada = demanda.status === "scheduled" && dateHelp;
   const isRapido = demanda.status === "open" && !demanda.dateHelp;
   const isCancelada = demanda.status === "cancelled";
   const isAberta = demanda.status === "open" && !isCancelada && !isAgendada;
 
-  // Couleurs dynamiques
   const color = isCancelada
     ? "#ff5d5d"
     : isAgendada
@@ -70,18 +109,13 @@ export default function CardHelpRequest({
         { borderColor, shadowColor, opacity: fadeAnim, backgroundColor: "#181a20" },
       ]}
     >
-      {/* Badge alphanumérique */}
       <View style={[styles.numBulle, { borderColor, shadowColor }]}>
-        <Text style={styles.numPedido}>{`#${badgeId || "----"}`}</Text>
+        <Text style={styles.numPedido}>{`#${badgeId || numPedido || "----"}`}</Text>
       </View>
 
-      {/* Apelido */}
       <Text style={styles.apelido}>{demanda.apelido || "—"}</Text>
-
-      {/* Message */}
       <Text style={styles.message}>{demanda.message}</Text>
 
-      {/* Demande programmée */}
       {isAgendada && (
         <Text style={styles.agendada}>
           <Text style={styles.agendadaEmoji}>🟡</Text>
@@ -89,7 +123,6 @@ export default function CardHelpRequest({
         </Text>
       )}
 
-      {/* Demande urgente */}
       {isRapido && (
         <>
           <Text style={styles.rapido}>O mais rápido possível, por favor 🙏</Text>
@@ -97,16 +130,17 @@ export default function CardHelpRequest({
         </>
       )}
 
-      {/* Annulée */}
       {isCancelada && <Text style={styles.cancelada}>Cancelada</Text>}
 
-      {/* Actions */}
       <View style={styles.actions}>
         {isMine && (isAberta || isAgendada) && (
           <>
             <TouchableOpacity
               style={[styles.btn, styles.cloturerBtn]}
-              onPress={onClose}
+              onPress={() => {
+                console.log("[CardHelpRequest] Clôturer tapped", demanda?.id);
+                onClose && onClose(demanda);
+              }}
               disabled={loading === "close"}
               activeOpacity={0.86}
             >
@@ -115,7 +149,10 @@ export default function CardHelpRequest({
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.btn, styles.cancelarBtn]}
-              onPress={onCancel}
+              onPress={() => {
+                console.log("[CardHelpRequest] Cancelar tapped", demanda?.id);
+                onCancel && onCancel(demanda);
+              }}
               disabled={loading === "cancel"}
               activeOpacity={0.86}
             >
@@ -124,14 +161,30 @@ export default function CardHelpRequest({
             </TouchableOpacity>
           </>
         )}
+
         {!isMine && showAccept && (
-          <TouchableOpacity style={[styles.btn, styles.acceptBtn]} onPress={onAccept}>
+          <TouchableOpacity
+            style={[styles.btn, styles.acceptBtn]}
+            onPress={() => {
+              console.log("[CardHelpRequest] Aceitar tapped", demanda?.id);
+              onAccept && onAccept(demanda);
+            }}
+            activeOpacity={0.86}
+          >
             <Feather name="user-check" size={17} color="#43b57b" />
             <Text style={[styles.btnText, { color: "#43b57b" }]}>Aceitar</Text>
           </TouchableOpacity>
         )}
+
         {!isMine && showHide && (
-          <TouchableOpacity style={[styles.btn, styles.hideBtn]} onPress={onHide}>
+          <TouchableOpacity
+            style={[styles.btn, styles.hideBtn]}
+            onPress={() => {
+              console.log("[CardHelpRequest] Ocultar tapped", demanda?.id);
+              onHide && onHide(demanda);
+            }}
+            activeOpacity={0.86}
+          >
             <Feather name="eye-off" size={17} color="#FFD600" />
             <Text style={[styles.btnText, { color: "#FFD600" }]}>Ocultar</Text>
           </TouchableOpacity>
@@ -142,7 +195,6 @@ export default function CardHelpRequest({
 }
 
 const styles = StyleSheet.create({
-
   card: {
     borderWidth: 2,
     borderRadius: 17,
@@ -266,4 +318,4 @@ const styles = StyleSheet.create({
     borderColor: "#FFD600",
     backgroundColor: "#181a20",
   },
-});
+}); 

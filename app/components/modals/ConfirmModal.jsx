@@ -1,31 +1,53 @@
 import React from "react";
-import { Modal, View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import { Modal, View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from "react-native";
 import { Feather } from "@expo/vector-icons";
 
 export default function ConfirmModal({
   visible,
-  title = "Confirmação",
+  title = "",
   description = "",
-  onCancel,
-  onConfirm,
-  confirmLabel = "Confirmar",
-  cancelLabel = "Cancelar",
+  confirmLabel = "Sim",
+  cancelLabel = "Não",
   loading = false,
+  onConfirm,
+  onCancel,
 }) {
-  if (!visible) return null;
   return (
-    <Modal transparent animationType="fade" visible={visible}>
-      <View style={styles.overlay}>
-        <View style={styles.box}>
-          <Feather name="alert-triangle" size={32} color="#FFD600" style={{ alignSelf: "center", marginBottom: 6 }} />
-          <Text style={styles.title}>{title}</Text>
-          <Text style={styles.desc}>{description}</Text>
-          <View style={styles.row}>
-            <TouchableOpacity style={[styles.btn, styles.btnCancel]} onPress={onCancel} disabled={loading}>
-              <Text style={styles.btnCancelText}>{cancelLabel}</Text>
+    <Modal
+      transparent
+      animationType="fade"
+      visible={visible}
+      onRequestClose={onCancel}
+    >
+      <View style={styles.backdrop}>
+        <View style={styles.container}>
+          {title ? <Text style={styles.title}>{title}</Text> : null}
+          <Text style={styles.message}>{description}</Text>
+
+          <View style={styles.buttons}>
+            <TouchableOpacity
+              style={styles.cancelBtn}
+              onPress={onCancel}
+              disabled={loading}
+              activeOpacity={0.8}
+            >
+              <Feather name="x-circle" size={20} color="#b55a43" />
+              <Text style={[styles.btnText, { color: "#b55a43" }]}>{cancelLabel}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.btn, styles.btnConfirm]} onPress={onConfirm} disabled={loading}>
-              <Text style={styles.btnConfirmText}>{loading ? "..." : confirmLabel}</Text>
+            <TouchableOpacity
+              style={styles.confirmBtn}
+              onPress={onConfirm}
+              disabled={loading}
+              activeOpacity={0.8}
+            >
+              {loading ? (
+                <ActivityIndicator color="#43b57b" />
+              ) : (
+                <>
+                  <Feather name="check-circle" size={20} color="#43b57b" />
+                  <Text style={[styles.btnText, { color: "#43b57b" }]}>{confirmLabel}</Text>
+                </>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -33,45 +55,62 @@ export default function ConfirmModal({
     </Modal>
   );
 }
+
 const styles = StyleSheet.create({
-  overlay: {
+  backdrop: {
     flex: 1,
-    backgroundColor: "rgba(10,12,22,0.8)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 22,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  box: {
-    backgroundColor: "#181A20",
-    borderRadius: 17,
-    padding: 22,
-    width: "100%",
-    maxWidth: 370,
-    alignSelf: "center",
+  container: {
+    width: '80%',
+    backgroundColor: '#181A20',
+    borderRadius: 14,
+    padding: 20,
+    alignItems: 'center',
   },
   title: {
+    fontSize: 19,
     color: "#FFD600",
     fontWeight: "bold",
-    fontSize: 21,
     textAlign: "center",
-    marginBottom: 8,
+    marginBottom: 14,
   },
-  desc: {
-    color: "#fff",
-    textAlign: "center",
-    fontSize: 16,
-    marginBottom: 22,
+  message: {
+    color: '#ededed',
+    fontSize: 17,
+    textAlign: 'center',
+    marginBottom: 24,
   },
-  row: { flexDirection: "row", justifyContent: "space-between" },
-  btn: {
+  buttons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  confirmBtn: {
     flex: 1,
-    paddingVertical: 11,
-    borderRadius: 11,
-    alignItems: "center",
-    marginHorizontal: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#192d23',
+    borderRadius: 12,
+    paddingVertical: 10,
+    marginLeft: 8,
   },
-  btnCancel: { backgroundColor: "#23262F" },
-  btnCancelText: { color: "#FFD600", fontWeight: "bold", fontSize: 16 },
-  btnConfirm: { backgroundColor: "#00C859" },
-  btnConfirmText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
+  cancelBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#2a1916',
+    borderRadius: 12,
+    paddingVertical: 10,
+    marginRight: 8,
+  },
+  btnText: {
+    marginLeft: 6,
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
 });
