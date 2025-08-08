@@ -10,8 +10,11 @@ import { loadUserProfile } from "../utils/loadUserProfile";
  * Redirige si déconnecté. Retourne undefined (chargement), null (redirige), ou le user.
  */
 export function useAuthGuard({ redirectTo = "/" } = {}) {
-  const [firebaseUser, setFirebaseUser] = useState(undefined); // undefined: loading
+  const [firebaseUser, setFirebaseUser] = useState(undefined); 
+  console.log('[DEBUG][useAuthGuard] setUser (raison)', firebaseUser); 
+  console.trace();// undefined: loading
   const setUser = useUserStore((s) => s.setUser);
+  
   const router = useRouter();
 
   useEffect(() => {
@@ -20,6 +23,8 @@ export function useAuthGuard({ redirectTo = "/" } = {}) {
       if (fbUser) {
         // Hydrate le user Zustand avec Firestore (pour avoir le profil complet)
         const userData = await loadUserProfile(fbUser.uid);
+        console.log('[useAuthGuard] setUser après onAuthStateChanged', { ...userData, email: fbUser.email, id: fbUser.uid });
+        console.trace();
         setFirebaseUser({ ...userData, email: fbUser.email, id: fbUser.uid });
         setUser({ ...userData, email: fbUser.email, id: fbUser.uid });
       } else {
