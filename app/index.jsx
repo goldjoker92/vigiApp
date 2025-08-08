@@ -16,6 +16,7 @@ export default function LoginScreen() {
       const cred = await signInWithEmailAndPassword(auth, email, senha);
       await loadUserProfile(cred.user.uid);
       router.replace('/(tabs)/home');
+      console.log('Instance Firebase Auth ID dans le composant:', auth?.app?.name);
     } catch (error) {
       Alert.alert("Erro", error.message);
     }
