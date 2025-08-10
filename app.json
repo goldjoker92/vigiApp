@@ -8,16 +8,14 @@
     "scheme": "vigiapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-    "ios": {
-      "supportsTablet": true
-    },
+    "ios": { "supportsTablet": true },
     "android": {
+      "edgeToEdgeEnabled": true,
+      "package": "com.guigui92.vigiApp",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      },
-      "edgeToEdgeEnabled": true,
-      "package": "com.guigui92.vigiApp"
+      }
     },
     "splash": {
       "image": "./assets/images/logoVigiApp.png",
@@ -33,17 +31,26 @@
       "expo-router",
       [
         "expo-splash-screen",
+        { "image": "./assets/images/splash-icon.png", "imageWidth": 200, "resizeMode": "contain", "backgroundColor": "#ffffff" }
+      ],
+      [
+        "react-native-google-mobile-ads",
         {
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
-          "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "androidAppId": "ca-app-pub-3940256099942544~3347511713",
+          "iosAppId": "ca-app-pub-3940256099942544~1458002511"
         }
       ],
-      "react-native-google-mobile-ads"
+      "@stripe/stripe-react-native",
+      "react-native-purchases"
     ],
-    "experiments": {
-      "typedRoutes": true
+    "experiments": { "typedRoutes": true },
+    "extra": {
+      "RC_API_KEY_ANDROID": "rc_test_xxx",
+      "STRIPE_PUBLISHABLE_KEY": "pk_test_xxx"
     }
+  },
+  "react-native-google-mobile-ads": {
+    "android_app_id": "ca-app-pub-3940256099942544~3347511713",
+    "ios_app_id": "ca-app-pub-3940256099942544~1458002511"
   }
 }
