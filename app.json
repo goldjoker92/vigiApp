@@ -17,18 +17,18 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-  "package": "com.guigui92.vigiApp"
-},
-"splash": {
-  "image": "./assets/images/logoVigiApp.png",
-  "backgroundColor": "#181A20",
-  "resizeMode": "contain"
-},
-"web": {
-  "bundler": "metro",
-  "output": "static",
-  "favicon": "./assets/images/favicon.png"
-},
+      "package": "com.guigui92.vigiApp"
+    },
+    "splash": {
+      "image": "./assets/images/logoVigiApp.png",
+      "backgroundColor": "#181A20",
+      "resizeMode": "contain"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
     "plugins": [
       "expo-router",
       [
@@ -39,7 +39,8 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
-      ]
+      ],
+      "react-native-google-mobile-ads"
     ],
     "experiments": {
       "typedRoutes": true
