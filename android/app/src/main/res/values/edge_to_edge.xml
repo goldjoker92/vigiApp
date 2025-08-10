@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- Thème edge-to-edge compatible React Native/Expo -->
+  <style name="Theme.EdgeToEdge" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+    <item name="android:statusBarColor">@android:color/transparent</item>
+    <item name="android:navigationBarColor">@android:color/transparent</item>
+    <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+    <!-- Optionnel: si tu veux forcer le contenu sous la barre de statut via code RN -->
+    <!-- Le reste (light/dark bar) sera géré côté JS ou par Material selon le mode -->
+  </style>
+</resources>
