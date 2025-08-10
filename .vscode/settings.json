@@ -4,7 +4,10 @@
     "source.organizeImports": "explicit",
     "source.sortMembers": "explicit"
   },
-  "cSpell.words": [
-    "datetimepicker"
-  ]
+"cSpell.words": [
+  "datetimepicker"
+],
+"jest.runMode": { "type": "on-demand" },
+"testing.automaticallyOpenTestResults": "neverOpen"
+
 }
