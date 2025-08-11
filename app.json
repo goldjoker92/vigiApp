@@ -54,7 +54,10 @@
           "iosAppId": "ca-app-pub-3940256099942544~1458002511"
         }
       ],
-      "@stripe/stripe-react-native",
+      [
+        "@stripe/stripe-react-native",
+        { "merchantIdentifier": "merchant.com.guigui92.vigiapp", "enableGooglePay": true }
+      ],
       "react-native-purchases",
       "react-native-maps"
     ],
