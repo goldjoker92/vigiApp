@@ -58,7 +58,6 @@
         "@stripe/stripe-react-native",
         { "merchantIdentifier": "merchant.com.guigui92.vigiapp", "enableGooglePay": true }
       ],
-      "react-native-purchases",
       "react-native-maps"
     ],
 
