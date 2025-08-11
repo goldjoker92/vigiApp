@@ -1,56 +1,73 @@
-# Node modules (toujours)
+# ───────── Node / JS ─────────
 node_modules/
-
-# Next.js build output
-.next/
-out/
-
-# Mac OS
-.DS_Store
-
-# Log files
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
+*.log
 
-# Env files (ne JAMAIS pousser, secret)
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-.env*
+# ───────── Env & secrets (NE JAMAIS pusher) ─────────
+.env
+.env.*
 *.env
-
-# Typescript
-*.tsbuildinfo
-
-# Firebase / secrets
+*.keystore
+*.jks
 *.pem
 *.p8
 *.p12
 *.key
-*.jks
 *.mobileprovision
-firebase-adminsdk-*.json
 
-# Expo/React Native (inutile ici, mais tu peux garder si tu mixes plus tard)
+# ⚠️ Garde ces fichiers dans le repo (nécessaires au build Firebase) :
+# android/app/google-services.json
+# ios/GoogleService-Info.plist
+
+# ───────── Expo / React Native ─────────
 .expo/
+.expo-shared/
+.expo-packager-cache/
+.expo-*
 dist/
 web-build/
-expo-env.d.ts
-.kotlin/
+.metro-cache/
 .metro-health-check*
-*.orig.*
+*.pack
+*.hbc
+expo-env.d.ts
 
-# Example app config
-app-example
+# ───────── Android ─────────
+android/local.properties
+android/.gradle/
+android/.gradle-user-home/
+android/.cxx/
+android/build/
+android/app/.cxx/
+android/app/build/
+android/app/release/
+android/app/debug/
+# (Ne PAS ignorer gradle/wrapper — il doit rester versionné)
 
-# VSCode settings (optionnel)
+# ───────── iOS (au cas où) ─────────
+ios/Pods/
+ios/build/
+ios/DerivedData/
+*.xcuserdatad
+*.xcscmblueprint
+*.xcworkspace
+
+# ───────── IDE / OS ─────────
 .vscode/
-
-# Système divers
+.idea/
+*.iml
+.DS_Store
 Thumbs.db
 
+# ───────── Tests / rapports ─────────
+coverage/
+reports/
+*.lcov
+
+# ───────── Fichiers locaux spécifiques ─────────
 README-ADMIN-PRIVATE.md
-# Local development files
 *.local
+app-example
