@@ -9,10 +9,8 @@ export default function bootOnce() {
   if (booted) return;
   booted = true;
 
-  // AdMob
   try { mobileAds().initialize(); } catch {}
 
-  // RevenueCat
   try {
     const rcKey =
       Platform.select({
