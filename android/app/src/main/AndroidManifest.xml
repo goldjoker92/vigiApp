@@ -24,7 +24,7 @@
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_CHECK_ON_LAUNCH" android:value="ALWAYS"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_LAUNCH_WAIT_MS" android:value="0"/>
     <!-- Google Maps Android SDK -->
-    <meta-data android:name="com.google.android.geo.API_KEY"  android:value="AIzaSyDCXriQ7dv6Vh-WK2rSCVLkrmWcmSjRYZM" />
+    <meta-data android:name="com.google.android.geo.API_KEY"  android:value="${GOOGLE_MAPS_API_KEY}" />
   
   
 
