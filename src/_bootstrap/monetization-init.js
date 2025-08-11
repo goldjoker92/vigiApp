@@ -1,4 +1,4 @@
-// app/_bootstrap/monetization-init.js
+// src/bootstrap/monetization-init.js
 import { Platform } from "react-native";
 import Constants from "expo-constants";
 import mobileAds from "react-native-google-mobile-ads";
@@ -21,5 +21,4 @@ export default function bootOnce() {
   } catch {}
 }
 
-// auto-boot au premier import
 bootOnce();
