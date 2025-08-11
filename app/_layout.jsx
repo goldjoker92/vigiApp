@@ -9,6 +9,7 @@ import { ErrorBoundary } from 'react-error-boundary';
 import { View, Text } from 'react-native';
 import { Provider as PaperProvider } from 'react-native-paper';
 import CustomTopToast from './components/CustomTopToast'; // Ajuste le chemin si besoin
+import "./_bootstrap/monetization-init";
 
 
 // === Polyfill structuredClone pour Hermes (si besoin) ===
