@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "vigiApp",
-    "slug": "vigiApp",
+    "name": "VigiApp",
+    "slug": "vigiapp",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -17,7 +17,7 @@
 
     "android": {
       "edgeToEdgeEnabled": true,
-      "package": "com.guigui92.vigiApp",
+      "package": "com.guigui92.vigiapp",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
