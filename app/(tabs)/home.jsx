@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+
 import {
   Animated,
   View,
@@ -15,7 +16,7 @@ import { useGrupoDetails } from '../../hooks/useGrupoDetails';
 import { useGruposPorCep } from '../../hooks/useGruposPorCep';
 import { PlusCircle } from 'lucide-react-native';
 import { FontAwesome, Feather, MaterialIcons } from '@expo/vector-icons';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, Link } from 'expo-router';
 import WeatherCard from '../components/WeatherCard';
 import { useUserGroupEffect } from '../../hooks/useUserGroupEffect';
 import Toast from 'react-native-toast-message';
@@ -162,6 +163,10 @@ export default function HomeScreen() {
               <Text style={{ color: '#eee', fontSize: 14, marginLeft: 4 }}>
                 {grupo.members?.length || 0} / {grupo.maxMembers || 30} vizinhos
               </Text>
+            </View>
+            <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+                  <Text>pub</Text>
+                  <Link href="/test-ads">Voir la bannière AdMob (test)</Link>
             </View>
           </TouchableOpacity>
         ) : null}

@@ -1,24 +1,20 @@
-// src/bootstrap/monetization-init.js
-import { Platform } from "react-native";
-import Constants from "expo-constants";
+// src/_bootstrap/monetization-init.ts
 import mobileAds from "react-native-google-mobile-ads";
-import Purchases from "react-native-purchases";
 
-let booted = false;
-export default function bootOnce() {
-  if (booted) return;
-  booted = true;
+// Initialise une seule fois au démarrage.
+// En dev client uniquement : Expo Go n'est pas concerné (mais on est en dev build).
+let inited = false;
 
-  try { mobileAds().initialize(); } catch {}
-
+export async function initMonetization() {
+  if (inited) return;
   try {
-    const rcKey =
-      Platform.select({
-        android: Constants.expoConfig?.extra?.RC_API_KEY_ANDROID,
-        ios: Constants.expoConfig?.extra?.RC_API_KEY_IOS
-      }) || "";
-    if (rcKey) Purchases.configure({ apiKey: rcKey });
-  } catch {}
+    await mobileAds().initialize(); // OK même avec l’App ID de test
+    inited = true;
+  } catch (e) {
+    // On ne crash pas l'app si AdMob n'est pas prêt
+    if (__DEV__) console.warn("AdMob init failed:", e);
+  }
 }
 
-bootOnce();
+// lance l'init immédiatement
+initMonetization();
