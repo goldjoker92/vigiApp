@@ -11,8 +11,15 @@
 
     "ios": {
       "supportsTablet": true,
+<<<<<<< HEAD
+      "bundleIdentifier": "com.guigui92.vigiApp",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+=======
       "bundleIdentifier": "com.guigui92.vigiapp",
       "merchantIdentifier": "merchant.com.guigui92.vigiapp"
+>>>>>>> master
     },
 
     "android": {
@@ -47,12 +54,28 @@
           "backgroundColor": "#ffffff"
         }
       ],
+<<<<<<< HEAD
+      "expo-dev-client",
+=======
+>>>>>>> master
       [
         "react-native-google-mobile-ads",
         {
           "androidAppId": "ca-app-pub-3940256099942544~3347511713",
           "iosAppId": "ca-app-pub-3940256099942544~1458002511"
         }
+<<<<<<< HEAD
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "970ad372-87d8-4b8f-8051-3ed0ca92c2bc"
+      }
+=======
       ],
       [
         "@stripe/stripe-react-native",
@@ -65,6 +88,7 @@
     "extra": {
       "RC_API_KEY_ANDROID": "rc_test_xxx",
       "STRIPE_PUBLISHABLE_KEY": "pk_test_xxx"
+>>>>>>> master
     }
   }
 }

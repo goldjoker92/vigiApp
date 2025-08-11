@@ -4,7 +4,12 @@
     "source.organizeImports": "explicit",
     "source.sortMembers": "explicit"
   },
-  "cSpell.words": [
-    "datetimepicker"
-  ]
+  "cSpell.words": ["datetimepicker"],
+  "jest.runMode": { "type": "on-demand" },
+  "testing.automaticallyOpenTestResults": "neverOpen",
+  "terminal.integrated.env.windows": {
+    "ANDROID_SDK_ROOT": "C:\\Users\\Oscar\\AppData\\Local\\Android\\Sdk",
+    "ANDROID_HOME": "C:\\Users\\Oscar\\AppData\\Local\\Android\\Sdk",
+    "PATH": "${env:PATH};C:\\Users\\Oscar\\AppData\\Local\\Android\\Sdk\\platform-tools;C:\\Users\\Oscar\\AppData\\Local\\Android\\Sdk\\emulator"
+  }
 }
