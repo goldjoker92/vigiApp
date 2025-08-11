@@ -1,4 +1,4 @@
-package com.guigui92.vigiApp
+package com.guigui92.vigiapp
 
 import android.app.Application
 import android.content.res.Configuration
