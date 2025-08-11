@@ -1,4 +1,4 @@
-package com.guigui92.vigiApp
+package com.guigui92.vigiapp
 import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build

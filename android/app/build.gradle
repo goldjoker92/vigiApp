@@ -87,13 +87,22 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.guigui92.vigiApp'
+    namespace 'com.guigui92.vigiapp'
     defaultConfig {
-        applicationId 'com.guigui92.vigiApp'
+        applicationId 'com.guigui92.vigiapp'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0.0"
+
+
+        manifestPlaceholders = [
+        GOOGLE_MAPS_API_KEY: (
+            System.getenv("GOOGLE_MAPS_API_KEY")
+                ?: project.findProperty("GOOGLE_MAPS_API_KEY")
+                ?: ""
+            )
+        ]
     }
     signingConfigs {
         debug {
@@ -148,6 +157,7 @@ android {
 }
 
 dependencies {
+    implementation("androidx.browser:browser:1.8.0")
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
 
