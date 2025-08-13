@@ -1,51 +1,39 @@
-# Welcome to your Expo app 👋
+README proposé pour vigiApp
+📱 vigiApp
+Application mobile construite avec Expo et React Native pour favoriser l’entraide entre voisins.
+Fonctionnalités principales :
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+📍 Carte interactive des alertes de quartier
 
-## Get started
+💬 Chats de groupe en temps réel
 
-1. Install dependencies
+🚨 Signalement rapide d’incidents ou de besoins d’aide
 
-   ```bash
-   npm install
-   ```
+👤 Onboarding et gestion de profil
 
-2. Start the app
+🔔 Notifications poussées
 
-   ```bash
-   npx expo start
-   ```
 
-In the output, you'll find options to open the app in a
+git clone <repo-url>
+cd vigiApp
+npm install          # ou yarn
+npx expo start       # démarre le serveur Expo
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+cd android && ./gradlew assembleDebug   # Android
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+vigiApp/
+├── app/               # Pages et navigation file-based (Expo Router)
+│   ├── (tabs)/        # Onglets: Home, Map, Notifications, Profil, Voisins
+│   ├── alerts/        # Alertes publiques
+│   ├── auth/          # Onboarding & inscription
+│   └── chats/         # Chats individuels
+├── services/          # Authentification, groupes, aide, chat
+├── hooks/             # Hooks personnalisés (auth, groupes, status serveur…)
+├── store/             # Store (ex: users.js)
+├── utils/             # Helpers divers
+└── android/           # Projet natif Android
 
-## Get a fresh project
 
-When you're ready, run:
 
-```bash
-npm run reset-project
-```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
 
