@@ -1,3 +1,10 @@
+// screens/Report.jsx
+// -------------------------------------------------------------
+// Rôle : création d’un signalement PUBLIC
+// - Bouton localisation → Google-first pour remplir adresse + CEP
+// - Sauvegarde dans Firestore
+// - Logs [REPORT] et [CEP] (ceux de utils/cep.js) pour tout suivre
+// -------------------------------------------------------------
 import React, { useState } from 'react';
 import { Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, View, ActivityIndicator } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
@@ -5,11 +12,10 @@ import * as Location from 'expo-location';
 import { db, auth } from '../firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useRouter } from 'expo-router';
-import {
-  MapPin, Bell, AlertTriangle, HandHeart, Flame, ShieldAlert,
-  Bolt, Car, FileQuestion, Send, UserX
-} from "lucide-react-native";
+import { MapPin, Bell, AlertTriangle, HandHeart, Flame, ShieldAlert, Bolt, Car, FileQuestion, Send, UserX } from "lucide-react-native";
 import { useAuthGuard } from '../hooks/useAuthGuard';
+import { resolveExactCepFromCoords } from '@/utils/cep';
+import { GOOGLE_MAPS_KEY } from '@/utils/env';
 
 const categories = [
   { label: "Roubo/Furto", icon: ShieldAlert, severity: "medium", color: "#FFA500" },
@@ -33,6 +39,7 @@ export default function ReportScreen() {
   const [estado, setEstado] = useState('');
   const [cep, setCep] = useState('');
   const [loadingLoc, setLoadingLoc] = useState(false);
+  const [cepPrecision, setCepPrecision] = useState('none');
 
   if (user === undefined) return <ActivityIndicator style={{ flex: 1 }} color="#22C55E" />;
   if (!user) return null;
@@ -44,52 +51,68 @@ export default function ReportScreen() {
   const selectedCategory = categories.find(c => c.label === categoria);
   const severityColor = selectedCategory?.color || '#007AFF';
 
-  // Géo/Adresse propre (anti-doublon et gestion de cas extrêmes)
+  const formatCep = (val) => String(val || '').replace(/[^0-9]/g, '').trim();
+
   const handleLocation = async () => {
+    console.log('[REPORT] handleLocation START');
     setLoadingLoc(true);
     try {
       let { status } = await Location.requestForegroundPermissionsAsync();
+      console.log('[REPORT] Location perm =', status);
       if (status !== 'granted') {
         setLoadingLoc(false);
-        return Alert.alert('Permissão negada para acessar a localização.');
+        Alert.alert('Permissão negada para acessar a localização.');
+        return;
       }
-      let loc = await Location.getCurrentPositionAsync({});
-      setLocal(loc.coords);
-      let [addr] = await Location.reverseGeocodeAsync(loc.coords);
 
-      // ----------- ANTI-DOUBLON + patch brésilien -----------
-      let rua = addr.street || '';
-      let numero = addr.name || addr.streetNumber || '';
+      const { coords } = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      console.log('[REPORT] coords =', coords);
+      setLocal(coords);
 
-      let ruaNumeroVal;
-      if (
-        numero &&
-        rua &&
-        (numero.startsWith(rua) || numero.includes(rua))
-      ) {
-        ruaNumeroVal = numero;
-      } else if (numero && rua) {
-        ruaNumeroVal = `${rua}, ${numero}`;
-      } else {
-        ruaNumeroVal = rua || numero || '';
-      }
+      console.log('[REPORT] resolveExactCepFromCoords…');
+      const res = await resolveExactCepFromCoords(coords.latitude, coords.longitude, {
+        googleApiKey: GOOGLE_MAPS_KEY,
+      });
+      console.log('[REPORT] resolve result =', { cep: res.cep, addr: res.address, candidates: (res.candidates||[]).length });
+
+      const rua = res.address?.logradouro || '';
+      const numero = res.address?.numero || '';
+      let ruaNumeroVal = '';
+      if (rua && numero) ruaNumeroVal = `${rua}, ${numero}`;
+      else ruaNumeroVal = rua || numero || '';
+
       setRuaNumero(ruaNumeroVal.trim());
-      setCidade(addr.city || addr.subregion || '');
-      setEstado(addr.region || '');
-      setCep(addr.postalCode || '');
-    } catch (_) {
+      setCidade(res.address?.cidade || '');
+      setEstado(res.address?.uf || '');
+      if (res.cep) {
+        setCep(res.cep);
+        setCepPrecision('exact');
+      } else if (Array.isArray(res.candidates) && res.candidates.length > 0) {
+        setCep('');
+        setCepPrecision('needs-confirmation');
+        Alert.alert('Confirme o CEP','Não foi possível determinar um único CEP. Verifique o endereço ou insira o CEP se souber.');
+      } else {
+        setCep('');
+        setCepPrecision('general');
+        Alert.alert('Localização imprecisa','Não encontramos o CEP exato para esta rua. Você pode inserir manualmente o CEP (opcional).');
+      }
+    } catch (e) {
+      console.log('[REPORT] ERREUR =', e?.message || e);
       Alert.alert('Erro', 'Não foi possível obter sua localização.');
     }
     setLoadingLoc(false);
+    console.log('[REPORT] handleLocation END');
   };
 
   const handleSend = async () => {
+    console.log('[REPORT] handleSend START');
     if (!categoria) return Alert.alert('Selecione uma categoria.');
     if (!ruaNumero.trim()) return Alert.alert('Preencha o campo Rua e número.');
     if (!cidade.trim() || !estado.trim()) return Alert.alert('Preencha cidade e estado.');
     if (!descricao.trim()) return Alert.alert('Descreva o ocorrido.');
+
     try {
-      await addDoc(collection(db, "publicAlerts"), {
+      const payload = {
         userId: auth.currentUser?.uid,
         apelido: user?.apelido || '',
         username: user?.username || '',
@@ -101,19 +124,23 @@ export default function ReportScreen() {
         cidade,
         estado,
         cep,
+        cepPrecision,
         location: local,
         date: dateBR,
         time: timeBR,
         createdAt: serverTimestamp()
-      });
+      };
+      console.log('[REPORT] Firestore payload =', payload);
+      await addDoc(collection(db, "publicAlerts"), payload);
       Alert.alert("Alerta enviado!", "Seu alerta foi registrado.");
       router.replace('/(tabs)/home');
     } catch (e) {
+      console.log('[REPORT] Firestore ERREUR =', e?.message || e);
       Alert.alert('Erro', e.message);
     }
+    console.log('[REPORT] handleSend END');
   };
 
-  // Bouton actif si tous les champs OBLIGATOIRES sont remplis
   const isBtnActive = !!(
     categoria &&
     descricao.trim().length > 0 &&
@@ -178,36 +205,31 @@ export default function ReportScreen() {
           </View>
         </View>
 
-        {/* Adresse propre */}
         <Text style={styles.label}>Localização</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Rua e número (obrigatório)"
-          value={ruaNumero}
-          onChangeText={setRuaNumero}
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Cidade (obrigatório)"
-          value={cidade}
-          onChangeText={setCidade}
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Estado (obrigatório)"
-          value={estado}
-          onChangeText={setEstado}
-        />
+        <TextInput style={styles.input} placeholder="Rua e número (obrigatório)" value={ruaNumero} onChangeText={setRuaNumero} />
+        <TextInput style={styles.input} placeholder="Cidade (obrigatório)" value={cidade} onChangeText={setCidade} />
+        <TextInput style={styles.input} placeholder="Estado (obrigatório)" value={estado} onChangeText={setEstado} />
         <TextInput
           style={styles.input}
           placeholder="CEP (opcional)"
           value={cep}
-          onChangeText={setCep}
+          onChangeText={(v) => setCep(v)}
+          onBlur={() => setCep((v) => {
+            const digits = formatCep(v);
+            return digits ? digits.replace(/(\d{5})(\d{3})/, '$1-$2') : '';
+          })}
           keyboardType="numeric"
         />
-        <Text style={{ color: '#aaa', marginBottom: 6, marginLeft: 2, fontSize: 13 }}>
-          Adicione o número da rua e o CEP se souber, para ajudar na localização (opcional)
-        </Text>
+        {cepPrecision !== 'none' && (
+          <Text style={{ color: '#aaa', marginBottom: 6, marginLeft: 2, fontSize: 13 }}>
+            {cepPrecision === 'exact'
+              ? 'CEP exato detectado.'
+              : cepPrecision === 'needs-confirmation'
+              ? 'Vários CEPs possíveis — confirme o endereço/CEP.'
+              : 'CEP não foi identificado — você pode inserir manualmente.'}
+          </Text>
+        )}
+
         <TouchableOpacity style={styles.locBtn} onPress={handleLocation} disabled={loadingLoc}>
           <MapPin color="#007AFF" size={18} style={{ marginRight: 8 }} />
           <Text style={styles.locBtnText}>
@@ -218,22 +240,14 @@ export default function ReportScreen() {
         {local && (
           <MapView
             style={styles.map}
-            initialRegion={{
-              latitude: local.latitude,
-              longitude: local.longitude,
-              latitudeDelta: 0.01,
-              longitudeDelta: 0.01
-            }}
+            initialRegion={{ latitude: local.latitude, longitude: local.longitude, latitudeDelta: 0.01, longitudeDelta: 0.01 }}
           >
             <Marker coordinate={{ latitude: local.latitude, longitude: local.longitude }} />
           </MapView>
         )}
 
         <TouchableOpacity
-          style={[
-            styles.sendBtn,
-            { backgroundColor: isBtnActive ? severityColor : '#aaa', opacity: isBtnActive ? 1 : 0.6 }
-          ]}
+          style={[styles.sendBtn, { backgroundColor: isBtnActive ? severityColor : '#aaa', opacity: isBtnActive ? 1 : 0.6 }]}
           onPress={handleSend}
           disabled={!isBtnActive}
         >
@@ -249,31 +263,16 @@ const styles = StyleSheet.create({
   scrollContainer: { paddingBottom: 36, backgroundColor: "#181A20" },
   container: { padding: 22, flex: 1, backgroundColor: "#181A20" },
   alertCard: {
-    flexDirection: 'row',
-    backgroundColor: '#FF3B30',
-    padding: 18,
-    borderRadius: 16,
-    alignItems: 'center',
-    marginBottom: 19,
-    marginTop: 18,
-    shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 7,
-    elevation: 3,
+    flexDirection: 'row', backgroundColor: '#FF3B30', padding: 18, borderRadius: 16,
+    alignItems: 'center', marginBottom: 19, marginTop: 18, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 7, elevation: 3,
   },
   alertTitle: { color: "#fff", fontSize: 17, fontWeight: 'bold', marginBottom: 2 },
   alertMsg: { color: "#fff", fontSize: 15 },
   title: { fontSize: 22, fontWeight: "bold", marginBottom: 15, color: '#fff', flexDirection: "row", alignItems: "center" },
   categoriaGroup: { flexDirection: "row", flexWrap: "wrap", marginBottom: 16, gap: 6 },
   categoriaBtn: {
-    backgroundColor: "#23262F",
-    padding: 10,
-    borderRadius: 9,
-    margin: 3,
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 2,
-    borderColor: "#23262F",
-    minWidth: 110,
-    justifyContent: 'center'
+    backgroundColor: "#23262F", padding: 10, borderRadius: 9, margin: 3, flexDirection: "row",
+    alignItems: "center", borderWidth: 2, borderColor: "#23262F", minWidth: 110, justifyContent: 'center'
   },
   categoriaText: { color: "#007AFF", fontWeight: "500", fontSize: 15 },
   label: { color: '#fff', marginBottom: 4, marginTop: 12 },
@@ -282,23 +281,9 @@ const styles = StyleSheet.create({
   readonlyField: { flex: 1, backgroundColor: '#22252b', borderRadius: 7, padding: 10, alignItems: 'center' },
   readonlyLabel: { color: '#bbb', fontSize: 13 },
   readonlyValue: { color: '#fff', fontWeight: 'bold', fontSize: 15, marginTop: 2 },
-  locBtn: {
-    backgroundColor: "#e6f2ff",
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 9,
-    flexDirection: "row",
-    alignItems: "center"
-  },
+  locBtn: { backgroundColor: "#e6f2ff", borderRadius: 8, padding: 12, marginBottom: 9, flexDirection: "row", alignItems: "center" },
   locBtnText: { color: "#007AFF", fontWeight: "bold" },
   map: { width: '100%', height: 130, borderRadius: 10, marginBottom: 12, marginTop: 2 },
-  sendBtn: {
-    borderRadius: 10,
-    padding: 17,
-    alignItems: "center",
-    marginTop: 14,
-    flexDirection: "row",
-    justifyContent: "center"
-  },
+  sendBtn: { borderRadius: 10, padding: 17, alignItems: "center", marginTop: 14, flexDirection: "row", justifyContent: "center" },
   sendBtnText: { color: "#fff", fontWeight: "bold", fontSize: 18 },
 });
