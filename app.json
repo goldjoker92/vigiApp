@@ -1,70 +1,7 @@
 {
   "expo": {
-    "name": "VigiApp",
-    "slug": "vigiapp",
-    "version": "1.0.0",
-    "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
-    "scheme": "vigiapp",
-    "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
-
-    "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.guigui92.vigiapp",
-      "merchantIdentifier": "merchant.com.guigui92.vigiapp"
-    },
-
-    "android": {
-      "edgeToEdgeEnabled": true,
-      "package": "com.guigui92.vigiapp",
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
-      }
-    },
-
-    "splash": {
-      "image": "./assets/images/logoVigiApp.png",
-      "backgroundColor": "#181A20",
-      "resizeMode": "contain"
-    },
-
-    "web": {
-      "bundler": "metro",
-      "output": "static",
-      "favicon": "./assets/images/favicon.png"
-    },
-
-    "plugins": [
-      "expo-router",
-      [
-        "expo-splash-screen",
-        {
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
-          "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
-        }
-      ],
-      [
-        "react-native-google-mobile-ads",
-        {
-          "androidAppId": "ca-app-pub-3940256099942544~3347511713",
-          "iosAppId": "ca-app-pub-3940256099942544~1458002511"
-        }
-      ],
-      [
-        "@stripe/stripe-react-native",
-        { "merchantIdentifier": "merchant.com.guigui92.vigiapp", "enableGooglePay": true }
-      ]
-    ],
-
-    "experiments": { "typedRoutes": true },
-
     "extra": {
-      "RC_API_KEY_ANDROID": "rc_test_xxx",
-      "STRIPE_PUBLISHABLE_KEY": "pk_test_xxx"
+      "eas": { "projectId": "95fb1fec-76a3-409d-b573-4d7127def99a" }
     }
   }
 }
