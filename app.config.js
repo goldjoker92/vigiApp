@@ -1,3 +1,7 @@
+<<<<<<< HEAD
+=======
+// app.config.js
+>>>>>>> 1944cfb (Sauvegarde avant mise à jour Expo)
 import "dotenv/config";
 
 export default ({ config }) => ({
@@ -5,6 +9,10 @@ export default ({ config }) => ({
   name: "VigiApp",
   slug: "vigiapp",
   version: "1.0.0",
+<<<<<<< HEAD
+=======
+  orientation: "portrait",
+>>>>>>> 1944cfb (Sauvegarde avant mise à jour Expo)
   scheme: "vigiapp",
   orientation: "portrait",
   userInterfaceStyle: "automatic",
@@ -57,6 +65,7 @@ export default ({ config }) => ({
       merchantIdentifier: "merchant.com.guigui92.vigiapp",
       enableGooglePay: true
     }],
+<<<<<<< HEAD
     ["expo-build-properties", {
       android: {
         compileSdkVersion: 35,
@@ -64,6 +73,9 @@ export default ({ config }) => ({
         buildToolsVersion: "35.0.0"
       }
     }]
+=======
+                                
+>>>>>>> 1944cfb (Sauvegarde avant mise à jour Expo)
   ],
 
   experiments: { typedRoutes: true },
