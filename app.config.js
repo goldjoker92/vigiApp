@@ -1,9 +1,5 @@
 // app.config.js
-// -------------------------------------------------------------
-// Lit .env, passe les clés natives Maps aux SDKs, expose la clé web
-// EXPO_PUBLIC_GOOGLE_MAPS_KEY côté JS via extra, + autres secrets.
-// -------------------------------------------------------------
-import 'dotenv/config';
+import "dotenv/config";
 
 export default ({ config }) => ({
   ...config,
@@ -11,7 +7,6 @@ export default ({ config }) => ({
   slug: "vigiapp",
   version: "1.0.0",
   orientation: "portrait",
-  icon: "./assets/images/icon.png",
   scheme: "vigiapp",
   userInterfaceStyle: "automatic",
   newArchEnabled: true,
@@ -53,13 +48,17 @@ export default ({ config }) => ({
       androidAppId: "ca-app-pub-3940256099942544~3347511713",
       iosAppId: "ca-app-pub-3940256099942544~1458002511"
     }],
-    ["@stripe/stripe-react-native", { merchantIdentifier: "merchant.com.guigui92.vigiapp", enableGooglePay: true }]
+    ["@stripe/stripe-react-native", {
+      merchantIdentifier: "merchant.com.guigui92.vigiapp",
+      enableGooglePay: true
+    }],
+                                
   ],
 
   experiments: { typedRoutes: true },
 
   extra: {
-    EXPO_PUBLIC_GOOGLE_MAPS_KEY: process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY, // <= clé web pour Geocoding (Google-first)
+    EXPO_PUBLIC_GOOGLE_MAPS_KEY: process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY,
     RC_API_KEY_ANDROID: process.env.RC_API_KEY_ANDROID,
     STRIPE_PUBLISHABLE_KEY: process.env.STRIPE_PUBLISHABLE_KEY,
     OPENWEATHER_API_KEY: process.env.OPENWEATHER_API_KEY,
@@ -74,9 +73,3 @@ export default ({ config }) => ({
     eas: { projectId: "95fb1fec-76a3-409d-b573-4d7127def99a" }
   }
 });
-// -------------------------------------------------------------
-// Rôle : écran "Signaler un groupe" (étape 1 de 2 du signalement).
-// 1) demande la position (meilleure possible, timeout 9s max)
-// -------------------------------------------------------------
-// Étapes principales :
-// 1) getBestCoordsRetry (Expo Location, GPS-first, timeout 9s max)

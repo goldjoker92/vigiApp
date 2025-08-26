@@ -1,45 +1,39 @@
-// Top-level build file where you can add configuration options common to all sub-projects/modules.
+// Top-level build file — minimal et conforme Expo SDK 53
 
 buildscript {
+  ext {
+    buildToolsVersion = "35.0.0"
+    minSdkVersion = 23
+    compileSdkVersion = 35
+    targetSdkVersion = 34
+    ndkVersion = "26.1.10909125"
+    // ❌ NE PAS définir kotlinVersion ici (laisse Expo gérer)
+  }
   repositories {
     google()
     mavenCentral()
   }
-  dependencies {
-    classpath('com.android.tools.build:gradle')
-    classpath('com.facebook.react:react-native-gradle-plugin')
-    classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')
-  }
+  // ❌ Pas de classpath Kotlin ici, Expo s’en charge via les plugins inclus en settings
+  // ❌ Pas de react-native-gradle-plugin ici (déjà via includeBuild en settings)
 }
-
-def reactNativeAndroidDir = new File(
-  providers.exec {
-    workingDir(rootDir)
-    commandLine("node", "--print", "require.resolve('react-native/package.json')")
-  }.standardOutput.asText.get().trim(),
-  "../android"
-)
 
 allprojects {
   repositories {
-    maven {
-      // All of React Native (JS, Obj-C sources, Android binaries) is installed from npm
-      url(reactNativeAndroidDir)
-    }
-
     google()
     mavenCentral()
-    maven { url 'https://www.jitpack.io' }
+    maven { url "https://www.jitpack.io" }
   }
 }
+
+// 🔒 Empêche de tirer androidx.browser 1.10 alpha (qui exige compileSdk 36 + AGP 8.9)
 subprojects {
-  configurations.all {
+  configurations.configureEach {
     resolutionStrategy {
-      force 'androidx.browser:browser:1.8.0'
+      force "androidx.browser:browser:1.7.0"
     }
   }
 }
 
-
-apply plugin: "expo-root-project"
+// Laisser Expo et RN initialiser (ordre OK)
 apply plugin: "com.facebook.react.rootproject"
+apply plugin: "expo-root-project"
