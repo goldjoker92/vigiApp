@@ -1,7 +1,3 @@
-<<<<<<< HEAD
-=======
-// app.config.js
->>>>>>> 1944cfb (Sauvegarde avant mise à jour Expo)
 import "dotenv/config";
 
 export default ({ config }) => ({
@@ -9,10 +5,7 @@ export default ({ config }) => ({
   name: "VigiApp",
   slug: "vigiapp",
   version: "1.0.0",
-<<<<<<< HEAD
-=======
-  orientation: "portrait",
->>>>>>> 1944cfb (Sauvegarde avant mise à jour Expo)
+  scheme: "vigiapp",
   scheme: "vigiapp",
   orientation: "portrait",
   userInterfaceStyle: "automatic",
