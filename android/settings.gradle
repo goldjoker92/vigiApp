@@ -1,11 +1,20 @@
 pluginManagement {
-  repositories {
-    gradlePluginPortal()
-    google()
-    mavenCentral()
-  }
-  includeBuild("../node_modules/@react-native/gradle-plugin")
-  includeBuild("../node_modules/expo-modules-autolinking/android/expo-gradle-plugin")
+  def reactNativeGradlePlugin = new File(
+    providers.exec {
+      workingDir(rootDir)
+      commandLine("node", "--print", "require.resolve('@react-native/gradle-plugin/package.json', { paths: [require.resolve('react-native/package.json')] })")
+    }.standardOutput.asText.get().trim()
+  ).getParentFile().absolutePath
+  includeBuild(reactNativeGradlePlugin)
+  
+  def expoPluginsPath = new File(
+    providers.exec {
+      workingDir(rootDir)
+      commandLine("node", "--print", "require.resolve('expo-modules-autolinking/package.json', { paths: [require.resolve('expo/package.json')] })")
+    }.standardOutput.asText.get().trim(),
+    "../android/expo-gradle-plugin"
+  ).absolutePath
+  includeBuild(expoPluginsPath)
 }
 
 plugins {
@@ -14,27 +23,17 @@ plugins {
 }
 
 extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
-  ex.autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)
-}
-
-rootProject.name = "VigiApp"
-include(":app")
-includeBuild(expoAutolinking.reactNativeGradlePlugin)
-
-dependencyResolutionManagement {
-  repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
-  repositories {
-    google()
-    mavenCentral()
-    maven { url "https://www.jitpack.io" }
-    // Binaire RN depuis node_modules
-    def rnAndroidDir = new File(
-      providers.exec {
-        workingDir(rootDir)
-        commandLine("node", "--print", "require.resolve('react-native/package.json')")
-      }.standardOutput.asText.get().trim(),
-      "../android"
-    )
-    maven { url(rnAndroidDir) }
+  if (System.getenv('EXPO_USE_COMMUNITY_AUTOLINKING') == '1') {
+    ex.autolinkLibrariesFromCommand()
+  } else {
+    ex.autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)
   }
 }
+expoAutolinking.useExpoModules()
+
+rootProject.name = 'VigiApp'
+
+expoAutolinking.useExpoVersionCatalog()
+
+include ':app'
+includeBuild(expoAutolinking.reactNativeGradlePlugin)

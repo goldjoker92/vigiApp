@@ -1,15 +1,16 @@
 // screens/Report.jsx
 // -------------------------------------------------------------
 // Rôle : création d’un signalement PUBLIC
-// Mini-map : cachée par défaut, s’affiche après GPS ou saisie suffisante.
+// Mini-map : cachée par défaut, s’affiche après GPS.
 // Localisation :
-//   - Bouton GPS -> resolveExactCepFromCoords (Google-first) pour préremplir adresse + CEP.
-//   - Saisie manuelle -> geocode natif Expo, sinon fallback Web (Google Geocoding HTTP).
+//   - Bouton GPS -> reverseGeocode (Expo) pour préremplir immédiatement,
+//                  puis resolveExactCepFromCoords (Google-first) pour CEP/adresse précis.
+//   - Saisie manuelle : plus de géocodage ni d’affichage map.
 // Sauvegarde : Firestore (collection "publicAlerts").
-// Logs : [REPORT] [UI] [GEO] [MAP] [CEP]
+// Logs : [REPORT] [UI] [GEO] [MAP] [CEP] [KEY]
 // Notes UI :
 //   - Responsive all screen (safe area + KeyboardAvoiding + map height dynamique).
-//   - provider Google seulement sur Android (iOS s’appuie sur Apple Maps si pas de clé iOS).
+//   - provider Google seulement sur Android, et PAS dans Expo Go.
 //   - La mini-map recentre sur la dernière coord connue.
 // -------------------------------------------------------------
 
@@ -21,6 +22,7 @@ import {
 } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
+import Constants from 'expo-constants';
 import { db, auth } from '../firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useRouter } from 'expo-router';
@@ -31,6 +33,7 @@ import {
 import { useAuthGuard } from '../hooks/useAuthGuard';
 import { resolveExactCepFromCoords } from '@/utils/cep';
 import { GOOGLE_MAPS_KEY } from '@/utils/env';
+
 
 // Helper log (horodaté + tag)
 const log = (tag, ...args) => console.log(`[REPORT][${tag}]`, ...args);
@@ -49,6 +52,20 @@ const categories = [
 // Région par défaut (si aucune coord)
 const DEFAULT_REGION = {
   latitude: -3.7327, longitude: -38.5267, latitudeDelta: 0.02, longitudeDelta: 0.02
+};
+
+// —— Reverse-geocode (Expo) → remplit vite les champs
+const applyReverseGeo = (placemark) => {
+  if (!placemark) return null;
+  const street = placemark.street || placemark.name || '';
+  const cidade =
+    placemark.city || placemark.subregion || placemark.district || placemark.region || '';
+  const estado =
+    placemark.region || placemark.administrativeArea || placemark.subregion || placemark.city || '';
+  const cepDigits = String(placemark.postalCode || '').replace(/\D/g, '');
+  const cepPretty = cepDigits ? cepDigits.replace(/(\d{5})(\d{3})/, '$1-$2') : '';
+  log('GEO', 'reverseGeo ->', { street, cidade, estado, postalCode: placemark.postalCode });
+  return { ruaNumero: street, cidade, estado, cep: cepPretty };
 };
 
 export default function ReportScreen() {
@@ -84,10 +101,16 @@ export default function ReportScreen() {
   // Map ref pour recentrer
   const mapRef = useRef(null);
 
+  // Log environnement (Expo Go vs Dev Client)
+  useEffect(() => {
+    log('KEY', 'appOwnership =', Constants.appOwnership);
+  }, []);
+
   // Recentrer la mini-map quand local change
   useEffect(() => {
     if (local && mapRef.current) {
       const region = { latitude: local.latitude, longitude: local.longitude, latitudeDelta: 0.01, longitudeDelta: 0.01 };
+      log('MAP', 'animateToRegion =>', region);
       mapRef.current.animateToRegion(region, 350);
     }
   }, [local]);
@@ -104,101 +127,95 @@ export default function ReportScreen() {
 
   const formatCep = (val) => String(val || '').replace(/[^0-9]/g, '').trim();
 
-  // Provider : Google seulement sur Android (iOS peut rester par défaut)
-  const mapProvider = Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined;
+  // Provider : Google seulement sur Android ET pas dans Expo Go
+  const isExpoGo = Constants.appOwnership === 'expo';
+  const mapProvider = Platform.OS === 'android' && !isExpoGo ? PROVIDER_GOOGLE : undefined;
 
   // ---------- 1) Bouton "Usar minha localização atual" (GPS) ----------
   const handleLocation = async () => {
     log('UI', 'handleLocation CLICK');
     setLoadingLoc(true);
+
+    // Affiche immédiatement la mini-map (anti-écran blanc) + fallback défaut
+    if (!showMiniMap) setShowMiniMap(true);
+    if (!local) {
+      setLocal({ latitude: DEFAULT_REGION.latitude, longitude: DEFAULT_REGION.longitude });
+      log('MAP', 'preset DEFAULT_REGION while waiting GPS');
+    }
+
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       log('GEO', 'permission =', status);
       if (status !== 'granted') {
         Alert.alert('Permissão negada para acessar a localização.');
-        setShowMiniMap(true); // on montre tout de même la map centrée défaut
-        return;
+        return; // minimap reste visible, centrée défaut
       }
 
       const { coords } = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
       log('GEO', 'coords =', coords);
       setLocal({ latitude: coords.latitude, longitude: coords.longitude });
-      setShowMiniMap(true);
 
-      // Remplir adresse/CEP via util
-      log('CEP', 'resolveExactCepFromCoords START');
-      const res = await resolveExactCepFromCoords(coords.latitude, coords.longitude, { googleApiKey: GOOGLE_MAPS_KEY });
-      log('CEP', 'resolve result', { cep: res.cep, candidates: (res.candidates || []).length, address: res.address });
+      // 1) Pré-remplissage immédiat (reverse-geocode Expo)
+      try {
+        const placemarks = await Location.reverseGeocodeAsync({
+          latitude: coords.latitude, longitude: coords.longitude,
+        });
+        log('GEO', 'reverseGeocode hits =', placemarks?.length);
+        if (Array.isArray(placemarks) && placemarks.length > 0) {
+          const quick = applyReverseGeo(placemarks[0]);
+          if (quick) {
+            if (quick.ruaNumero) setRuaNumero(quick.ruaNumero);
+            if (quick.cidade) setCidade(quick.cidade);
+            if (quick.estado) setEstado(quick.estado);
+            if (quick.cep) { setCep(quick.cep); setCepPrecision('general'); }
+            log('UI', 'form prefilled (reverse-geocode)');
+          }
+        }
+      } catch (e) {
+        log('GEO', 'reverseGeocode ERROR', e?.message || e);
+      }
 
-      const rua    = res.address?.logradouro || '';
-      const numero = res.address?.numero || '';
-      const ruaNum = [rua, numero].filter(Boolean).join(', ');
+      // 2) Raffinement Google (CEP/logradouro/numero)
+      try {
+        log('CEP', 'resolveExactCepFromCoords START');
+        const res = await resolveExactCepFromCoords(coords.latitude, coords.longitude, { googleApiKey: GOOGLE_MAPS_KEY });
+        log('CEP', 'resolve result', { cep: res.cep, candidates: (res.candidates || []).length, address: res.address });
 
-      setRuaNumero(ruaNum);
-      setCidade(res.address?.cidade || '');
-      setEstado(res.address?.uf || '');
+        const rua    = res.address?.logradouro || '';
+        const numero = res.address?.numero || '';
+        const ruaNum = [rua, numero].filter(Boolean).join(', ');
+        const cidade = res.address?.cidade || '';
+        const estado = res.address?.uf || '';
 
-      if (res.cep) {
-        setCep(res.cep);
-        setCepPrecision('exact');
-      } else if (Array.isArray(res.candidates) && res.candidates.length > 0) {
-        setCep('');
-        setCepPrecision('needs-confirmation');
-        Alert.alert('Confirme o CEP', 'Não foi possível determinar um único CEP. Verifique o endereço ou insira o CEP se souber.');
-      } else {
-        setCep('');
-        setCepPrecision('general');
-        Alert.alert('Localização imprecisa', 'Não encontramos o CEP exato para esta rua. Você pode inserir manualmente o CEP (opcional).');
+        if (ruaNum) setRuaNumero(ruaNum);
+        if (cidade) setCidade(cidade);
+        if (estado) setEstado(estado);
+
+        if (res.cep) {
+          setCep(res.cep);
+          setCepPrecision('exact');
+        } else if (Array.isArray(res.candidates) && res.candidates.length > 0) {
+          setCep('');
+          setCepPrecision('needs-confirmation');
+          Alert.alert('Confirme o CEP', 'Não foi possível determinar um único CEP. Verifique o endereço ou insira o CEP se souber.');
+        } else {
+          if (!cep) setCepPrecision('general');
+        }
+        log('UI', 'form refined (google)');
+      } catch (e) {
+        log('CEP', 'resolveExactCepFromCoords ERROR', e?.message || e);
       }
     } catch (e) {
       log('GEO', 'ERROR', e?.message || e);
       Alert.alert('Erro', 'Não foi possível obter sua localização.');
-      setShowMiniMap(true);
     } finally {
       setLoadingLoc(false);
       log('UI', 'handleLocation END');
     }
   };
 
-  // ---------- 2) Saisie manuelle : geocoding ----------
-  const tryGeocodeManual = async () => {
-    const hasEnough = !!cep || (ruaNumero.trim() && cidade.trim() && estado.trim());
-    log('UI', 'tryGeocodeManual fired | hasEnough =', hasEnough, { ruaNumero, cidade, estado, cep });
-    if (!hasEnough) return;
-
-    setShowMiniMap(true);
-
-    const query = cep ? formatCep(cep) : `${ruaNumero}, ${cidade} - ${estado}, Brasil`;
-
-    // a) natif Expo
-    try {
-      const hits = await Location.geocodeAsync(query);
-      log('GEO', 'geocode(native) hits =', hits?.length);
-      if (hits?.length) {
-        const { latitude, longitude } = hits[0];
-        setLocal({ latitude, longitude });
-        log('GEO', 'geocode(native) =>', latitude, longitude);
-        return;
-      }
-    } catch (e) {
-      log('GEO', 'geocode(native) ERROR', e?.message || e);
-    }
-
-    // b) fallback HTTP (clé web)
-    try {
-      const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(query)}&region=br&key=${GOOGLE_MAPS_KEY}`;
-      const res = await fetch(url);
-      const data = await res.json();
-      const loc = data?.results?.[0]?.geometry?.location;
-      log('GEO', 'geocode(web) status =', data?.status, 'results =', data?.results?.length);
-      if (loc?.lat && loc?.lng) {
-        setLocal({ latitude: loc.lat, longitude: loc.lng });
-        log('GEO', 'geocode(web) =>', loc.lat, loc.lng);
-      }
-    } catch (e) {
-      log('GEO', 'geocode(web) ERROR', e?.message || e);
-    }
-  };
+  // ---------- 2) (SUPPRIMÉ) Saisie manuelle : plus de géocodage ----------
+  // -> on garde les champs éditables, mais aucun onBlur ni fetch déclenché.
 
   // ---------- 3) Envoi Firestore ----------
   const handleSend = async () => {
@@ -219,7 +236,7 @@ export default function ReportScreen() {
         color: severityColor,
         ruaNumero, cidade, estado,
         cep, cepPrecision,
-        location: local,               // coords (GPS ou géocode)
+        location: local,               // coords (GPS)
         date: dateBR, time: timeBR,
         createdAt: serverTimestamp()
       };
@@ -326,7 +343,6 @@ export default function ReportScreen() {
               placeholderTextColor="#9aa0a6"
               value={ruaNumero}
               onChangeText={setRuaNumero}
-              onBlur={tryGeocodeManual}
               returnKeyType="next"
             />
             <TextInput
@@ -335,7 +351,6 @@ export default function ReportScreen() {
               placeholderTextColor="#9aa0a6"
               value={cidade}
               onChangeText={setCidade}
-              onBlur={tryGeocodeManual}
               returnKeyType="next"
             />
             <TextInput
@@ -344,7 +359,6 @@ export default function ReportScreen() {
               placeholderTextColor="#9aa0a6"
               value={estado}
               onChangeText={setEstado}
-              onBlur={tryGeocodeManual}
               returnKeyType="next"
             />
             <TextInput
@@ -352,15 +366,11 @@ export default function ReportScreen() {
               placeholder="CEP (opcional)"
               placeholderTextColor="#9aa0a6"
               value={cep}
-              onChangeText={setCep}
-              onBlur={() => {
-                setCep(v => {
-                  const digits = formatCep(v);
-                  const pretty = digits ? digits.replace(/(\d{5})(\d{3})/, '$1-$2') : '';
-                  log('CEP', 'format onBlur =>', { input: v, digits, pretty });
-                  return pretty;
-                });
-                tryGeocodeManual();
+              onChangeText={(v) => {
+                const digits = formatCep(v);
+                const pretty = digits ? digits.replace(/(\d{5})(\d{3})/, '$1-$2') : '';
+                setCep(pretty);
+                log('CEP', 'manual edit =>', { input: v, digits, pretty });
               }}
               keyboardType="numeric"
               returnKeyType="done"
@@ -392,10 +402,15 @@ export default function ReportScreen() {
                   style={styles.map}
                   initialRegion={initialRegion}
                   onMapReady={() => log('MAP', 'MiniMap ready | region =', initialRegion)}
+                  onMapLoaded={() => log('MAP', 'tiles LOADED')}
                   onError={(e) => log('MAP', 'ERROR', e?.nativeEvent || e)}
                   toolbarEnabled={false}
                   rotateEnabled={false}
                   pitchEnabled={false}
+                  liteMode={false}
+                  showsUserLocation={true}
+                  showsMyLocationButton={true}
+                  mapType="standard"
                 >
                   {local && <Marker coordinate={local} title="Local selecionado" />}
                 </MapView>

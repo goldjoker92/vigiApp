@@ -4,6 +4,7 @@
     "strict": true,
     "module": "ESNext",
     "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
     "paths": {
       "@/*": ["./*"]
     }
@@ -14,6 +15,7 @@
     ".expo/types/**/*.ts",
     "expo-env.d.ts",
     "app/(tabs)/_layout.jsx",
-    "app/(tabs)/index.jsx"
-, "app/chats/[chatId].jsx"  ]
+    "app/(tabs)/index.jsx",
+    "app/chats/[chatId].jsx"
+  ]
 }

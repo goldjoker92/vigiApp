@@ -1,4 +1,3 @@
-// app.config.js
 import "dotenv/config";
 
 export default ({ config }) => ({
@@ -6,9 +5,10 @@ export default ({ config }) => ({
   name: "VigiApp",
   slug: "vigiapp",
   version: "1.0.0",
-  orientation: "portrait",
   scheme: "vigiapp",
+  orientation: "portrait",
   userInterfaceStyle: "automatic",
+  jsEngine: "hermes",
   newArchEnabled: true,
 
   ios: {
@@ -19,13 +19,12 @@ export default ({ config }) => ({
   },
 
   android: {
-    edgeToEdgeEnabled: true,
     package: "com.guigui92.vigiapp",
+    edgeToEdgeEnabled: true,
     adaptiveIcon: {
       foregroundImage: "./assets/images/adaptive-icon.png",
       backgroundColor: "#ffffff"
-    },
-    config: { googleMaps: { apiKey: process.env.ANDROID_MAPS_API_KEY } }
+    }
   },
 
   splash: {
@@ -51,8 +50,7 @@ export default ({ config }) => ({
     ["@stripe/stripe-react-native", {
       merchantIdentifier: "merchant.com.guigui92.vigiapp",
       enableGooglePay: true
-    }],
-                                
+    }]
   ],
 
   experiments: { typedRoutes: true },
