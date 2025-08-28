@@ -50,6 +50,14 @@ export default ({ config }) => ({
     ["@stripe/stripe-react-native", {
       merchantIdentifier: "merchant.com.guigui92.vigiapp",
       enableGooglePay: true
+    }],
+    // 👉 Pilotage AGP/SDK via build-properties (sans kotlinVersion)
+    ["expo-build-properties", {
+      android: {
+        compileSdkVersion: 35,
+        targetSdkVersion: 35,
+        buildToolsVersion: "35.0.0"
+      }
     }]
   ],
 
