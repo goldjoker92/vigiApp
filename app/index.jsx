@@ -1,5 +1,7 @@
 
 import React, { useState } from "react";
+import 'react-native-reanimated';
+
 import {
   View,
   Text,
