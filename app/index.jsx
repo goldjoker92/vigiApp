@@ -1,7 +1,6 @@
+﻿import 'react-native-gesture-handler';
 
 import React, { useState } from "react";
-import 'react-native-reanimated';
-
 import {
   View,
   Text,
@@ -86,7 +85,7 @@ export default function LoginScreen() {
 
           <TouchableOpacity onPress={() => router.push("/auth/signup")}>
             <Text style={styles.link}>
-              Não tem conta? <Text style={styles.linkHighlight}>Cadastre-se</Text>
+              NÃ£o tem conta? <Text style={styles.linkHighlight}>Cadastre-se</Text>
             </Text>
           </TouchableOpacity>
         </View>
@@ -107,7 +106,7 @@ export default function LoginScreen() {
           }}
           style={styles.devBtn}
         >
-          <Text style={styles.devBtnText}>DEV • {devIndex + 1}</Text>
+          <Text style={styles.devBtnText}>DEV â€¢ {devIndex + 1}</Text>
         </TouchableOpacity>
       )}
     </KeyboardAvoidingView>
