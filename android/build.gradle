@@ -6,12 +6,9 @@ buildscript {
     mavenCentral()
   }
   dependencies {
-    // Laisse ces trois classpath tels quels si ton projet Expo les gère via le catalog (par défaut oui)
     classpath('com.android.tools.build:gradle')
     classpath('com.facebook.react:react-native-gradle-plugin')
     classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')
-
-    // ✅ Option A : on déclare le plugin Google Services ici (version explicite)
   }
 }
 
@@ -25,8 +22,10 @@ def reactNativeAndroidDir = new File(
 
 allprojects {
   repositories {
-    // All of React Native (JS, Obj-C sources, Android binaries) is installed from npm
-    maven { url(reactNativeAndroidDir) }
+    maven {
+      // All of React Native (JS, Obj-C sources, Android binaries) is installed from npm
+      url(reactNativeAndroidDir)
+    }
 
     google()
     mavenCentral()
@@ -34,14 +33,17 @@ allprojects {
   }
 }
 
-// ✅ Ceinture : on évite la version alpha d'androidx.browser qui réclame compileSdk 36 / AGP 8.9+
+// Garde-fou androidx.browser: ÃƒÂ©vite les versions alpha (1.10.0-alpha01)
 subprojects { subproject ->
-  subproject.configurations.configureEach { config ->
-    config.resolutionStrategy {
+  subproject.configurations.configureEach { cfg ->
+    cfg.resolutionStrategy {
+      // L'une ou l'autre des deux est ok. 1.8.0 = ultra safe.
       force 'androidx.browser:browser:1.8.0'
+      // force 'androidx.browser:browser:1.9.1'
     }
   }
 }
+
 
 apply plugin: "expo-root-project"
 apply plugin: "com.facebook.react.rootproject"
