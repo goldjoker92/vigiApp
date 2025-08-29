@@ -1,24 +1,16 @@
-// android/settings.gradle — Gradle 8 + Expo SDK 53
-
 pluginManagement {
-  repositories {
-    gradlePluginPortal()
-    mavenCentral()
-    google()
-  }
-
-  // Plugins résolus côté Settings (composite builds)
-  includeBuild("../node_modules/@react-native/gradle-plugin")
-
-  // Expo gradle plugin (pour le plugin id "expo-root-project")
+  def reactNativeGradlePlugin = new File(
+    providers.exec {
+      workingDir(rootDir)
+      commandLine("node", "--print", "require.resolve('@react-native/gradle-plugin/package.json', { paths: [require.resolve('react-native/package.json')] })")
+    }.standardOutput.asText.get().trim()
+  ).getParentFile().absolutePath
+  includeBuild(reactNativeGradlePlugin)
+  
   def expoPluginsPath = new File(
     providers.exec {
       workingDir(rootDir)
-      commandLine(
-        "node",
-        "--print",
-        "require.resolve('expo-modules-autolinking/package.json', { paths: [require.resolve('expo/package.json')] })"
-      )
+      commandLine("node", "--print", "require.resolve('expo-modules-autolinking/package.json', { paths: [require.resolve('expo/package.json')] })")
     }.standardOutput.asText.get().trim(),
     "../android/expo-gradle-plugin"
   ).absolutePath
@@ -37,35 +29,11 @@ extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
     ex.autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)
   }
 }
-
 expoAutolinking.useExpoModules()
-// ❌ ne PAS appeler expoAutolinking.useExpoVersionCatalog()
 
-// --- Repos globaux (remplace allprojects { repositories { ... }}) ---
-def reactNativeAndroidDir = new File(
-  providers.exec {
-    workingDir(rootDir)
-    commandLine("node", "--print", "require.resolve('react-native/package.json')")
-  }.standardOutput.asText.get().trim(),
-  "../android"
-)
+rootProject.name = 'VigiApp'
 
-dependencyResolutionManagement {
-  repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
-  repositories {
-    maven { url(reactNativeAndroidDir) } // binaire RN depuis node_modules
-    google()
-    mavenCentral()
-    maven { url "https://www.jitpack.io" }
-  }
-}
+expoAutolinking.useExpoVersionCatalog()
 
-// === Substitution CLASSPATH RN (utile pour la classpath des plugins) ===
-includeBuild("../node_modules/@react-native/gradle-plugin") {
-  dependencySubstitution {
-    substitute(module("com.facebook.react:react-native-gradle-plugin")).using(project(":"))
-  }
-}
-
-rootProject.name = "VigiApp"
-include(":app")
+include ':app'
+includeBuild(expoAutolinking.reactNativeGradlePlugin)
