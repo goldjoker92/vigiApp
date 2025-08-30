@@ -33,17 +33,5 @@ allprojects {
   }
 }
 
-// Garde-fou androidx.browser: ÃƒÂ©vite les versions alpha (1.10.0-alpha01)
-subprojects { subproject ->
-  subproject.configurations.configureEach { cfg ->
-    cfg.resolutionStrategy {
-      // L'une ou l'autre des deux est ok. 1.8.0 = ultra safe.
-      force 'androidx.browser:browser:1.8.0'
-      // force 'androidx.browser:browser:1.9.1'
-    }
-  }
-}
-
-
 apply plugin: "expo-root-project"
 apply plugin: "com.facebook.react.rootproject"

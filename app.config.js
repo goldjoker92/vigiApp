@@ -9,7 +9,7 @@ export default ({ config }) => ({
   orientation: "portrait",
   userInterfaceStyle: "automatic",
   jsEngine: "hermes",
-  newArchEnabled: true,
+  newArchEnabled: false,
 
   ios: {
     supportsTablet: true,
@@ -24,6 +24,12 @@ export default ({ config }) => ({
     adaptiveIcon: {
       foregroundImage: "./assets/images/adaptive-icon.png",
       backgroundColor: "#ffffff"
+    },
+    // ⬇⬇⬇  Injection de la clé Google Maps (OBLIGATOIRE pour RN Maps)
+    config: {
+      googleMaps: {
+        apiKey: process.env.ANDROID_MAPS_API_KEY
+      }
     }
   },
 
@@ -51,7 +57,6 @@ export default ({ config }) => ({
       merchantIdentifier: "merchant.com.guigui92.vigiapp",
       enableGooglePay: true
     }],
-    // 👉 Pilotage AGP/SDK via build-properties (sans kotlinVersion)
     ["expo-build-properties", {
       android: {
         compileSdkVersion: 35,

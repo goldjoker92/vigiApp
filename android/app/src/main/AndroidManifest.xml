@@ -16,6 +16,7 @@
     </intent>
   </queries>
   <application android:name=".MainApplication" android:label="@string/app_name" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:allowBackup="true" android:theme="@style/AppTheme" android:supportsRtl="true">
+    <meta-data android:name="com.google.android.geo.API_KEY" android:value="AIzaSyAk29Vz9qJTfkksZM2nIeiikgP7JsFizPk"/>
     <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-3940256099942544~3347511713" tools:replace="android:value"/>
     <meta-data android:name="com.google.android.gms.ads.flag.OPTIMIZE_AD_LOADING" android:value="true" tools:replace="android:value"/>
     <meta-data android:name="com.google.android.gms.ads.flag.OPTIMIZE_INITIALIZATION" android:value="true" tools:replace="android:value"/>
@@ -36,5 +37,6 @@
         <data android:scheme="exp+vigiapp"/>
       </intent-filter>
     </activity>
+    <uses-library android:name="org.apache.http.legacy" android:required="false"/>
   </application>
 </manifest>
