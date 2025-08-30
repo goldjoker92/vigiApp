@@ -18,7 +18,7 @@ pnpm-debug.log*
 *.key
 *.mobileprovision
 
-# ⚠️ Garde ces fichiers dans le repo (nécessaires aux builds Firebase) :
+# ⚠️ Garde ces fichiers dans le repo (nécessaires au build Firebase) :
 # android/app/google-services.json
 # ios/GoogleService-Info.plist
 
@@ -47,7 +47,7 @@ android/app/release/
 android/app/debug/
 # (Ne PAS ignorer gradle/wrapper — il doit rester versionné)
 
-# ───────── iOS ─────────
+# ───────── iOS (au cas où) ─────────
 ios/Pods/
 ios/build/
 ios/DerivedData/
@@ -71,7 +71,11 @@ reports/
 README-ADMIN-PRIVATE.md
 *.local
 <<<<<<< HEAD
+<<<<<<< HEAD
 app-example
 android/
 =======
 >>>>>>> e360a68 (chore: update package.json scripts and dependencies)
+=======
+app-example
+>>>>>>> 782bb66 (chore: sauvegarde config locale avant cleanup)

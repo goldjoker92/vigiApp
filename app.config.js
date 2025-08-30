@@ -6,7 +6,6 @@ export default ({ config }) => ({
   slug: "vigiapp",
   version: "1.0.0",
   scheme: "vigiapp",
-  scheme: "vigiapp",
   orientation: "portrait",
   userInterfaceStyle: "automatic",
   jsEngine: "hermes",
@@ -54,25 +53,18 @@ export default ({ config }) => ({
       androidAppId: "ca-app-pub-3940256099942544~3347511713",
       iosAppId: "ca-app-pub-3940256099942544~1458002511"
     }],
-    ["@stripe/stripe-react-native", {
-      merchantIdentifier: "merchant.com.guigui92.vigiapp",
-      enableGooglePay: true
-    }],
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> 414120d (fix(android): clean debug.keystore & add Google Maps API key config)
-    ["expo-build-properties", {
-      android: {
-        compileSdkVersion: 35,
-        targetSdkVersion: 35,
-        buildToolsVersion: "35.0.0"
-      }
-    }]
-=======
-                                
->>>>>>> 1944cfb (Sauvegarde avant mise à jour Expo)
-  ],
+  ["@stripe/stripe-react-native", {
+    merchantIdentifier: "merchant.com.guigui92.vigiapp",
+    enableGooglePay: true
+  }],
+  ["expo-build-properties", {
+    android: {
+      compileSdkVersion: 35,
+      targetSdkVersion: 35,
+      buildToolsVersion: "35.0.0"
+    }
+  }]
+],
 
   experiments: { typedRoutes: true },
 
