@@ -35,17 +35,6 @@ web-build/
 *.hbc
 expo-env.d.ts
 
-# ───────── Android ─────────
-android/local.properties
-android/.gradle/
-android/.gradle-user-home/
-android/.cxx/
-android/build/
-android/app/.cxx/
-android/app/build/
-android/app/release/
-android/app/debug/
-# (Ne PAS ignorer gradle/wrapper — il doit rester versionné)
 
 # ───────── iOS ─────────
 ios/Pods/
@@ -70,3 +59,25 @@ reports/
 # ───────── Fichiers locaux spécifiques ─────────
 README-ADMIN-PRIVATE.md
 *.local
+# --- Android local/build & binaires (ignorer) ---
+android/local.properties
+android/.gradle/
+android/.gradle-user-home/
+android/.cxx/
+android/build/
+android/app/.cxx/
+android/app/build/
+android/app/release/
+android/app/debug/
+*.apk
+*.aab
+
+# IDE / Expo / Metro (ignorer)
+.vscode/
+.idea/
+.expo/
+.expo-shared/
+.expo-packager-cache/
+.metro-cache/
+dist/
+web-build/
