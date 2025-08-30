@@ -59,6 +59,9 @@ export default ({ config }) => ({
       enableGooglePay: true
     }],
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 414120d (fix(android): clean debug.keystore & add Google Maps API key config)
     ["expo-build-properties", {
       android: {
         compileSdkVersion: 35,
