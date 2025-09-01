@@ -26,20 +26,20 @@ allprojects {
       // All of React Native (JS, Obj-C sources, Android binaries) is installed from npm
       url(reactNativeAndroidDir)
     }
-
     google()
     mavenCentral()
     maven { url 'https://www.jitpack.io' }
   }
 }
-subprojects {
-  configurations.all {
-    resolutionStrategy {
-      force 'androidx.browser:browser:1.8.0'
+
+// ✅ Force global: évite que l’alpha 1.10.0 réapparaisse via une transitive
+subprojects { subproject ->
+  subproject.configurations.all { config ->
+    config.resolutionStrategy {
+      force "androidx.browser:browser:1.8.0"
     }
   }
 }
-
 
 apply plugin: "expo-root-project"
 apply plugin: "com.facebook.react.rootproject"
