@@ -1,21 +1,23 @@
 // screens/Report.jsx
 // -------------------------------------------------------------
-// Rôle : création d’un signalement PUBLIC
-// - Bouton localisation → Google-first pour remplir adresse + CEP
-// - Sauvegarde dans Firestore
-// - Logs [REPORT] et [CEP] (ceux de utils/cep.js) pour tout suivre
+// Rôle : création d’un signalement PUBLIC dans /publicAlerts
+// - Localisation (GPS) -> adresse + CEP (Google-first via utils/cep)
+// - Sauvegarde Firestore avec createdAt + expiresAt = now + 90j (TTL)
+// - Logs [REPORT] pour tout suivre
 // -------------------------------------------------------------
 import React, { useState } from 'react';
 import { Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, View, ActivityIndicator } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { db, auth } from '../firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { useRouter } from 'expo-router';
 import { MapPin, Bell, AlertTriangle, HandHeart, Flame, ShieldAlert, Bolt, Car, FileQuestion, Send, UserX } from "lucide-react-native";
 import { useAuthGuard } from '../hooks/useAuthGuard';
 import { resolveExactCepFromCoords } from '@/utils/cep';
 import { GOOGLE_MAPS_KEY } from '@/utils/env';
+
+const DB_RETENTION_DAYS = 90; // TTL base (analytics), indépendant de la carte
 
 const categories = [
   { label: "Roubo/Furto", icon: ShieldAlert, severity: "medium", color: "#FFA500" },
@@ -110,8 +112,11 @@ export default function ReportScreen() {
     if (!ruaNumero.trim()) return Alert.alert('Preencha o campo Rua e número.');
     if (!cidade.trim() || !estado.trim()) return Alert.alert('Preencha cidade e estado.');
     if (!descricao.trim()) return Alert.alert('Descreva o ocorrido.');
+    if (!local?.latitude || !local?.longitude) return Alert.alert('Use sua localização para posicionar o alerta.');
 
     try {
+      // expiresAt = now + 90 jours (pour TTL Firestore)
+      const expires = new Date(Date.now() + DB_RETENTION_DAYS * 24 * 3600 * 1000);
       const payload = {
         userId: auth.currentUser?.uid,
         apelido: user?.apelido || '',
@@ -125,13 +130,24 @@ export default function ReportScreen() {
         estado,
         cep,
         cepPrecision,
-        location: local,
+        pais: 'BR',
+        location: {
+          latitude: local.latitude,
+          longitude: local.longitude,
+          accuracy: local.accuracy ?? null,
+          heading: local.heading ?? null,
+          altitudeAccuracy: local.altitudeAccuracy ?? null,
+          speed: local.speed ?? null,
+        },
         date: dateBR,
         time: timeBR,
-        createdAt: serverTimestamp()
+        createdAt: serverTimestamp(),
+        expiresAt: Timestamp.fromDate(expires),
       };
       console.log('[REPORT] Firestore payload =', payload);
+
       await addDoc(collection(db, "publicAlerts"), payload);
+      console.log('[REPORT] addDoc OK');
       Alert.alert("Alerta enviado!", "Seu alerta foi registrado.");
       router.replace('/(tabs)/home');
     } catch (e) {
@@ -146,7 +162,8 @@ export default function ReportScreen() {
     descricao.trim().length > 0 &&
     ruaNumero.trim().length > 0 &&
     cidade.trim().length > 0 &&
-    estado.trim().length > 0
+    estado.trim().length > 0 &&
+    local?.latitude && local?.longitude
   );
 
   return (
@@ -213,7 +230,7 @@ export default function ReportScreen() {
           style={styles.input}
           placeholder="CEP (opcional)"
           value={cep}
-          onChangeText={(v) => setCep(v)}
+          onChangeText={setCep}
           onBlur={() => setCep((v) => {
             const digits = formatCep(v);
             return digits ? digits.replace(/(\d{5})(\d{3})/, '$1-$2') : '';
