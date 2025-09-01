@@ -36,15 +36,7 @@ web-build/
 expo-env.d.ts
 
 # ───────── Android ─────────
-android/local.properties
-android/.gradle/
-android/.gradle-user-home/
-android/.cxx/
-android/build/
-android/app/.cxx/
-android/app/build/
-android/app/release/
-android/app/debug/
+
 # (Ne PAS ignorer gradle/wrapper — il doit rester versionné)
 
 # ───────── iOS (au cas où) ─────────
@@ -56,7 +48,7 @@ ios/DerivedData/
 *.xcworkspace
 
 # ───────── IDE / OS ─────────
-.vscode/
+
 .idea/
 *.iml
 .DS_Store
@@ -70,12 +62,4 @@ reports/
 # ───────── Fichiers locaux spécifiques ─────────
 README-ADMIN-PRIVATE.md
 *.local
-<<<<<<< HEAD
-<<<<<<< HEAD
 app-example
-android/
-=======
->>>>>>> e360a68 (chore: update package.json scripts and dependencies)
-=======
-app-example
->>>>>>> 782bb66 (chore: sauvegarde config locale avant cleanup)
