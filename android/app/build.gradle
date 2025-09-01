@@ -1,0 +1,61 @@
+plugins {
+  id 'com.android.application'
+  id 'org.jetbrains.kotlin.android'
+  id 'com.facebook.react'
+  // ❌ NE PAS mettre le plugin Google ici en Option A (il est appliqué plus bas via `apply plugin:`)
+}
+
+
+android {
+  namespace "com.guigui92.vigiapp"         // ← adapte si besoin
+  compileSdk 35
+
+  defaultConfig {
+    applicationId "com.guigui92.vigiapp"   // ← corrige : pas de 'l' ni de quotes cassées
+    minSdk 24
+    targetSdk 35
+    versionCode 1
+    versionName "1.0"
+  }
+
+  buildTypes {
+    release {
+      // minifyEnabled true
+      // proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+    }
+  }
+
+  // Java/Kotlin 17 requis (AGP 8.x / RN 0.79)
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+  kotlinOptions {
+    jvmTarget = '17'
+  }
+
+  packagingOptions {
+    exclude("META-INF/LICENSE*")
+    exclude("META-INF/DEPENDENCIES")
+    exclude("META-INF/NOTICE*")
+    pickFirst("META-INF/AL2.0")
+    pickFirst("META-INF/LGPL2.1")
+  }
+}
+
+dependencies {
+  // ✅ Pin propre pour éviter androidx.browser 1.10.0-alpha01
+  implementation("androidx.browser:browser") {
+    version {
+      strictly("1.8.0")
+      prefer("1.8.0")
+    }
+    because("Compat Expo SDK 53 (compileSdk 35 / AGP 8.8.x)")
+  }
+
+  // ❌ Ne PAS ajouter manuellement :
+  // implementation("com.facebook.react:react-android")
+  // implementation("com.facebook.react:hermes-android")
+  // implementation("com.facebook.fresco:*")
+}
+
