@@ -1,76 +1,46 @@
-// hooks/useAuthGuard.js
-import { useEffect, useRef, useState } from 'react';
-import { auth, db } from '../firebase';
-import { onAuthStateChanged } from 'firebase/auth';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { useEffect, useState } from "react";
+import { onAuthStateChanged } from "firebase/auth";
+import { auth } from "../firebase";
+import { useRouter } from "expo-router";
+import { useUserStore } from "../store/users";
+import { loadUserProfile } from "../utils/loadUserProfile";
 
-// petite égalité superficielle suffisante ici
-function shallowEqual(a, b) {
-  if (a === b) return true;
-  if (!a || !b) return false;
-  const ka = Object.keys(a), kb = Object.keys(b);
-  if (ka.length !== kb.length) return false;
-  for (const k of ka) {
-    if (a[k] !== b[k]) return false;
-  }
-  return true;
-}
-
-export function useAuthGuard() {
-  const [user, setUser] = useState(undefined); // undefined = loading, null = non connecté, objet = ok
-  const lastUserRef = useRef(null);
-  const unsubRef = useRef(null); // évite multiples onSnapshot
+/**
+ * Observe l'état Firebase, hydrate Zustand avec Firestore
+ * Redirige si déconnecté. Retourne undefined (chargement), null (redirige), ou le user.
+ */
+export function useAuthGuard({ redirectTo = "/" } = {}) {
+  const [firebaseUser, setFirebaseUser] = useState(undefined); 
+  console.log('[DEBUG][useAuthGuard] setUser (raison)', firebaseUser); 
+  console.trace();// undefined: loading
+  const setUser = useUserStore((s) => s.setUser);
+  
+  const router = useRouter();
 
   useEffect(() => {
-    // Nettoie toute souscription précédente si remount (StrictMode, navigation)
-    if (unsubRef.current) {
-      try { unsubRef.current(); } catch {}
-      unsubRef.current = null;
-    }
-
-    const unsubAuth = onAuthStateChanged(auth, (fbUser) => {
-      if (!fbUser) {
-        lastUserRef.current = null;
+    // Observe Firebase Auth
+    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+      if (fbUser) {
+        // Hydrate le user Zustand avec Firestore (pour avoir le profil complet)
+        const userData = await loadUserProfile(fbUser.uid);
+        console.log('[useAuthGuard] setUser après onAuthStateChanged', { ...userData, email: fbUser.email, id: fbUser.uid });
+        console.trace();
+        setFirebaseUser({ ...userData, email: fbUser.email, id: fbUser.uid });
+        setUser({ ...userData, email: fbUser.email, id: fbUser.uid });
+      } else {
+        setFirebaseUser(null);
         setUser(null);
-        // supprime l'abonnement au doc user s'il existait
-        if (unsubRef.current) { try { unsubRef.current(); } catch {} unsubRef.current = null; }
-        return;
       }
-
-      const ref = doc(db, 'users', fbUser.uid);
-
-      // IMPORTANT: un seul onSnapshot vivant à la fois
-      if (unsubRef.current) { try { unsubRef.current(); } catch {} }
-      unsubRef.current = onSnapshot(
-        ref,
-        // évite les callbacks pour des changements de métadonnées
-        { includeMetadataChanges: false },
-        (snap) => {
-          const data = snap.exists() ? { id: snap.id, ...snap.data() } : null;
-
-          // ne pas setState si rien n'a changé
-          if (shallowEqual(lastUserRef.current, data)) return;
-
-          lastUserRef.current = data;
-          setUser(data);
-
-          // LOG une seule fois par changement utile
-          if (__DEV__) {
-            // throttle très simple: on ne log que quand ça change
-            console.debug('[DEBUG][useAuthGuard] setUser', data);
-          }
-        },
-        (err) => {
-          if (__DEV__) console.warn('[useAuthGuard] onSnapshot error:', err?.message || err);
-        }
-      );
     });
+    return unsubscribe;
+  }, [setUser]);
 
-    return () => {
-      try { unsubAuth(); } catch {}
-      if (unsubRef.current) { try { unsubRef.current(); } catch {} unsubRef.current = null; }
-    };
-  }, []); // ← ne pas mettre d'autres deps
+  useEffect(() => {
+    // Redirige vers login si déconnecté
+    if (firebaseUser === null) {
+      setTimeout(() => router.replace(redirectTo), 0);
+    }
+  }, [firebaseUser, router, redirectTo]);
 
-  return user;
+  return firebaseUser; // undefined: loading, null: pas connecté, objet: ok
 }
