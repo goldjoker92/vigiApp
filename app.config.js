@@ -9,7 +9,7 @@ export default ({ config }) => ({
   icon: "./assets/images/icon.png",
   scheme: "vigiapp",
   userInterfaceStyle: "automatic",
-  newArchEnabled: true,
+  newArchEnabled: false,
   ios: {
     supportsTablet: true,
     bundleIdentifier: "com.guigui92.vigiapp",
