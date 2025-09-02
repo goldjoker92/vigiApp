@@ -1,34 +1,44 @@
 {
-  "cli": { "version": ">= 12.0.0" },
+  "cli": {
+    "version": ">= 12.0.0"
+  },
   "build": {
+    "appVersionSource": "remote",
+
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "channel": "dev",
+      "node": "20.11.1",
+      "npm": "10.7.0",
       "android": { "buildType": "apk" },
-      "cache": {
-        "gradle": true,
-        "npm": true,
-        "yarn": true
-      }
+      "cache": { "gradle": true, "npm": true, "yarn": true }
     },
+
     "preview": {
       "distribution": "internal",
-      "cache": {
-        "gradle": true,
-        "npm": true,
-        "yarn": true
-      }
+      "channel": "preview",
+      "node": "20.11.1",
+      "npm": "10.7.0",
+      "android": { "buildType": "apk" },
+      "cache": { "gradle": true, "npm": true, "yarn": true }
     },
+
     "production": {
       "autoIncrement": true,
-      "cache": {
-        "gradle": true,
-        "npm": true,
-        "yarn": true
-      }
+      "distribution": "store",
+      "channel": "production",
+      "node": "20.11.1",
+      "npm": "10.7.0",
+      "android": { "buildType": "app-bundle" },
+      "cache": { "gradle": true, "npm": true, "yarn": true }
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "android": {
+        "track": "production"
+      }
+    }
   }
 }
