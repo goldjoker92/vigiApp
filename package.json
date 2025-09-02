@@ -108,5 +108,9 @@
   },
   "overrides": {
     "react-native": "0.79.5"
-  }
+  },
+  "engines": {
+    "node": ">=20 <21"
+  },
+  "packageManager": "npm@10.7.0"
 }

@@ -1,67 +1,43 @@
-# ───────── Node / JS ─────────
+# Node
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-*.log
 
-# ───────── Env & secrets ─────────
-.env
-.env.*        # ⚠️ Ne jamais push tes clés
+# VCS / IDE
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Builds & caches
+dist/
+build/
+*.aab
+*.apk
+*.ipa
+*.app
+*.xcarchive
+.gradle/
+.cxx/
+Pods/
+android/.gradle/
+android/.cxx/
+android/build/
+ios/build/
+
+# Secrets / env
 *.keystore
 *.jks
-*.pem
 *.p8
-*.p12
+*.pem
 *.key
-*.mobileprovision
+.env
+.env.*
 
-# ⚠️ Ne PAS ignorer :
-#   - android/app/google-services.json
-#   - ios/GoogleService-Info.plist
-
-# ───────── Expo / React Native ─────────
-.expo/
-.expo-shared/
-.expo-packager-cache/
-.metro-cache/
-.metro-health-check*
-dist/
-web-build/
-*.pack
-*.hbc
-expo-env.d.ts
-
-# ───────── Android ─────────
-android/app/build/
-android/build/
-android/.gradle/
-
-# ───────── iOS ─────────
-ios/Pods/
-ios/build/
-ios/DerivedData/
-*.xcuserdatad
-*.xcscmblueprint
-*.xcworkspace
-
-# ───────── Tests / rapports / docs ─────────
-__tests__/
-coverage/
-reports/
-*.lcov
-docs/
-*.md
-README*.md
-
-# ───────── IDE / OS ─────────
-.idea/
-*.iml
-.DS_Store
-Thumbs.db
-
-# ───────── Fichiers locaux spécifiques ─────────
-*.local
-*.example
-screenshots/
+# Assets lourds temporaires
+**/*.psd
+**/*.ai
+**/*.zip
+**/*.rar
