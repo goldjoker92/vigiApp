@@ -2,8 +2,14 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
     "module": "ESNext",
+    "moduleResolution": "Bundler",
     "forceConsistentCasingInFileNames": true,
+    "allowJs": true,
+    "resolveJsonModule": true,
+    "types": ["react", "react-native", "jest"],
     "paths": {
       "@/*": ["./*"]
     }
@@ -11,9 +17,10 @@
   "include": [
     "**/*.ts",
     "**/*.tsx",
-    ".expo/types/**/*.ts",
+    "**/*.js",
+    "**/*.jsx",
     "expo-env.d.ts",
-    "app/(tabs)/_layout.jsx",
-    "app/(tabs)/index.jsx"
-, "app/chats/[chatId].jsx"  ]
+    ".expo/types/**/*.ts"
+  ],
+  "exclude": ["node_modules"]
 }
