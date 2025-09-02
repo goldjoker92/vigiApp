@@ -1,14 +1,15 @@
-// Top-level build file where you can add configuration options common to all sub-projects/modules.
-
+// android/build.gradle
 buildscript {
   repositories {
     google()
     mavenCentral()
   }
   dependencies {
-    classpath('com.android.tools.build:gradle')
-    classpath('com.facebook.react:react-native-gradle-plugin')
-    classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')
+    classpath("com.android.tools.build:gradle:8.5.2")
+    classpath("com.facebook.react:react-native-gradle-plugin")
+    classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.24")
+    // ✅ Plugin Google Services pour lire google-services.json
+    classpath("com.google.gms:google-services:4.4.2")
   }
 }
 
@@ -22,17 +23,15 @@ def reactNativeAndroidDir = new File(
 
 allprojects {
   repositories {
-    maven {
-      // All of React Native (JS, Obj-C sources, Android binaries) is installed from npm
-      url(reactNativeAndroidDir)
-    }
+    // Binaries RN depuis node_modules
+    maven { url(reactNativeAndroidDir) }
     google()
     mavenCentral()
-    maven { url 'https://www.jitpack.io' }
+    maven { url "https://www.jitpack.io" }
   }
 }
 
-// ✅ Force global: évite que l’alpha 1.10.0 réapparaisse via une transitive
+// ✅ Forcer browser:1.8.0 si conflit transitive
 subprojects { subproject ->
   subproject.configurations.all { config ->
     config.resolutionStrategy {

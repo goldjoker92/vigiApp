@@ -24,6 +24,7 @@
     "@react-native-community/datetimepicker": "8.4.1",
     "@react-native-firebase/app": "23.0.0",
     "@react-native-firebase/firestore": "23.0.0",
+    "@react-native-firebase/messaging": "^23.2.1",
     "@react-native-picker/picker": "^2.11.1",
     "@react-navigation/bottom-tabs": "^7.3.10",
     "@react-navigation/elements": "^2.3.8",

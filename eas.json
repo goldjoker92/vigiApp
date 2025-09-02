@@ -4,13 +4,28 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "android": { "buildType": "apk" }
+      "android": { "buildType": "apk" },
+      "cache": {
+        "gradle": true,
+        "npm": true,
+        "yarn": true
+      }
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "cache": {
+        "gradle": true,
+        "npm": true,
+        "yarn": true
+      }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "cache": {
+        "gradle": true,
+        "npm": true,
+        "yarn": true
+      }
     }
   },
   "submit": {
