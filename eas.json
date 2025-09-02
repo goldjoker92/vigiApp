@@ -7,19 +7,41 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "android": { "buildType": "apk" }
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "CI": "true",
+        "NPM_CONFIG_LEGACY_PEER_DEPS": "true"
+      }
     },
     "preview": {
       "distribution": "internal",
-      "android": { "buildType": "apk" }
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "CI": "true",
+        "NPM_CONFIG_LEGACY_PEER_DEPS": "true"
+      }
     },
     "production": {
       "autoIncrement": true,
       "distribution": "store",
-      "android": { "buildType": "app-bundle" }
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "CI": "true",
+        "NPM_CONFIG_LEGACY_PEER_DEPS": "true"
+      }
     }
   },
   "submit": {
-    "production": { "android": { "track": "production" } }
+    "production": {
+      "android": {
+        "track": "production"
+      }
+    }
   }
 }
