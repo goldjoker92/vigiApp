@@ -9,9 +9,7 @@ export default ({ config }) => ({
   icon: './assets/images/icon.png',
   scheme: 'vigiapp',
   userInterfaceStyle: 'automatic',
-  platforms: ['android'], // ← on limite aux builds Android
-
-  // ⛔️ pas de bloc ios ici si tu n'en as pas besoin
+  platforms: ['android'], // on ne cible qu'Android pour l’instant
 
   android: {
     edgeToEdgeEnabled: true,
@@ -23,6 +21,8 @@ export default ({ config }) => ({
     config: {
       googleMaps: { apiKey: process.env.ANDROID_MAPS_API_KEY },
     },
+    // 👇 indispensable pour @react-native-firebase/*
+    googleServicesFile: './firebase/google-services.json',
     permissions: [
       'ACCESS_FINE_LOCATION',
       'ACCESS_COARSE_LOCATION',
@@ -58,16 +58,14 @@ export default ({ config }) => ({
     [
       'react-native-google-mobile-ads',
       {
-        // L’iosAppId peut rester, mais il ne sera pas utilisé tant que tu ne buildes pas iOS
         androidAppId: 'ca-app-pub-3940256099942544~3347511713',
-        iosAppId: 'ca-app-pub-3940256099942544~1458002511',
+        iosAppId: 'ca-app-pub-3940256099942544~1458002511', // ignoré tant qu’on ne build pas iOS
       },
     ],
     [
       '@stripe/stripe-react-native',
       {
-        // OK ici; ce n’est pas le champ iOS interdit. Ignoré côté Android.
-        merchantIdentifier: 'merchant.com.guigui92.vigiapp',
+        merchantIdentifier: 'merchant.com.guigui92.vigiapp', // ok, ignoré côté Android
         enableGooglePay: true,
       },
     ],
@@ -80,9 +78,9 @@ export default ({ config }) => ({
           compileSdkVersion: 35,
           targetSdkVersion: 35,
           minSdkVersion: 24,
-          newArchEnabled: false, // ← place le flag ici
+          newArchEnabled: false,
         },
-        // ⛔️ pas de bloc ios ici
+        // pas de bloc iOS
       },
     ],
   ],
