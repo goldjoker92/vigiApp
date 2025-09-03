@@ -11,10 +11,9 @@ export default ({ config }) => ({
   userInterfaceStyle: 'automatic',
   platforms: ['android'],
 
-  // New Arch au bon endroit
   newArchEnabled: false,
 
-  // ⚠️ Laisse ce bloc seulement si le fichier existe
+  // (laisse commenté si tu n'as pas encore le PNG)
   // notification: {
   //   icon: './assets/images/notification-icon.png',
   //   color: '#181A20'
@@ -72,10 +71,7 @@ export default ({ config }) => ({
     ],
     [
       '@stripe/stripe-react-native',
-      {
-        merchantIdentifier: 'merchant.com.guigui92.vigiapp', // ignoré côté Android
-        enableGooglePay: true,
-      },
+      { merchantIdentifier: 'merchant.com.guigui92.vigiapp', enableGooglePay: true },
     ],
     '@react-native-firebase/app',
     '@react-native-firebase/messaging',
@@ -86,8 +82,7 @@ export default ({ config }) => ({
           compileSdkVersion: 35,
           targetSdkVersion: 35,
           minSdkVersion: 24,
-          kotlinVersion: '2.0.21', // ✅ ajoute ça pour stabiliser Gradle
-          // newArchEnabled retiré d'ici
+          kotlinVersion: '2.0.21',
         },
       },
     ],
