@@ -9,7 +9,16 @@ export default ({ config }) => ({
   icon: './assets/images/icon.png',
   scheme: 'vigiapp',
   userInterfaceStyle: 'automatic',
-  platforms: ['android'], // on ne cible qu'Android pour l’instant
+  platforms: ['android'],
+
+  // ✅ New Architecture: place ici (plus dans le plugin)
+  newArchEnabled: false,
+
+  // ✅ Icône de notification (Android 8+)
+  notification: {
+    icon: './assets/images/notification-icon.png', // blanc sur fond transparent
+    color: '#181A20' // optionnel: couleur d’accent des notifs
+  },
 
   android: {
     edgeToEdgeEnabled: true,
@@ -21,7 +30,6 @@ export default ({ config }) => ({
     config: {
       googleMaps: { apiKey: process.env.ANDROID_MAPS_API_KEY },
     },
-    // 👇 indispensable pour @react-native-firebase/*
     googleServicesFile: './firebase/google-services.json',
     permissions: [
       'ACCESS_FINE_LOCATION',
@@ -59,13 +67,13 @@ export default ({ config }) => ({
       'react-native-google-mobile-ads',
       {
         androidAppId: 'ca-app-pub-3940256099942544~3347511713',
-        iosAppId: 'ca-app-pub-3940256099942544~1458002511', // ignoré tant qu’on ne build pas iOS
+        iosAppId: 'ca-app-pub-3940256099942544~1458002511',
       },
     ],
     [
       '@stripe/stripe-react-native',
       {
-        merchantIdentifier: 'merchant.com.guigui92.vigiapp', // ok, ignoré côté Android
+        merchantIdentifier: 'merchant.com.guigui92.vigiapp',
         enableGooglePay: true,
       },
     ],
@@ -77,12 +85,11 @@ export default ({ config }) => ({
         android: {
           compileSdkVersion: 35,
           targetSdkVersion: 35,
-          minSdkVersion: 24,
-          newArchEnabled: false,
-        },
-        // pas de bloc iOS
-      },
-    ],
+          minSdkVersion: 24
+          // ⛔️ newArchEnabled retiré d'ici
+        }
+      }
+    ]
   ],
 
   experiments: { typedRoutes: true },
@@ -98,6 +105,6 @@ export default ({ config }) => ({
     FIREBASE_STORAGE_BUCKET: process.env.FIREBASE_STORAGE_BUCKET,
     FIREBASE_MESSAGING_SENDER_ID: process.env.FIREBASE_MESSAGING_SENDER_ID,
     FIREBASE_APP_ID: process.env.FIREBASE_APP_ID,
-    eas: { projectId: '95fb1fec-76a3-409d-b573-4d7127def99a' },
-  },
+    eas: { projectId: '95fb1fec-76a3-409d-b573-4d7127def99a' }
+  }
 });
