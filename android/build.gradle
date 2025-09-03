@@ -1,0 +1,61 @@
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
+
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.google.gms:google-services:4.4.1'
+        // Note: If you want to pin the Android Gradle Plugin version, do it here like:
+        // classpath 'com.android.tools.build:gradle:8.8.2'
+        classpath 'com.android.tools.build:gradle'      // gradle plugin version is usually provided by the wrapper / Expo
+        classpath 'com.facebook.react:react-native-gradle-plugin'
+        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin'
+    }
+}
+
+def reactNativeAndroidDir = new File(
+    providers.exec {
+        workingDir(rootDir)
+        commandLine("node", "--print", "require.resolve('react-native/package.json')")
+    }.standardOutput.asText.get().trim(),
+    "../android"
+)
+
+allprojects {
+    repositories {
+        maven {
+            // All of React Native (JS, Obj-C sources, Android binaries) is installed from npm
+            url(reactNativeAndroidDir)
+        }
+
+        google()
+        mavenCentral()
+        maven { url 'https://www.jitpack.io' }
+    }
+}
+
+/*
+ * Résolution centralisée des versions
+ * -----------------------------------
+ * N'utiliser la stratégie 'force' qu'avec une version réellement disponible dans les dépôts.
+ * Avant: force 'androidx.browser:browser:1.9.1' -> provoquait "Could not find androidx.browser:browser:1.9.1"
+ * Correction: forcer sur 1.9.0 (version publique disponible) si tu veux contrôler la résolution.
+ *
+ * Alternative recommandée (si tu veux plus de contrôle) :
+ * - Utiliser constraints { implementation('group:artifact:version') { strictly "x.y.z" } }
+ * - Ou supprimer complètement le forçage et laisser Gradle résoudre la version transitive.
+ */
+configurations.all {
+    resolutionStrategy {
+        // Force une version valide/connue pour androidx.browser afin d'éviter la résolution sur une version inexistante
+        force 'androidx.browser:browser:1.9.0'
+
+        // Exemple: si tu dois forcer d'autres artefacts, ajoute-les ici:
+        // force 'com.some.group:artifact:1.2.3'
+    }
+}
+
+apply plugin: "expo-root-project"
+apply plugin: "com.facebook.react.rootproject"
