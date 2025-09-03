@@ -59,7 +59,6 @@
     "react-native": "0.79.5",
     "react-native-gesture-handler": "~2.24.0",
     "react-native-google-mobile-ads": "^15.4.0",
-    "react-native-inappbrowser-reborn": "^3.7.0",
     "react-native-maps": "1.20.1",
     "react-native-mask-input": "^1.2.3",
     "react-native-modal": "^14.0.0-rc.1",
