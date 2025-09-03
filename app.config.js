@@ -1,6 +1,7 @@
 import 'dotenv/config';
 
 export default ({ config }) => ({
+
   ...config,
   name: 'VigiApp',
   slug: 'vigiapp',
@@ -13,12 +14,6 @@ export default ({ config }) => ({
 
   newArchEnabled: false,
 
-  // (laisse commenté si tu n'as pas encore le PNG)
-  // notification: {
-  //   icon: './assets/images/notification-icon.png',
-  //   color: '#181A20'
-  // },
-
   android: {
     edgeToEdgeEnabled: true,
     package: 'com.guigui92.vigiapp',
@@ -29,7 +24,9 @@ export default ({ config }) => ({
     config: {
       googleMaps: { apiKey: process.env.ANDROID_MAPS_API_KEY },
     },
-    googleServicesFile: './firebase/google-services.json',
+    // -> POINT IMPORTANT : indique là où est vraiment ton google-services.json
+    googleServicesFile: './android/app/google-services.json',
+
     permissions: [
       'ACCESS_FINE_LOCATION',
       'ACCESS_COARSE_LOCATION',
@@ -52,6 +49,7 @@ export default ({ config }) => ({
   },
 
   plugins: [
+    // garde les plugins utiles ; vérifie que './plugins/force-androidx-browser' existe si tu le laisses
     'expo-router',
     [
       'expo-splash-screen',
@@ -73,6 +71,8 @@ export default ({ config }) => ({
       '@stripe/stripe-react-native',
       { merchantIdentifier: 'merchant.com.guigui92.vigiapp', enableGooglePay: true },
     ],
+    // plugins de config (RN Firebase expose des plugins via la communauté,
+    // laisser ces lignes n'est pas bloquant; Expo appliquera les config plugins disponibles)
     '@react-native-firebase/app',
     '@react-native-firebase/messaging',
     [
@@ -82,16 +82,18 @@ export default ({ config }) => ({
           compileSdkVersion: 35,
           targetSdkVersion: 35,
           minSdkVersion: 24,
-          kotlinVersion: '2.0.21',
+          // -> alignement avec android/gradle.properties
+          kotlinVersion: '1.9.10',
         },
       },
     ],
-    './plugins/force-androidx-browser', 
+    './plugins/force-androidx-browser',
   ],
 
   experiments: { typedRoutes: true },
 
   extra: {
+    // garde les clés dans les env / EAS secrets — ne commite pas les vraies valeurs
     EXPO_PUBLIC_GOOGLE_MAPS_KEY: process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY,
     RC_API_KEY_ANDROID: process.env.RC_API_KEY_ANDROID,
     STRIPE_PUBLISHABLE_KEY: process.env.STRIPE_PUBLISHABLE_KEY,

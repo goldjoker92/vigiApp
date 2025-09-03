@@ -1,4 +1,4 @@
-// Top-level build file where you can add configuration options common to all sub-projects/modules.
+// android/build.gradle (top-level) - safe / conservative version
 
 buildscript {
     repositories {
@@ -6,14 +6,26 @@ buildscript {
         mavenCentral()
     }
     dependencies {
+        // Gardons une version stable et compatible avec ton projet actuel
+        classpath 'com.android.tools.build:gradle:8.8.2'
         classpath 'com.google.gms:google-services:4.4.1'
-        // Gradle plugin: normally managed by the gradle wrapper. Pin here only if necessary.
-        classpath 'com.android.tools.build:gradle'      
         classpath 'com.facebook.react:react-native-gradle-plugin'
-        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin'
+        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.10'
     }
 }
 
+// -- valeurs partagées utilisées par android/app/build.gradle
+ext {
+    // Si ces propriétés existent déjà (ex: dans gradle.properties), elles seront utilisées.
+    compileSdkVersion   = (findProperty('android.compileSdkVersion') ?: 35).toInteger()
+    targetSdkVersion    = (findProperty('android.targetSdkVersion') ?: 35).toInteger()
+    minSdkVersion       = (findProperty('android.minSdkVersion') ?: 21).toInteger()
+    buildToolsVersion   = (findProperty('android.buildToolsVersion') ?: "33.0.2")
+    ndkVersion          = (findProperty('android.ndkVersion') ?: "25.1.8937393")
+    kotlinVersion       = (findProperty('kotlin.version') ?: "1.9.10")
+}
+
+// Resolve where react-native's android folder is installed (from node_modules)
 def reactNativeAndroidDir = new File(
     providers.exec {
         workingDir(rootDir)
@@ -24,36 +36,41 @@ def reactNativeAndroidDir = new File(
 
 allprojects {
     repositories {
+        // React Native's local maven (installed from npm)
         maven {
-            // React Native android artifacts from node_modules
-            url(reactNativeAndroidDir)
+            url reactNativeAndroidDir
         }
 
         google()
         mavenCentral()
+        // jitpack sometimes needed by some libs
         maven { url 'https://www.jitpack.io' }
     }
 }
 
-/*
- * NOTE:
- * - Nous n'appliquons PAS de force sur androidx.browser:browser:1.9.1 (cette version n'est pas disponible pour compileSdk=35).
- * - Pour rester compatible avec ton environnement actuel (compileSdk 35 / AGP 8.8.2), on aligne sur une version stable transitive (1.6.0).
- * - Si tu veux monter à androidx.browser:1.9.x il faudra alors mettre à jour AGP -> 8.9.1+ et compileSdk -> 36 (voir TODO ci-dessous).
- */
-
-/* 
- * Si tu souhaites forcer explicitement une version compatible, décommente et ajuste la ligne ci-dessous.
- * Par défaut je laisse ce bloc commenté pour éviter d'imposer une stratégie globale inutile.
- */
-/*
+// Centralised resolution strategy (évite les modifications directes `force = true` sur une dépendance)
 configurations.all {
     resolutionStrategy {
-        // Exemple safe: forcer sur la version transitive connue pour ton projet actuel
-        // force 'androidx.browser:browser:1.6.0'
+        // Force une version compatible de androidx.browser pour rester avec compileSdk = 35
+        force 'androidx.browser:browser:1.6.0'
+
+        // Exemple : si on détecte d'autres conflits, tu peux les ajouter ici proprement.
+        // force 'com.some.group:artifact:1.2.3'
     }
 }
-*/
 
-apply plugin: "expo-root-project"
-apply plugin: "com.facebook.react.rootproject"
+/*
+ * Optional: print ext values at configuration time for debugging
+ */
+println "Android common ext values: compileSdk=${compileSdkVersion}, targetSdk=${targetSdkVersion}, minSdk=${minSdkVersion}, buildTools=${buildToolsVersion}, ndk=${ndkVersion}"
+
+// (Optionnel) appliquer plugins racine pour Expo / React Native rootproject si présents
+// Si ton projet utilise expo-root-project / com.facebook.react.rootproject active-les :
+try {
+    apply plugin: "expo-root-project"
+    apply plugin: "com.facebook.react.rootproject"
+} catch (Throwable e) {
+    // si les plugins ne sont pas disponibles, on ignore proprement
+    println "Note: expo-root-project / com.facebook.react.rootproject not applied (not present)."
+}
+
