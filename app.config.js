@@ -86,6 +86,7 @@ export default ({ config }) => ({
         },
       },
     ],
+    './plugins/force-androidx-browser', 
   ],
 
   experiments: { typedRoutes: true },
