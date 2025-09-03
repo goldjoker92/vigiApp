@@ -11,14 +11,14 @@ export default ({ config }) => ({
   userInterfaceStyle: 'automatic',
   platforms: ['android'],
 
-  // ✅ New Architecture: place ici (plus dans le plugin)
+  // New Arch au bon endroit
   newArchEnabled: false,
 
-  // ✅ Icône de notification (Android 8+)
-  notification: {
-    icon: './assets/images/notification-icon.png', // blanc sur fond transparent
-    color: '#181A20' // optionnel: couleur d’accent des notifs
-  },
+  // ⚠️ Laisse ce bloc seulement si le fichier existe
+  // notification: {
+  //   icon: './assets/images/notification-icon.png',
+  //   color: '#181A20'
+  // },
 
   android: {
     edgeToEdgeEnabled: true,
@@ -73,7 +73,7 @@ export default ({ config }) => ({
     [
       '@stripe/stripe-react-native',
       {
-        merchantIdentifier: 'merchant.com.guigui92.vigiapp',
+        merchantIdentifier: 'merchant.com.guigui92.vigiapp', // ignoré côté Android
         enableGooglePay: true,
       },
     ],
@@ -85,11 +85,12 @@ export default ({ config }) => ({
         android: {
           compileSdkVersion: 35,
           targetSdkVersion: 35,
-          minSdkVersion: 24
-          // ⛔️ newArchEnabled retiré d'ici
-        }
-      }
-    ]
+          minSdkVersion: 24,
+          kotlinVersion: '2.0.21', // ✅ ajoute ça pour stabiliser Gradle
+          // newArchEnabled retiré d'ici
+        },
+      },
+    ],
   ],
 
   experiments: { typedRoutes: true },
@@ -105,6 +106,6 @@ export default ({ config }) => ({
     FIREBASE_STORAGE_BUCKET: process.env.FIREBASE_STORAGE_BUCKET,
     FIREBASE_MESSAGING_SENDER_ID: process.env.FIREBASE_MESSAGING_SENDER_ID,
     FIREBASE_APP_ID: process.env.FIREBASE_APP_ID,
-    eas: { projectId: '95fb1fec-76a3-409d-b573-4d7127def99a' }
-  }
+    eas: { projectId: '95fb1fec-76a3-409d-b573-4d7127def99a' },
+  },
 });
