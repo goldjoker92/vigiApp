@@ -7,9 +7,8 @@ buildscript {
     }
     dependencies {
         classpath 'com.google.gms:google-services:4.4.1'
-        // Note: If you want to pin the Android Gradle Plugin version, do it here like:
-        // classpath 'com.android.tools.build:gradle:8.8.2'
-        classpath 'com.android.tools.build:gradle'      // gradle plugin version is usually provided by the wrapper / Expo
+        // Gradle plugin: normally managed by the gradle wrapper. Pin here only if necessary.
+        classpath 'com.android.tools.build:gradle'      
         classpath 'com.facebook.react:react-native-gradle-plugin'
         classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin'
     }
@@ -26,7 +25,7 @@ def reactNativeAndroidDir = new File(
 allprojects {
     repositories {
         maven {
-            // All of React Native (JS, Obj-C sources, Android binaries) is installed from npm
+            // React Native android artifacts from node_modules
             url(reactNativeAndroidDir)
         }
 
@@ -37,25 +36,24 @@ allprojects {
 }
 
 /*
- * Résolution centralisée des versions
- * -----------------------------------
- * N'utiliser la stratégie 'force' qu'avec une version réellement disponible dans les dépôts.
- * Avant: force 'androidx.browser:browser:1.9.1' -> provoquait "Could not find androidx.browser:browser:1.9.1"
- * Correction: forcer sur 1.9.0 (version publique disponible) si tu veux contrôler la résolution.
- *
- * Alternative recommandée (si tu veux plus de contrôle) :
- * - Utiliser constraints { implementation('group:artifact:version') { strictly "x.y.z" } }
- * - Ou supprimer complètement le forçage et laisser Gradle résoudre la version transitive.
+ * NOTE:
+ * - Nous n'appliquons PAS de force sur androidx.browser:browser:1.9.1 (cette version n'est pas disponible pour compileSdk=35).
+ * - Pour rester compatible avec ton environnement actuel (compileSdk 35 / AGP 8.8.2), on aligne sur une version stable transitive (1.6.0).
+ * - Si tu veux monter à androidx.browser:1.9.x il faudra alors mettre à jour AGP -> 8.9.1+ et compileSdk -> 36 (voir TODO ci-dessous).
  */
+
+/* 
+ * Si tu souhaites forcer explicitement une version compatible, décommente et ajuste la ligne ci-dessous.
+ * Par défaut je laisse ce bloc commenté pour éviter d'imposer une stratégie globale inutile.
+ */
+/*
 configurations.all {
     resolutionStrategy {
-        // Force une version valide/connue pour androidx.browser afin d'éviter la résolution sur une version inexistante
-        force 'androidx.browser:browser:1.9.0'
-
-        // Exemple: si tu dois forcer d'autres artefacts, ajoute-les ici:
-        // force 'com.some.group:artifact:1.2.3'
+        // Exemple safe: forcer sur la version transitive connue pour ton projet actuel
+        // force 'androidx.browser:browser:1.6.0'
     }
 }
+*/
 
 apply plugin: "expo-root-project"
 apply plugin: "com.facebook.react.rootproject"
