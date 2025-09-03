@@ -10,7 +10,6 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "reset-project": "node ./scripts/reset-project.js",
-    "android:bare": "cd android && gradlew installDebug",
     "postinstall": "patch-package || echo no-patches"
   },
   "dependencies": {
@@ -32,9 +31,10 @@
     "@stripe/stripe-react-native": "0.45.0",
     "dayjs": "^1.11.13",
     "expo": "53.0.22",
-    "expo-av": "^15.1.7",
+    "expo-av": "~15.1.7",
     "expo-blur": "~14.1.5",
-    "expo-clipboard": "^7.1.5",
+    "expo-build-properties": "~0.14.8",
+    "expo-clipboard": "~7.1.5",
     "expo-constants": "~17.1.6",
     "expo-dev-client": "~5.2.4",
     "expo-font": "~13.3.2",
@@ -43,7 +43,7 @@
     "expo-linear-gradient": "~14.1.5",
     "expo-linking": "~7.1.7",
     "expo-location": "~18.1.6",
-    "expo-notifications": "^0.31.4",
+    "expo-notifications": "~0.31.4",
     "expo-router": "~5.1.5",
     "expo-splash-screen": "~0.30.10",
     "expo-status-bar": "~2.2.3",
@@ -76,15 +76,11 @@
     "react-native-toast-message": "^2.3.3",
     "react-native-web": "0.20.0",
     "zod": "^3.23.8",
-    "zustand": "^5.0.6",
-    "jest-expo": "~53.0.10",
-    "typescript": "~5.8.3",
-    "@types/react": "~19.0.10"
+    "zustand": "^5.0.6"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@babel/helper-define-polyfill-provider": "^0.6.5",
-    "@react-native-community/cli": "latest",
     "@testing-library/jest-native": "^5.4.3",
     "@testing-library/react-native": "^13.2.2",
     "@types/node": "^24.3.0",
@@ -100,7 +96,7 @@
     "jetifier": "^2.0.0",
     "patch-package": "8.0.0",
     "prettier": "^3.6.2",
-    "react-test-renderer": "18.2.0",
+    "react-test-renderer": "19.0.0",
     "schema-utils": "4.2.0",
     "typescript": "~5.8.3"
   },

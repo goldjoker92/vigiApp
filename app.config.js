@@ -2,92 +2,92 @@ import 'dotenv/config';
 
 export default ({ config }) => ({
   ...config,
-  name: "VigiApp",
-  slug: "vigiapp",
-  version: "1.0.0", // version lisible par l’utilisateur (ne gère pas versionCode)
-  orientation: "portrait",
-  icon: "./assets/images/icon.png",
-  scheme: "vigiapp",
-  userInterfaceStyle: "automatic",
-  newArchEnabled: false,
+  name: 'VigiApp',
+  slug: 'vigiapp',
+  version: '1.0.0',
+  orientation: 'portrait',
+  icon: './assets/images/icon.png',
+  scheme: 'vigiapp',
+  userInterfaceStyle: 'automatic',
+  platforms: ['android'], // ← on limite aux builds Android
 
-  ios: {
-    supportsTablet: true,
-    bundleIdentifier: "com.guigui92.vigiapp",
-    merchantIdentifier: "merchant.com.guigui92.vigiapp",
-    config: {
-      googleMapsApiKey: process.env.IOS_MAPS_API_KEY
-    },
-    infoPlist: {
-      UIBackgroundModes: ["remote-notification"], // push notifications en background
-      NSLocationWhenInUseUsageDescription: "VigiApp utilise votre position pour afficher les signalements autour de vous."
-    }
-  },
+  // ⛔️ pas de bloc ios ici si tu n'en as pas besoin
 
   android: {
     edgeToEdgeEnabled: true,
-    package: "com.guigui92.vigiapp",
+    package: 'com.guigui92.vigiapp',
     adaptiveIcon: {
-      foregroundImage: "./assets/images/adaptive-icon.png",
-      backgroundColor: "#ffffff"
+      foregroundImage: './assets/images/adaptive-icon.png',
+      backgroundColor: '#ffffff',
     },
     config: {
-      googleMaps: {
-        apiKey: process.env.ANDROID_MAPS_API_KEY
-      }
+      googleMaps: { apiKey: process.env.ANDROID_MAPS_API_KEY },
     },
     permissions: [
-      "ACCESS_FINE_LOCATION",
-      "ACCESS_COARSE_LOCATION",
-      "INTERNET",
-      "POST_NOTIFICATIONS"
-    ]
+      'ACCESS_FINE_LOCATION',
+      'ACCESS_COARSE_LOCATION',
+      'INTERNET',
+      'POST_NOTIFICATIONS',
+    ],
+    softwareKeyboardLayoutMode: 'pan',
   },
 
   splash: {
-    image: "./assets/images/logoVigiApp.png",
-    backgroundColor: "#181A20",
-    resizeMode: "contain"
+    image: './assets/images/logoVigiApp.png',
+    backgroundColor: '#181A20',
+    resizeMode: 'contain',
   },
 
   web: {
-    bundler: "metro",
-    output: "static",
-    favicon: "./assets/images/favicon.png"
+    bundler: 'metro',
+    output: 'static',
+    favicon: './assets/images/favicon.png',
   },
 
   plugins: [
-    "expo-router",
+    'expo-router',
     [
-      "expo-splash-screen",
+      'expo-splash-screen',
       {
-        image: "./assets/images/splash-icon.png",
+        image: './assets/images/splash-icon.png',
         imageWidth: 200,
-        resizeMode: "contain",
-        backgroundColor: "#ffffff"
-      }
+        resizeMode: 'contain',
+        backgroundColor: '#ffffff',
+      },
     ],
     [
-      "react-native-google-mobile-ads",
+      'react-native-google-mobile-ads',
       {
-        androidAppId: "ca-app-pub-3940256099942544~3347511713",
-        iosAppId: "ca-app-pub-3940256099942544~1458002511"
-      }
+        // L’iosAppId peut rester, mais il ne sera pas utilisé tant que tu ne buildes pas iOS
+        androidAppId: 'ca-app-pub-3940256099942544~3347511713',
+        iosAppId: 'ca-app-pub-3940256099942544~1458002511',
+      },
     ],
     [
-      "@stripe/stripe-react-native",
+      '@stripe/stripe-react-native',
       {
-        merchantIdentifier: "merchant.com.guigui92.vigiapp",
-        enableGooglePay: true
-      }
+        // OK ici; ce n’est pas le champ iOS interdit. Ignoré côté Android.
+        merchantIdentifier: 'merchant.com.guigui92.vigiapp',
+        enableGooglePay: true,
+      },
     ],
-    "@react-native-firebase/app",
-    "@react-native-firebase/messaging"
+    '@react-native-firebase/app',
+    '@react-native-firebase/messaging',
+    [
+      'expo-build-properties',
+      {
+        android: {
+          compileSdkVersion: 35,
+          targetSdkVersion: 35,
+          minSdkVersion: 24,
+          newArchEnabled: false, // ← place le flag ici
+        },
+        // ⛔️ pas de bloc ios ici
+      },
+    ],
   ],
 
-  experiments: {
-    typedRoutes: true
-  },
+  experiments: { typedRoutes: true },
 
   extra: {
     EXPO_PUBLIC_GOOGLE_MAPS_KEY: process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY,
@@ -100,8 +100,6 @@ export default ({ config }) => ({
     FIREBASE_STORAGE_BUCKET: process.env.FIREBASE_STORAGE_BUCKET,
     FIREBASE_MESSAGING_SENDER_ID: process.env.FIREBASE_MESSAGING_SENDER_ID,
     FIREBASE_APP_ID: process.env.FIREBASE_APP_ID,
-    eas: {
-      projectId: "95fb1fec-76a3-409d-b573-4d7127def99a"
-    }
-  }
+    eas: { projectId: '95fb1fec-76a3-409d-b573-4d7127def99a' },
+  },
 });
