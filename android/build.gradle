@@ -6,15 +6,21 @@ buildscript {
         mavenCentral()
     }
     dependencies {
+        // Google Services (Firebase)
         classpath 'com.google.gms:google-services:4.4.1'
-        // Specify Android Gradle Plugin explicitly (keep compatible with your Gradle wrapper)
+
+        // Android Gradle Plugin (compatible avec Gradle 8.13)
         classpath 'com.android.tools.build:gradle:8.8.2'
-        // Kotlin Gradle plugin (version must match gradle.properties android.kotlinVersion)
-        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:2.0.21"
+
+        // Kotlin Gradle plugin — DOIT matcher gradle.properties android.kotlinVersion
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:${project.findProperty('android.kotlinVersion') ?: '1.9.10'}"
+
+        // React Native Gradle plugin
         classpath 'com.facebook.react:react-native-gradle-plugin'
     }
 }
 
+// Référence vers les artefacts RN dans node_modules
 def reactNativeAndroidDir = new File(
     providers.exec {
         workingDir(rootDir)
@@ -25,19 +31,19 @@ def reactNativeAndroidDir = new File(
 
 allprojects {
     repositories {
-        // React Native sources from node_modules
+        // RN Android depuis node_modules (utile pour certaines résolutions)
         maven {
             url = reactNativeAndroidDir
         }
         google()
         mavenCentral()
-        maven { url = uri('https://www.jitpack.io') }
+        maven { url = uri("https://www.jitpack.io") }
     }
 }
 
 /*
- * Force a safe/compatible androidx.browser version project-wide
- * (avoids pulling 1.9.x which requires compileSdk 36 / AGP 8.9+).
+ * Forcer une version sûre d'androidx.browser (1.6.0)
+ * pour éviter de tirer 1.9.x (compileSdk 36 / AGP 8.9+).
  */
 configurations.all {
     resolutionStrategy {
@@ -45,5 +51,6 @@ configurations.all {
     }
 }
 
+// Plugins racine Expo & RN
 apply plugin: "expo-root-project"
 apply plugin: "com.facebook.react.rootproject"
