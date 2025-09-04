@@ -41,3 +41,6 @@ ios/build/
 **/*.ai
 **/*.zip
 **/*.rar
+
+# ✅ On garde google-services.json pour EAS (important pour Firebase)
+!android/app/google-services.json
