@@ -1,31 +1,18 @@
-// android/build.gradle (top-level) - safe / conservative version
-
+// Top-level build.gradle (android/)
 buildscript {
     repositories {
         google()
         mavenCentral()
     }
     dependencies {
-        // Gardons une version stable et compatible avec ton projet actuel
+        // Android Gradle Plugin compatible with Gradle 8.13 and compileSdk 35
         classpath 'com.android.tools.build:gradle:8.8.2'
         classpath 'com.google.gms:google-services:4.4.1'
         classpath 'com.facebook.react:react-native-gradle-plugin'
-        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.10'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.10"
     }
 }
 
-// -- valeurs partagées utilisées par android/app/build.gradle
-ext {
-    // Si ces propriétés existent déjà (ex: dans gradle.properties), elles seront utilisées.
-    compileSdkVersion   = (findProperty('android.compileSdkVersion') ?: 35).toInteger()
-    targetSdkVersion    = (findProperty('android.targetSdkVersion') ?: 35).toInteger()
-    minSdkVersion       = (findProperty('android.minSdkVersion') ?: 21).toInteger()
-    buildToolsVersion   = (findProperty('android.buildToolsVersion') ?: "33.0.2")
-    ndkVersion          = (findProperty('android.ndkVersion') ?: "25.1.8937393")
-    kotlinVersion       = (findProperty('kotlin.version') ?: "1.9.10")
-}
-
-// Resolve where react-native's android folder is installed (from node_modules)
 def reactNativeAndroidDir = new File(
     providers.exec {
         workingDir(rootDir)
@@ -36,41 +23,27 @@ def reactNativeAndroidDir = new File(
 
 allprojects {
     repositories {
-        // React Native's local maven (installed from npm)
-        maven {
-            url reactNativeAndroidDir
-        }
+        // React Native installed from npm
+        maven { url reactNativeAndroidDir }
 
         google()
         mavenCentral()
-        // jitpack sometimes needed by some libs
         maven { url 'https://www.jitpack.io' }
     }
 }
 
-// Centralised resolution strategy (évite les modifications directes `force = true` sur une dépendance)
+/*
+ * Resolution strategy applied at project level:
+ * force a version of androidx.browser compatible with compileSdk 35 / AGP 8.8.2
+ */
 configurations.all {
     resolutionStrategy {
-        // Force une version compatible de androidx.browser pour rester avec compileSdk = 35
         force 'androidx.browser:browser:1.6.0'
-
-        // Exemple : si on détecte d'autres conflits, tu peux les ajouter ici proprement.
-        // force 'com.some.group:artifact:1.2.3'
+        // Ajoute d'autres forced artifacts si besoin, ex:
+        // force 'com.some:artifact:1.2.3'
     }
 }
 
-/*
- * Optional: print ext values at configuration time for debugging
- */
-println "Android common ext values: compileSdk=${compileSdkVersion}, targetSdk=${targetSdkVersion}, minSdk=${minSdkVersion}, buildTools=${buildToolsVersion}, ndk=${ndkVersion}"
-
-// (Optionnel) appliquer plugins racine pour Expo / React Native rootproject si présents
-// Si ton projet utilise expo-root-project / com.facebook.react.rootproject active-les :
-try {
-    apply plugin: "expo-root-project"
-    apply plugin: "com.facebook.react.rootproject"
-} catch (Throwable e) {
-    // si les plugins ne sont pas disponibles, on ignore proprement
-    println "Note: expo-root-project / com.facebook.react.rootproject not applied (not present)."
-}
-
+/* Expo / React Native root plugins (gardés si ton projet Expo les utilise) */
+apply plugin: "expo-root-project"
+apply plugin: "com.facebook.react.rootproject"

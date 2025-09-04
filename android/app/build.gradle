@@ -1,3 +1,4 @@
+// android/app/build.gradle
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
@@ -11,8 +12,10 @@ react {
     codegenDir = new File(["node", "--print", "require.resolve('@react-native/codegen/package.json', { paths: [require.resolve('react-native/package.json')] })"].execute(null, rootDir).text.trim()).getParentFile().getAbsoluteFile()
 
     enableBundleCompression = (findProperty('android.enableBundleCompression') ?: false).toBoolean()
+    // Use Expo CLI to bundle the app when needed.
     cliFile = new File(["node", "--print", "require.resolve('@expo/cli', { paths: [require.resolve('expo/package.json')] })"].execute(null, rootDir).text.trim())
     bundleCommand = "export:embed"
+
     autolinkLibrariesWithApp()
 }
 
@@ -22,7 +25,7 @@ def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 android {
     ndkVersion rootProject.ext.ndkVersion
     buildToolsVersion rootProject.ext.buildToolsVersion
-    compileSdk rootProject.ext.compileSdkVersion   // attendu : 35 dans ta config actuelle
+    compileSdk rootProject.ext.compileSdkVersion   // attendu : 35
 
     namespace 'com.guigui92.vigiapp'
     defaultConfig {
@@ -66,7 +69,7 @@ android {
     }
 }
 
-// Apply static packaging options from gradle.properties
+// Apply static values from `gradle.properties` to the `android.packagingOptions`
 ["pickFirsts", "excludes", "merges", "doNotStrip"].each { prop ->
     def options = (findProperty("android.packagingOptions.$prop") ?: "").split(",");
     for (i in 0..<options.size()) options[i] = options[i].trim();
@@ -80,11 +83,10 @@ android {
 }
 
 dependencies {
-    // On utilise ici une version compatible avec compileSdk=35 pour débloquer le build local
-    // La version transitive retrouvée dans dependencyInsight était 1.6.0 -> on l'aligne explicitement.
+    // Version compatible avec compileSdk 35 (évite l'exigence de compileSdk 36)
     implementation 'androidx.browser:browser:1.6.0'
 
-    // React Native runtime/artifacts (the plugin manages the exact RN version)
+    // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
 
     def isGifEnabled = (findProperty('expo.gif.enabled') ?: "") == "true"
@@ -109,4 +111,5 @@ dependencies {
     }
 }
 
+// Firebase services (GMS plugin) applied after dependencies
 apply plugin: 'com.google.gms.google-services'
