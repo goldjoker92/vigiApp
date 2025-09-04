@@ -10,7 +10,7 @@ buildscript {
         // Specify Android Gradle Plugin explicitly (keep compatible with your Gradle wrapper)
         classpath 'com.android.tools.build:gradle:8.8.2'
         // Kotlin Gradle plugin (version must match gradle.properties android.kotlinVersion)
-        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.10'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:2.0.21"
         classpath 'com.facebook.react:react-native-gradle-plugin'
     }
 }
