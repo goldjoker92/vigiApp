@@ -3,7 +3,7 @@ import 'dotenv/config';
 export default ({ config }) => ({
 
   ...config,
-  name: 'VigiApp',
+  name: 'vigiApp',
   slug: 'vigiapp',
   version: '1.0.0',
   orientation: 'portrait',
@@ -75,18 +75,15 @@ export default ({ config }) => ({
     // laisser ces lignes n'est pas bloquant; Expo appliquera les config plugins disponibles)
     '@react-native-firebase/app',
     '@react-native-firebase/messaging',
-    [
-      'expo-build-properties',
-      {
-        android: {
-          compileSdkVersion: 35,
-          targetSdkVersion: 35,
-          minSdkVersion: 24,
-          // -> alignement avec android/gradle.properties
-          kotlinVersion: '1.9.10',
-        },
-      },
-    ],
+   ['expo-build-properties', {
+  android: {
+    compileSdkVersion: 35,
+    targetSdkVersion: 35,
+    minSdkVersion: 24,
+    kotlinVersion: '2.0.21', // <= ici
+  }
+}],
+
     './plugins/force-androidx-browser',
   ],
 
