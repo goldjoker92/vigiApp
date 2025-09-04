@@ -12,6 +12,26 @@
     "reset-project": "node ./scripts/reset-project.js",
     "postinstall": "patch-package || echo no-patches"
   },
+  "expo": {
+    "doctor": {
+       "reactNativeDirectoryCheck": {
+          "exclude": [
+             "@react-native-community/checkbox",
+             "react-native-responsive-dimensions",
+             "react-native-responsive-fontsize",
+             "@chakra-ui/icons",
+             "@chakra-ui/react",
+             "@emotion/react",
+             "@emotion/styled",
+             "firebase",
+             "react-chartjs-2",
+             "react-native-mask-input"
+      ],
+             "listUnknownPackages": false
+    }
+  }
+},
+
   "dependencies": {
     "@chakra-ui/icons": "^2.2.4",
     "@chakra-ui/react": "^3.24.0",
