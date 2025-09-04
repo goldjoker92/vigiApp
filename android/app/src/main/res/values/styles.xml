@@ -1,35 +1,16 @@
-<resources xmlns:tools="http://schemas.android.com/tools">
-  <style name="AppTheme" parent="Theme.EdgeToEdge">
-    <item name="android:editTextBackground">@drawable/rn_edit_text_material</item>
-    <item name="colorPrimary">@color/colorPrimary</item>
-    <item name="android:statusBarColor">#ffffff</item>
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+  <!-- Thème Edge-to-Edge référencé par Expo -->
+  <style name="Theme.EdgeToEdge" parent="Theme.Material3.DayNight.NoActionBar">
+    <item name="android:statusBarColor">@android:color/transparent</item>
+    <item name="android:navigationBarColor">@android:color/transparent</item>
+
+    <item name="android:windowFullscreen">false</item>
+    <item name="android:windowTranslucentStatus">true</item>
+
+    <item name="android:windowLightStatusBar">true</item>
+    <item name="android:windowLightNavigationBar">true</item>
   </style>
-  <!--
-      Thème Edge-to-Edge utilisé par le Manifest / Expo.
-      Parent Material3, NoActionBar pour React Native.
-    -->
-    <style name="Theme.EdgeToEdge" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Barres transparentes -->
-        <item name="android:statusBarColor">@android:color/transparent</item>
-        <item name="android:navigationBarColor">@android:color/transparent</item>
 
-        <!-- Contenu sous les barres (edge-to-edge) -->
-        <item name="android:windowFullscreen">false</item>
-        <item name="android:windowTranslucentStatus">true</item>
-
-        <!-- Lisibilité des icônes (clair/sombre) -->
-        <item name="android:windowLightStatusBar">true</item>
-        <item name="android:windowLightNavigationBar">true</item>
-    </style>
-
-    <!--
-      (Optionnel) Ton thème App si tu en as besoin ailleurs.
-      Garde-le si ton projet le référence, sinon ignore.
-    -->
-    <style name="AppTheme" parent="Theme.Material3.DayNight.NoActionBar" />
-  <style name="Theme.App.SplashScreen" parent="Theme.SplashScreen">
-    <item name="windowSplashScreenBackground">@color/splashscreen_background</item>
-    <item name="windowSplashScreenAnimatedIcon">@drawable/splashscreen_logo</item>
-    <item name="postSplashScreenTheme">@style/AppTheme</item>
-  </style>
 </resources>
