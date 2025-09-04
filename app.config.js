@@ -2,6 +2,7 @@ import 'dotenv/config';
 
 export default ({ config }) => ({
   ...config,
+  owner: 'goldjoker92',
   name: 'vigiApp',
   slug: 'vigiapp',
   version: '1.0.0',
@@ -95,6 +96,6 @@ export default ({ config }) => ({
     FIREBASE_STORAGE_BUCKET: process.env.FIREBASE_STORAGE_BUCKET,
     FIREBASE_MESSAGING_SENDER_ID: process.env.FIREBASE_MESSAGING_SENDER_ID,
     FIREBASE_APP_ID: process.env.FIREBASE_APP_ID,
-    eas: { projectId: '95fb1fec-76a3-409d-b573-4d7127def99a' },
+    eas: { projectId: '38fd672e-850f-436f-84f6-8a1626ed338a' }
   },
 });
