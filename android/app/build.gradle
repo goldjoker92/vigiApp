@@ -92,6 +92,8 @@ dependencies {
 
   // runtime React Native (géré par le plugin RN)
   implementation "com.facebook.react:react-android"
+  // Material Components (nécessaire pour Theme.Material3.*)
+  implementation 'com.google.android.material:material:1.12.0'
 
   // Fresco optionnel (contrôlé par expo.*)
   def isGifEnabled = (findProperty('expo.gif.enabled') ?: "") == "true"
