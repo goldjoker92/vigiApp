@@ -1,54 +1,52 @@
 // android/build.gradle (top-level)
 
-buildscript {
-    repositories {
-        google()
-        mavenCentral()
-    }
-    dependencies {
-        // Google Services (Firebase)
-        classpath 'com.google.gms:google-services:4.4.1'
-
-        // Android Gradle Plugin (compatible avec Gradle 8.13)
-        classpath 'com.android.tools.build:gradle:8.8.2'
-
-        // Kotlin Gradle plugin — DOIT matcher gradle.properties android.kotlinVersion
-        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:${project.findProperty('android.kotlinVersion') ?: '1.9.10'}"
-
-        // React Native Gradle plugin
-        classpath 'com.facebook.react:react-native-gradle-plugin'
-    }
+// Point unique de vérité pour les versions Android
+ext {
+  compileSdkVersion = 35
+  targetSdkVersion  = 35
+  minSdkVersion     = 24
+  buildToolsVersion = "35.0.0"
+  ndkVersion        = "26.1.10909125"
 }
 
-// Référence vers les artefacts RN dans node_modules
+buildscript {
+  repositories {
+    google()
+    mavenCentral()
+  }
+  dependencies {
+    // AGP / Kotlin / RN plugins
+    classpath 'com.android.tools.build:gradle:8.8.2'
+    classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:${project.findProperty('android.kotlinVersion') ?: '2.0.20'}"
+    classpath 'com.facebook.react:react-native-gradle-plugin'
+    // Google Services (Firebase)
+    classpath 'com.google.gms:google-services:4.4.2'
+  }
+}
+
+// RN Android depuis node_modules
 def reactNativeAndroidDir = new File(
-    providers.exec {
-        workingDir(rootDir)
-        commandLine("node", "--print", "require.resolve('react-native/package.json')")
-    }.standardOutput.asText.get().trim(),
-    "../android"
+  providers.exec {
+    workingDir(rootDir)
+    commandLine("node", "--print", "require.resolve('react-native/package.json')")
+  }.standardOutput.asText.get().trim(),
+  "../android"
 )
 
 allprojects {
-    repositories {
-        // RN Android depuis node_modules (utile pour certaines résolutions)
-        maven {
-            url = reactNativeAndroidDir
-        }
-        google()
-        mavenCentral()
-        maven { url = uri("https://www.jitpack.io") }
-    }
+  repositories {
+    maven { url = reactNativeAndroidDir }
+    google()
+    mavenCentral()
+    maven { url = uri("https://www.jitpack.io") }
+  }
 }
 
-/*
- * Forcer une version sûre d'androidx.browser (1.6.0)
- * pour éviter de tirer 1.9.x (compileSdk 36 / AGP 8.9+).
- */
+// Verrouillage pour éviter d’aspirer androidx.browser 1.9.x
 configurations.all {
-    resolutionStrategy {
-        force 'androidx.browser:browser:1.6.0'
-    }
+  resolutionStrategy {
+    force 'androidx.browser:browser:1.6.0'
+  }
 }
 
 // Plugins racine Expo & RN
