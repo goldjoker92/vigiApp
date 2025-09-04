@@ -11,9 +11,6 @@ export default ({ config }) => ({
   userInterfaceStyle: 'automatic',
   platforms: ['android'],
 
-  // ⚠️ retiré pour éviter conflit avec gradle.properties
-  // newArchEnabled: false,
-
   android: {
     edgeToEdgeEnabled: true,
     package: 'com.guigui92.vigiapp',
@@ -47,7 +44,7 @@ export default ({ config }) => ({
   },
 
   plugins: [
-    '@notifee/react-native',               // ✅ Notifee (config plugin)
+    // ⬇️ retiré '@notifee/react-native'
     'expo-router',
     [
       'expo-splash-screen',
@@ -78,7 +75,7 @@ export default ({ config }) => ({
           compileSdkVersion: 35,
           targetSdkVersion: 35,
           minSdkVersion: 24,
-          kotlinVersion: '2.0.20',       // ✅ aligné avec la pile validée
+          kotlinVersion: '2.0.20',
         },
       },
     ],
