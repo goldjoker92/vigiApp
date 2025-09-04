@@ -4,10 +4,11 @@ apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 
-// Rendre hermesEnabled visible aux sous-projets
+// 1) Init locale + injection dans ext AVANT tout usage
 def _hermes = (findProperty('hermesEnabled') ?: "true").toBoolean()
-ext.hermesEnabled = _hermes
+project.ext.set("hermesEnabled", _hermes) // rend ext.hermesEnabled accessible aux sous-projets si besoin
 
+// --- paramètres RN/Expo résolus dynamiquement
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
 
 react {
@@ -26,6 +27,7 @@ def enableProguardInReleaseBuilds = (findProperty('android.enableProguardInRelea
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
 android {
+  // récupère les valeurs centralisées depuis rootProject.ext (définies au top-level)
   ndkVersion rootProject.ext.ndkVersion
   buildToolsVersion rootProject.ext.buildToolsVersion
   compileSdk rootProject.ext.compileSdkVersion
@@ -73,7 +75,7 @@ android {
   }
 }
 
-// Packaging options depuis gradle.properties (si tu en as)
+// 2) Appliquer les options de packaging statiques depuis gradle.properties (si présentes)
 ["pickFirsts", "excludes", "merges", "doNotStrip"].each { prop ->
   def options = (findProperty("android.packagingOptions.$prop") ?: "").split(",")
   for (i in 0..<options.size()) options[i] = options[i].trim()
@@ -85,9 +87,13 @@ android {
 }
 
 dependencies {
+  // garder browser 1.6.0 (évite de tirer 1.9.x qui demande compileSdk 36/AGP 8.9)
   implementation 'androidx.browser:browser:1.6.0'
+
+  // runtime React Native (géré par le plugin RN)
   implementation "com.facebook.react:react-android"
 
+  // Fresco optionnel (contrôlé par expo.*)
   def isGifEnabled = (findProperty('expo.gif.enabled') ?: "") == "true"
   def isWebpEnabled = (findProperty('expo.webp.enabled') ?: "") == "true"
   def isWebpAnimatedEnabled = (findProperty('expo.webp.animated') ?: "") == "true"
@@ -102,12 +108,13 @@ dependencies {
     }
   }
 
-  if (ext.hermesEnabled) {
+  // 3) Décision Hermes basée sur la VARIABLE LOCALE _hermes (fiable à l'évaluation)
+  if (_hermes) {
     implementation "com.facebook.react:hermes-android"
   } else {
     implementation jscFlavor
   }
 }
 
-// LIGNE UNIQUE, à la toute fin (rien après)
+// 4) Firebase Google Services — DOIT rester la DERNIÈRE ligne du fichier, rien après
 apply plugin: 'com.google.gms.google-services'
