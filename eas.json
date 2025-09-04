@@ -14,7 +14,7 @@
     },
     "preview": {
       "distribution": "internal",
-      "android": { "buildType": "apk", "image": "default" },
+      "android": { "buildType": "apk", "image": "sdk-53" },
       "node": "20.11.1",
       "env": {
         "CI": "true",
@@ -25,7 +25,7 @@
     "production": {
       "autoIncrement": true,
       "distribution": "store",
-      "android": { "buildType": "app-bundle", "image": "default", "gradleCommand": ":app:bundleRelease" },
+      "android": { "buildType": "app-bundle", "image": "sdk-53", "gradleCommand": ":app:bundleRelease" },
       "node": "20.11.1",
       "env": {
         "CI": "true",
