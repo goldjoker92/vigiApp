@@ -4,6 +4,11 @@ apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 
+// --- RENDRE hermesEnabled VISIBLE AUX SOUS-PROJETS (expo-modules-core, etc.)
+def _hermes = (findProperty('hermesEnabled') ?: "true").toBoolean()
+ext.hermesEnabled = _hermes
+// -------------------------------------------------------------
+
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
 
 react {
@@ -27,6 +32,7 @@ android {
     compileSdk rootProject.ext.compileSdkVersion
 
     namespace 'com.guigui92.vigiapp'
+
     defaultConfig {
         applicationId 'com.guigui92.vigiapp'
         minSdkVersion rootProject.ext.minSdkVersion
@@ -34,6 +40,7 @@ android {
         versionCode 1
         versionName "1.0.0"
     }
+
     signingConfigs {
         debug {
             storeFile file('debug.keystore')
@@ -42,6 +49,7 @@ android {
             keyPassword 'android'
         }
     }
+
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
@@ -50,24 +58,26 @@ android {
             signingConfig signingConfigs.debug
             shrinkResources (findProperty('android.enableShrinkResourcesInReleaseBuilds')?.toBoolean() ?: false)
             minifyEnabled enableProguardInReleaseBuilds
-            proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
             crunchPngs (findProperty('android.enablePngCrunchInReleaseBuilds')?.toBoolean() ?: true)
         }
     }
+
     packagingOptions {
         jniLibs {
             useLegacyPackaging (findProperty('expo.useLegacyPackaging')?.toBoolean() ?: false)
         }
     }
+
     androidResources {
         ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~'
     }
 }
 
-// apply any static packaging options from gradle.properties
+// Appliquer les options de packaging statiques depuis gradle.properties
 ["pickFirsts", "excludes", "merges", "doNotStrip"].each { prop ->
-    def options = (findProperty("android.packagingOptions.$prop") ?: "").split(",");
-    for (i in 0..<options.size()) options[i] = options[i].trim();
+    def options = (findProperty("android.packagingOptions.$prop") ?: "").split(",")
+    for (i in 0..<options.size()) options[i] = options[i].trim()
     options -= ""
     if (options.length > 0) {
         println "android.packagingOptions.$prop += $options ($options.length)"
@@ -78,10 +88,11 @@ android {
 }
 
 dependencies {
-    // Use a browser version compatible with compileSdk=35 / AGP 8.8.x
+    // Version browser compatible compileSdk=35 / AGP 8.8.x
     implementation 'androidx.browser:browser:1.6.0'
 
-    implementation("com.facebook.react:react-android")
+    // React Native runtime (géré par le plugin RN)
+    implementation "com.facebook.react:react-android"
 
     def isGifEnabled = (findProperty('expo.gif.enabled') ?: "") == "true"
     def isWebpEnabled = (findProperty('expo.webp.enabled') ?: "") == "true"
@@ -90,7 +101,6 @@ dependencies {
     if (isGifEnabled) {
         implementation("com.facebook.fresco:animated-gif:${expoLibs.versions.fresco.get()}")
     }
-
     if (isWebpEnabled) {
         implementation("com.facebook.fresco:webpsupport:${expoLibs.versions.fresco.get()}")
         if (isWebpAnimatedEnabled) {
@@ -98,8 +108,8 @@ dependencies {
         }
     }
 
-    if ((findProperty('hermesEnabled') ?: "true").toBoolean()) {
-        implementation("com.facebook.react:hermes-android")
+    if (ext.hermesEnabled) {
+        implementation "com.facebook.react:hermes-android"
     } else {
         implementation jscFlavor
     }
