@@ -4,7 +4,7 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "android": { "buildType": "apk", "image": "sdk-53" },
+      "android": { "buildType": "apk", "image": "auto" },
       "node": "20.11.1",
       "env": {
         "CI": "true",
