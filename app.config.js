@@ -1,3 +1,4 @@
+ boss2/fcm-bootstrap
 import 'dotenv/config';
 
 export default ({ config }) => ({
@@ -30,7 +31,7 @@ export default ({ config }) => ({
       'POST_NOTIFICATIONS',
     ],
     softwareKeyboardLayoutMode: 'pan',
-  },
+    },
 
   splash: {
     image: './assets/images/logoVigiApp.png',
