@@ -75,7 +75,7 @@ export default function LoginScreen() {
       await loadUserProfile(cred.user.uid);
 
       // Récupération FCM silencieuse (log console uniquement)
-      fetchAndLogFcmToken().catch(() => {});
+      fetchAndLogFcmToken().catch((e) => console.log("[FCM] Erreur récupération token (outer):", e?.message || e));
 
       router.replace("/(tabs)/home");
       console.log("Firebase App:", auth?.app?.name);
