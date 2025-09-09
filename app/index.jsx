@@ -22,14 +22,17 @@ export default function LoginScreen() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
+  const [loading, setLoading] = useState(false);
   const [devIndex, setDevIndex] = useState(0);
 
   const handleLogin = async () => {
+    setLoading(true);
     try {
       const mail = email.trim();
       const pass = senha;
       if (!mail || !pass) {
         Alert.alert("Erro", "Preencha e-mail e senha.");
+        setLoading(false);
         return;
       }
       const cred = await signInWithEmailAndPassword(auth, mail, pass);
@@ -38,6 +41,8 @@ export default function LoginScreen() {
       console.log("Instance Firebase Auth ID no componente:", auth?.app?.name);
     } catch (error) {
       Alert.alert("Erro", String(error?.message || error));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -79,7 +84,7 @@ export default function LoginScreen() {
           />
 
           <TouchableOpacity style={styles.button} onPress={handleLogin}>
-            <Text style={styles.buttonText}>Entrar</Text>
+            <Text style={styles.buttonText}>{loading ? "Entrando..." : "Entrar"}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity onPress={() => router.push("/auth/signup")}>
