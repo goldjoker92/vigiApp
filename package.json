@@ -10,7 +10,7 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "reset-project": "node ./scripts/reset-project.js",
-    "postinstall": "patch-package || echo no-patches"
+    "postinstall": "node ./scripts/apply-patches.js"
   },
   "expo": {
     "doctor": {
