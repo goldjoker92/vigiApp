@@ -1,19 +1,40 @@
 {
-  "cli": { "version": ">= 12.0.0" },
+  "cli": { "version": ">= 12.0.0", "appVersionSource": "remote" },
   "build": {
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "android": { "buildType": "apk" }
+      "android": { "buildType": "apk", "image": "auto" },
+      "node": "20.11.1",
+      "env": {
+        "CI": "true",
+        "NPM_CONFIG_LEGACY_PEER_DEPS": "true",
+        "EXPO_NO_TELEMETRY": "1"
+      }
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "android": { "buildType": "apk", "image": "sdk-53" },
+      "node": "20.11.1",
+      "env": {
+        "CI": "true",
+        "NPM_CONFIG_LEGACY_PEER_DEPS": "true",
+        "EXPO_NO_TELEMETRY": "1"
+      }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "distribution": "store",
+      "android": { "buildType": "app-bundle", "image": "sdk-53", "gradleCommand": ":app:bundleRelease" },
+      "node": "20.11.1",
+      "env": {
+        "CI": "true",
+        "NPM_CONFIG_LEGACY_PEER_DEPS": "true",
+        "EXPO_NO_TELEMETRY": "1"
+      }
     }
   },
   "submit": {
-    "production": {}
+    "production": { "android": { "track": "production" } }
   }
 }

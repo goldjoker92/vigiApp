@@ -1,15 +1,14 @@
 # ───────── Node / JS ─────────
 node_modules/
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-*.log
 
-# ───────── Env & secrets (NE JAMAIS pusher) ─────────
+# ───────── Env & secrets ─────────
 .env
-.env.*
-*.env
+.env.*        # sauf fichiers explicitement commités
 *.keystore
 *.jks
 *.pem
@@ -18,28 +17,28 @@ pnpm-debug.log*
 *.key
 *.mobileprovision
 
-# ⚠️ Garde ces fichiers dans le repo (nécessaires au build Firebase) :
-# android/app/google-services.json
-# ios/GoogleService-Info.plist
+# ⚠️ Ne PAS ignorer :
+#   - android/app/google-services.json
+#   - ios/GoogleService-Info.plist
 
 # ───────── Expo / React Native ─────────
 .expo/
 .expo-shared/
 .expo-packager-cache/
-.expo-*
-dist/
-web-build/
 .metro-cache/
 .metro-health-check*
+dist/
+web-build/
 *.pack
 *.hbc
 expo-env.d.ts
 
 # ───────── Android ─────────
+android/app/build/
+android/build/
+android/.gradle/
 
-# (Ne PAS ignorer gradle/wrapper — il doit rester versionné)
-
-# ───────── iOS (au cas où) ─────────
+# ───────── iOS ─────────
 ios/Pods/
 ios/build/
 ios/DerivedData/
@@ -48,7 +47,6 @@ ios/DerivedData/
 *.xcworkspace
 
 # ───────── IDE / OS ─────────
-
 .idea/
 *.iml
 .DS_Store
@@ -62,4 +60,3 @@ reports/
 # ───────── Fichiers locaux spécifiques ─────────
 README-ADMIN-PRIVATE.md
 *.local
-app-example
