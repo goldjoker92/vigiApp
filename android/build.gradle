@@ -1,13 +1,4 @@
-// android/build.gradle (top-level)
-
-// Point unique de vérité pour les versions Android
-ext {
-  compileSdkVersion = 35
-  targetSdkVersion  = 35
-  minSdkVersion     = 24
-  buildToolsVersion = "35.0.0"
-  ndkVersion        = "26.1.10909125"
-}
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
 
 buildscript {
   repositories {
@@ -15,16 +6,13 @@ buildscript {
     mavenCentral()
   }
   dependencies {
-    // AGP / Kotlin / RN plugins
-    classpath 'com.android.tools.build:gradle:8.8.2'
-    classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:${project.findProperty('android.kotlinVersion') ?: '2.0.20'}"
-    classpath 'com.facebook.react:react-native-gradle-plugin'
-    // Google Services (Firebase)
-    classpath 'com.google.gms:google-services:4.4.2'
+        classpath 'com.google.gms:google-services:4.4.1'
+    classpath('com.android.tools.build:gradle')
+    classpath('com.facebook.react:react-native-gradle-plugin')
+    classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')
   }
 }
 
-// RN Android depuis node_modules
 def reactNativeAndroidDir = new File(
   providers.exec {
     workingDir(rootDir)
@@ -35,20 +23,16 @@ def reactNativeAndroidDir = new File(
 
 allprojects {
   repositories {
-    maven { url = reactNativeAndroidDir }
+    maven {
+      // All of React Native (JS, Obj-C sources, Android binaries) is installed from npm
+      url(reactNativeAndroidDir)
+    }
+
     google()
     mavenCentral()
-    maven { url = uri("https://www.jitpack.io") }
+    maven { url 'https://www.jitpack.io' }
   }
 }
 
-// Verrouillage pour éviter d’aspirer androidx.browser 1.9.x
-configurations.all {
-  resolutionStrategy {
-    force 'androidx.browser:browser:1.6.0'
-  }
-}
-
-// Plugins racine Expo & RN
 apply plugin: "expo-root-project"
 apply plugin: "com.facebook.react.rootproject"

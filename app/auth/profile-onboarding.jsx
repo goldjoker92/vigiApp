@@ -6,7 +6,7 @@ import { auth, db } from '../../firebase';
 import { loadUserProfile } from '../../utils/loadUserProfile';
 import { useAuthGuard } from '../../hooks/useAuthGuard';
 
-import { CpfField, CepField, PhoneField, DateField, UFField, lookupCep } from '../components/forms/MaskedFields';
+import { CpfField, CepField, PhoneField, DateField, UFField, lookupCep } from '../../services/MaskedFields';
 import { onlyDigits, isValidCEP, isValidCPF, isValidPhoneBR, parseBRDateToISO, isAdultFromISO, phoneToE164BR } from '../../utils/br';
 
 export default function ProfileOnboardingScreen() {

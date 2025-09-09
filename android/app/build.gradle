@@ -1,122 +1,147 @@
-// android/app/build.gradle
-
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 
-// 1) Init locale + injection dans ext AVANT tout usage
-def _hermes = (findProperty('hermesEnabled') ?: "true").toBoolean()
-project.ext.set("hermesEnabled", _hermes) // rend ext.hermesEnabled accessible aux sous-projets si besoin
-
-// --- paramètres RN/Expo résolus dynamiquement
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
 
+/**
+ * This is the configuration block to customize your React Native Android app.
+ * By default you don't need to apply any configuration, just uncomment the lines you need.
+ */
 react {
-  entryFile = file(["node", "-e", "require('expo/scripts/resolveAppEntry')", projectRoot, "android", "absolute"].execute(null, rootDir).text.trim())
-  reactNativeDir = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).getParentFile().getAbsoluteFile()
-  hermesCommand = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).getParentFile().getAbsolutePath() + "/sdks/hermesc/%OS-BIN%/hermesc"
-  codegenDir = new File(["node", "--print", "require.resolve('@react-native/codegen/package.json', { paths: [require.resolve('react-native/package.json')] })"].execute(null, rootDir).text.trim()).getParentFile().getAbsoluteFile()
+    entryFile = file(["node", "-e", "require('expo/scripts/resolveAppEntry')", projectRoot, "android", "absolute"].execute(null, rootDir).text.trim())
+    reactNativeDir = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).getParentFile().getAbsoluteFile()
+    hermesCommand = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).getParentFile().getAbsolutePath() + "/sdks/hermesc/%OS-BIN%/hermesc"
+    codegenDir = new File(["node", "--print", "require.resolve('@react-native/codegen/package.json', { paths: [require.resolve('react-native/package.json')] })"].execute(null, rootDir).text.trim()).getParentFile().getAbsoluteFile()
 
-  enableBundleCompression = (findProperty('android.enableBundleCompression') ?: false).toBoolean()
-  cliFile = new File(["node", "--print", "require.resolve('@expo/cli', { paths: [require.resolve('expo/package.json')] })"].execute(null, rootDir).text.trim())
-  bundleCommand = "export:embed"
-  autolinkLibrariesWithApp()
+    enableBundleCompression = (findProperty('android.enableBundleCompression') ?: false).toBoolean()
+    // Use Expo CLI to bundle the app, this ensures the Metro config
+    // works correctly with Expo projects.
+    cliFile = new File(["node", "--print", "require.resolve('@expo/cli', { paths: [require.resolve('expo/package.json')] })"].execute(null, rootDir).text.trim())
+    bundleCommand = "export:embed"
+
+    /* Folders */
+    // root = file("../../")
+    // reactNativeDir = file("../../node_modules/react-native")
+    // codegenDir = file("../../node_modules/@react-native/codegen")
+
+    /* Variants */
+    // debuggableVariants = ["liteDebug", "prodDebug"]
+
+    /* Bundling */
+    // nodeExecutableAndArgs = ["node"]
+    // bundleConfig = file(../rn-cli.config.js)
+    // bundleAssetName = "MyApplication.android.bundle"
+    // entryFile = file("../js/MyApplication.android.js")
+    // extraPackagerArgs = []
+
+    /* Hermes Commands */
+    // hermesCommand = "$rootDir/my-custom-hermesc/bin/hermesc"
+    // hermesFlags = ["-O", "-output-source-map"]
+
+    /* Autolinking */
+    autolinkLibrariesWithApp()
 }
 
+/**
+ * Set this to true to Run Proguard on Release builds to minify the Java bytecode.
+ */
 def enableProguardInReleaseBuilds = (findProperty('android.enableProguardInReleaseBuilds') ?: false).toBoolean()
+
+/**
+ * The preferred build flavor of JavaScriptCore (JSC)
+ */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
 android {
-  // récupère les valeurs centralisées depuis rootProject.ext (définies au top-level)
-  ndkVersion rootProject.ext.ndkVersion
-  buildToolsVersion rootProject.ext.buildToolsVersion
-  compileSdk rootProject.ext.compileSdkVersion
+    ndkVersion rootProject.ext.ndkVersion
 
-  namespace 'com.guigui92.vigiapp'
+    buildToolsVersion rootProject.ext.buildToolsVersion
+    compileSdk rootProject.ext.compileSdkVersion
 
-  defaultConfig {
-    applicationId 'com.guigui92.vigiapp'
-    minSdkVersion rootProject.ext.minSdkVersion
-    targetSdkVersion rootProject.ext.targetSdkVersion
-    versionCode 1
-    versionName "1.0.0"
-  }
-
-  signingConfigs {
-    debug {
-      storeFile file('debug.keystore')
-      storePassword 'android'
-      keyAlias 'androiddebugkey'
-      keyPassword 'android'
+    namespace 'com.guigui92.vigiapp'
+    defaultConfig {
+        applicationId 'com.guigui92.vigiapp'
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode 1
+        versionName "1.0.0"
     }
-  }
-
-  buildTypes {
-    debug {
-      signingConfig signingConfigs.debug
+    signingConfigs {
+        debug {
+            storeFile file('debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
     }
-    release {
-      signingConfig signingConfigs.debug
-      shrinkResources (findProperty('android.enableShrinkResourcesInReleaseBuilds')?.toBoolean() ?: false)
-      minifyEnabled enableProguardInReleaseBuilds
-      proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-      crunchPngs (findProperty('android.enablePngCrunchInReleaseBuilds')?.toBoolean() ?: true)
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
+        release {
+            // Caution! In production, you need to generate your own keystore file.
+            // see https://reactnative.dev/docs/signed-apk-android.
+            signingConfig signingConfigs.debug
+            shrinkResources (findProperty('android.enableShrinkResourcesInReleaseBuilds')?.toBoolean() ?: false)
+            minifyEnabled enableProguardInReleaseBuilds
+            proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+            crunchPngs (findProperty('android.enablePngCrunchInReleaseBuilds')?.toBoolean() ?: true)
+        }
     }
-  }
-
-  packagingOptions {
-    jniLibs {
-      useLegacyPackaging (findProperty('expo.useLegacyPackaging')?.toBoolean() ?: false)
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging (findProperty('expo.useLegacyPackaging')?.toBoolean() ?: false)
+        }
     }
-  }
-
-  androidResources {
-    ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~'
-  }
+    androidResources {
+        ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~'
+    }
 }
 
-// 2) Appliquer les options de packaging statiques depuis gradle.properties (si présentes)
+// Apply static values from `gradle.properties` to the `android.packagingOptions`
 ["pickFirsts", "excludes", "merges", "doNotStrip"].each { prop ->
-  def options = (findProperty("android.packagingOptions.$prop") ?: "").split(",")
-  for (i in 0..<options.size()) options[i] = options[i].trim()
-  options -= ""
-  if (options.length > 0) {
-    println "android.packagingOptions.$prop += $options ($options.length)"
-    options.each { android.packagingOptions[prop] += it }
-  }
+    def options = (findProperty("android.packagingOptions.$prop") ?: "").split(",");
+    for (i in 0..<options.size()) options[i] = options[i].trim();
+    options -= ""
+    if (options.length > 0) {
+        println "android.packagingOptions.$prop += $options ($options.length)"
+        options.each {
+            android.packagingOptions[prop] += it
+        }
+    }
 }
 
 dependencies {
-  // garder browser 1.6.0 (évite de tirer 1.9.x qui demande compileSdk 36/AGP 8.9)
-  implementation 'androidx.browser:browser:1.6.0'
+    // ⚠️ Supprimé: tout override/force sur androidx.browser
+    // Laisse Expo/React Native résoudre la version compatible via les repositories (google(), mavenCentral()).
 
-  // runtime React Native (géré par le plugin RN)
-  implementation "com.facebook.react:react-android"
-  // Material Components (nécessaire pour Theme.Material3.*)
-  implementation 'com.google.android.material:material:1.12.0'
+    // The version of react-native is set by the React Native Gradle Plugin
+    implementation("com.facebook.react:react-android")
 
-  // Fresco optionnel (contrôlé par expo.*)
-  def isGifEnabled = (findProperty('expo.gif.enabled') ?: "") == "true"
-  def isWebpEnabled = (findProperty('expo.webp.enabled') ?: "") == "true"
-  def isWebpAnimatedEnabled = (findProperty('expo.webp.animated') ?: "") == "true"
+    def isGifEnabled = (findProperty('expo.gif.enabled') ?: "") == "true";
+    def isWebpEnabled = (findProperty('expo.webp.enabled') ?: "") == "true";
+    def isWebpAnimatedEnabled = (findProperty('expo.webp.animated') ?: "") == "true";
 
-  if (isGifEnabled) {
-    implementation("com.facebook.fresco:animated-gif:${expoLibs.versions.fresco.get()}")
-  }
-  if (isWebpEnabled) {
-    implementation("com.facebook.fresco:webpsupport:${expoLibs.versions.fresco.get()}")
-    if (isWebpAnimatedEnabled) {
-      implementation("com.facebook.fresco:animated-webp:${expoLibs.versions.fresco.get()}")
+    if (isGifEnabled) {
+        // For animated gif support
+        implementation("com.facebook.fresco:animated-gif:${expoLibs.versions.fresco.get()}")
     }
-  }
 
-  // 3) Décision Hermes basée sur la VARIABLE LOCALE _hermes (fiable à l'évaluation)
-  if (_hermes) {
-    implementation "com.facebook.react:hermes-android"
-  } else {
-    implementation jscFlavor
-  }
+    if (isWebpEnabled) {
+        // For webp support
+        implementation("com.facebook.fresco:webpsupport:${expoLibs.versions.fresco.get()}")
+        if (isWebpAnimatedEnabled) {
+            // Animated webp support
+            implementation("com.facebook.fresco:animated-webp:${expoLibs.versions.fresco.get()}")
+        }
+    }
+
+    if (hermesEnabled.toBoolean()) {
+        implementation("com.facebook.react:hermes-android")
+    } else {
+        implementation jscFlavor
+    }
 }
 
-// 4) Firebase Google Services — DOIT rester la DERNIÈRE ligne du fichier, rien après
 apply plugin: 'com.google.gms.google-services'
