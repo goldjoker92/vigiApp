@@ -1,73 +1,40 @@
-﻿{
-  "cli": { "version": ">= 12.0.0", "appVersionSource": "local" },
+{
+  "cli": { "version": ">= 12.0.0", "appVersionSource": "remote" },
   "build": {
     "development": {
-      "node": "20.19.5",
       "developmentClient": true,
       "distribution": "internal",
-      "android": { "buildType": "apk" },
-      "cache": { "disabled": true },
-      "env": { "EXPO_NODE_VERSION": "20.19.5", "AUDIENCE": "local" }
-    },
-
-    "dev-arm64": {
-      "node": "20.19.5",
-      "developmentClient": true,
-      "distribution": "internal",
-      "android": { "buildType": "apk" },
-      "cache": { "disabled": true },
+      "android": { "buildType": "apk", "image": "auto" },
+      "node": "20.11.1",
       "env": {
-        "EXPO_NODE_VERSION": "20.19.5",
-        "AUDIENCE": "local",
-        "REACT_NATIVE_ARCHITECTURES": "arm64-v8a"
+        "CI": "true",
+        "NPM_CONFIG_LEGACY_PEER_DEPS": "true",
+        "EXPO_NO_TELEMETRY": "1"
       }
     },
-
-    "dev-emulator": {
-      "node": "20.19.5",
-      "developmentClient": true,
-      "distribution": "internal",
-      "android": { "buildType": "apk" },
-      "cache": { "disabled": true },
-      "env": {
-        "EXPO_NODE_VERSION": "20.19.5",
-        "AUDIENCE": "local",
-        "REACT_NATIVE_ARCHITECTURES": "x86_64"
-      }
-    },
-
     "preview": {
-      "node": "20.19.5",
       "distribution": "internal",
-      "android": { "buildType": "apk" },
-      "cache": { "disabled": true },
-      "env": { "EXPO_NODE_VERSION": "20.19.5", "AUDIENCE": "local" }
+      "android": { "buildType": "apk", "image": "sdk-53" },
+      "node": "20.11.1",
+      "env": {
+        "CI": "true",
+        "NPM_CONFIG_LEGACY_PEER_DEPS": "true",
+        "EXPO_NO_TELEMETRY": "1"
+      }
     },
-
     "production": {
-      "node": "20.19.5",
-      "android": { "buildType": "app-bundle" },
-      "cache": { "disabled": true },
-      "env": { "EXPO_NODE_VERSION": "20.19.5", "AUDIENCE": "local" }
-    },
-
-    "touristDev": {
-      "node": "20.19.5",
-      "developmentClient": true,
-      "distribution": "internal",
-      "android": { "buildType": "apk" },
-      "cache": { "disabled": true },
-      "env": { "EXPO_NODE_VERSION": "20.19.5", "AUDIENCE": "tourist" }
-    },
-
-    "touristProd": {
-      "node": "20.19.5",
-      "android": { "buildType": "app-bundle" },
-      "cache": { "disabled": true },
-      "env": { "EXPO_NODE_VERSION": "20.19.5", "AUDIENCE": "tourist" }
+      "autoIncrement": true,
+      "distribution": "store",
+      "android": { "buildType": "app-bundle", "image": "sdk-53", "gradleCommand": ":app:bundleRelease" },
+      "node": "20.11.1",
+      "env": {
+        "CI": "true",
+        "NPM_CONFIG_LEGACY_PEER_DEPS": "true",
+        "EXPO_NO_TELEMETRY": "1"
+      }
     }
   },
   "submit": {
-    "production": { "android": { "track": "internal" } }
+    "production": { "android": { "track": "production" } }
   }
 }
