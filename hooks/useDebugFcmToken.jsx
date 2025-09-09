@@ -45,7 +45,7 @@ export default function useDebugFcmToken() {
           }
         };
 
-        // Récupération du token avec 2 petites tentatives si Play Services tarde
+        // Récupération du token avec 3 petites tentatives si Play Services tarde
         let token = null;
         for (let i = 0; i < 3; i++) {
           try {
