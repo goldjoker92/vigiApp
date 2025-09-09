@@ -1,4 +1,4 @@
-// app/auth/login.tsx
+// app/auth/login.jsx
 import React, { useState } from "react";
 import {
   View,
