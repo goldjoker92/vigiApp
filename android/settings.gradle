@@ -1,7 +1,3 @@
-// settings.gradle — projet Android (Expo + React Native)
-// IMPORTANT : rootProject.name doit être en minuscules pour éviter des incompatibilités
-//             avec certains plugins/transformations (Expo / Gradle). Ne pas mettre 'VigiApp'.
-
 pluginManagement {
   def reactNativeGradlePlugin = new File(
     providers.exec {
@@ -10,7 +6,7 @@ pluginManagement {
     }.standardOutput.asText.get().trim()
   ).getParentFile().absolutePath
   includeBuild(reactNativeGradlePlugin)
-
+  
   def expoPluginsPath = new File(
     providers.exec {
       workingDir(rootDir)
@@ -35,10 +31,7 @@ extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
 }
 expoAutolinking.useExpoModules()
 
-// -------------------------
-// Project name (lowercase)
-// -------------------------
-rootProject.name = 'vigiapp'
+rootProject.name = 'vigiApp'
 
 expoAutolinking.useExpoVersionCatalog()
 

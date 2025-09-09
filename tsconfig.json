@@ -1,0 +1,52 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    /* Résolution */
+    "baseUrl": ".",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+
+    /* JSX + JS */
+    "jsx": "react-jsx",
+    "allowJs": true,
+    "checkJs": false,
+    "noEmit": true,
+
+    /* Import JSON et libs */
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+
+    /* Alias (doivent matcher babel.config.js) */
+    "paths": {
+      "@/utils/*": ["utils/*"],
+      "@/hooks/*": ["hooks/*"],
+      "@/constants/*": ["constants/*"],
+      "@/assets/*": ["assets/*"],
+      "@/store/*": ["store/*"],
+      "@/app/*": ["app/*"]
+    },
+
+    /* Types de base */
+    "types": ["react", "react-native", "jest"]
+  },
+  "include": [
+    "app/**/*",
+    "src/**/*",
+    "store/**/*",
+    "utils/**/*",
+    "assets/**/*",
+    "constants/**/*",
+    ".expo/types/**/*.ts",
+    "expo-env.d.ts",
+    "**/*.js", "**/*.jsx", "**/*.ts", "**/*.tsx"
+  ],
+  "exclude": [
+    "node_modules",
+    "android",
+    "ios",
+    "dist",
+    "build"
+  ]
+}

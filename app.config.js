@@ -22,7 +22,7 @@ export default ({ config }) => ({
     config: {
       googleMaps: { apiKey: process.env.ANDROID_MAPS_API_KEY },
     },
-    googleServicesFile: './android/app/google-services.json',
+    googleServicesFile: './google-services.json',
     permissions: [
       'ACCESS_FINE_LOCATION',
       'ACCESS_COARSE_LOCATION',
