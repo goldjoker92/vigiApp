@@ -1,11 +1,26 @@
-// babel.config.js (à la racine)
+// babel.config.js
 module.exports = function (api) {
   api.cache(true);
   return {
     presets: ['babel-preset-expo'],
     plugins: [
-      'expo-router/babel',
-      'react-native-reanimated/plugin', // toujours en dernier
+      [
+        'module-resolver',
+        {
+          root: ['.'],
+          alias: {
+            '@/utils': './utils',
+            '@/hooks': './hooks',
+            '@/constants': './constants',
+            '@/assets': './assets',
+            '@/store': './store',
+            '@/app': './app',
+          },
+          extensions: ['.tsx', '.ts', '.jsx', '.js', '.mjs', '.json'],
+        },
+      ],
+      // ⚠️ doit rester en dernier, sinon Reanimated fait des siennes
+      'react-native-reanimated/plugin',
     ],
   };
 };
