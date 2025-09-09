@@ -20,6 +20,25 @@ react {
     cliFile = new File(["node", "--print", "require.resolve('@expo/cli', { paths: [require.resolve('expo/package.json')] })"].execute(null, rootDir).text.trim())
     bundleCommand = "export:embed"
 
+    /* Folders */
+    // root = file("../../")
+    // reactNativeDir = file("../../node_modules/react-native")
+    // codegenDir = file("../../node_modules/@react-native/codegen")
+
+    /* Variants */
+    // debuggableVariants = ["liteDebug", "prodDebug"]
+
+    /* Bundling */
+    // nodeExecutableAndArgs = ["node"]
+    // bundleConfig = file(../rn-cli.config.js)
+    // bundleAssetName = "MyApplication.android.bundle"
+    // entryFile = file("../js/MyApplication.android.js")
+    // extraPackagerArgs = []
+
+    /* Hermes Commands */
+    // hermesCommand = "$rootDir/my-custom-hermesc/bin/hermesc"
+    // hermesFlags = ["-O", "-output-source-map"]
+
     /* Autolinking */
     autolinkLibrariesWithApp()
 }
@@ -30,7 +49,7 @@ react {
 def enableProguardInReleaseBuilds = (findProperty('android.enableProguardInReleaseBuilds') ?: false).toBoolean()
 
 /**
- * JSC fallback flavor if Hermes is disabled.
+ * The preferred build flavor of JavaScriptCore (JSC)
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
@@ -94,6 +113,9 @@ android {
 }
 
 dependencies {
+    // ⚠️ Supprimé: tout override/force sur androidx.browser
+    // Laisse Expo/React Native résoudre la version compatible via les repositories (google(), mavenCentral()).
+
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
 
@@ -102,12 +124,15 @@ dependencies {
     def isWebpAnimatedEnabled = (findProperty('expo.webp.animated') ?: "") == "true";
 
     if (isGifEnabled) {
+        // For animated gif support
         implementation("com.facebook.fresco:animated-gif:${expoLibs.versions.fresco.get()}")
     }
 
     if (isWebpEnabled) {
+        // For webp support
         implementation("com.facebook.fresco:webpsupport:${expoLibs.versions.fresco.get()}")
         if (isWebpAnimatedEnabled) {
+            // Animated webp support
             implementation("com.facebook.fresco:animated-webp:${expoLibs.versions.fresco.get()}")
         }
     }
@@ -117,7 +142,6 @@ dependencies {
     } else {
         implementation jscFlavor
     }
-
-    // ⛔️ Fix du conflit 'androidx.browser' (AGP 8.8.2 / compileSdk 35)
-    implementation("androidx.browser:browser:1.8.0")
 }
+
+apply plugin: 'com.google.gms.google-services'

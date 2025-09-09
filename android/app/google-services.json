@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "322173277588",
+    "project_id": "vigiapp-c7108",
+    "storage_bucket": "vigiapp-c7108.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:322173277588:android:d2649d016a0220758b2b81",
+        "android_client_info": {
+          "package_name": "com.guigui92.vigiapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBn23wUfdRj3azOc1II059T1ZFW-8UXDTY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
