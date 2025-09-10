@@ -1,0 +1,5 @@
+# Let EAS include the essentials explicitly
+!package.json
+!package-lock.json
+!app.config.js
+!.eas/**
