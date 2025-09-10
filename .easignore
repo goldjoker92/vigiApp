@@ -1,4 +1,4 @@
-# Let EAS include the essentials explicitly
+# Keep essentials in the tarball
 !package.json
 !package-lock.json
 !app.config.js
