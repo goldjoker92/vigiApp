@@ -1,4 +1,11 @@
+# ignorer les trucs lourds/locaux
+node_modules/
+.expo/
+dist/
+web-build/
+.metro-cache/
+
+# s'assurer que ces fichiers PARTENT BIEN chez EAS
 !package-lock.json
-!.eas/project.json
 !app.config.js
-!.eas_build_marker.txt
+!.eas/project.json
