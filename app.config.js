@@ -32,8 +32,11 @@ export default ({ config }) => ({
   },
 
   // --- Android (cible principale pour notifs/FCM) ---
+
+  
   android: {
-    versionCode: 1,
+    version: "1.0.1",
+    versionCode: 2,
     package: 'com.guigui92.vigiapp',
     edgeToEdgeEnabled: true,
     adaptiveIcon: {
