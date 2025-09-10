@@ -10,8 +10,7 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "reset-project": "node ./scripts/reset-project.js",
-    "android:bare": "cd android && gradlew installDebug",
-    "preinstall": "node -v && npm -v"
+    "android:bare": "cd android && gradlew installDebug"
   },
   "engines": {
     "node": ">=20.19.4"
