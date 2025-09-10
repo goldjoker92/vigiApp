@@ -12,6 +12,10 @@
     "reset-project": "node ./scripts/reset-project.js",
     "android:bare": "cd android && gradlew installDebug"
   },
+  "engines": {
+    "node": ">=20.19.4"
+  },
+
   "dependencies": {
     "@chakra-ui/icons": "^2.2.4",
     "@chakra-ui/react": "^3.24.0",
