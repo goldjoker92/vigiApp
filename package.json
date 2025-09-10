@@ -22,7 +22,7 @@
     "@emotion/styled": "^11.14.1",
     "@google-cloud/pubsub": "^5.2.0",
     "@googleapis/androidpublisher": "^29.3.0",
-    "@react-native-async-storage/async-storage": "^2.1.2",
+    "@react-native-async-storage/async-storage": "^1.24.0",
     "@react-native-community/checkbox": "^0.5.20",
     "@react-native-community/datetimepicker": "8.4.1",
     "@react-native-firebase/app": "23.0.0",
