@@ -1,25 +1,16 @@
 {
   "cli": {
     "version": ">= 12.0.0",
-    "appVersionSource": "remote"
+    "appVersionSource": "cli"
   },
   "build": {
     "development": {
-      "node": "20.19.4",
       "developmentClient": true,
       "distribution": "internal",
       "android": { "buildType": "apk" }
     },
-    "preview": {
-      "node": "20.19.4",
-      "distribution": "internal"
-    },
-    "production": {
-      "node": "20.19.4"
-    }
-  }
-,
-  "submit": {
-    "production": {}
-  }
+    "preview": { "distribution": "internal" },
+    "production": { }
+  },
+  "submit": { "production": {} }
 }
