@@ -145,56 +145,77 @@ Add to your `package.json` if desired:
   }
 }
 ```
+# 🔥 VigiApp — Backend (Firebase Functions)
+
+Backend **Cloud Functions** for VigiApp.  
+Stack: **Node 20**, **CommonJS**, **Firebase Admin/Functions**, **Firestore**, **Expo Push**.
+
+---
+
+## 📁 Structure
+
+
+
 functions/
 ├─ package.json
-├─ index.js              # Agrégateur d'exports (région, instances, exports…)
+├─ index.js # Export aggregator (region, instances, exports…)
 └─ src/
-   ├─ utils.js           # Init admin + helpers (auth, push, logs, db…)
-   ├─ pushPublic.js      # Callable: sendPublicAlertByCEP
-   ├─ pushPrivate.js     # Callable: sendPrivateAlertByGroup
-   └─ purge.js           # Cron: purgeAndArchiveOldRequestsAndChats
+├─ utils.js # Admin init + helpers (auth, push, logs, db…)
+├─ pushPublic.js # Callable: sendPublicAlertByCEP
+├─ pushPrivate.js # Callable: sendPrivateAlertByGroup
+└─ purge.js # Cron: purgeAndArchiveOldRequestsAndChats
 
 
-                         (Firebase)
-                    ┌──────────────────┐
-                    │  index.js        │   ⇦ AGRÉGATEUR
-App mobile ──call──▶│  exports = {     │
-(callable)          │    sendPublic..., │
-                    │    sendPrivate...,│
-                    │    purge...       │
-                    └────────┬─────────┘
-                             │
-                 ┌───────────┴───────────┐
-                 │ LOGIQUE MÉTIER (src/) │
-                 │                       │
-     ┌───────────▼───────────┐  ┌────────▼─────────┐   ┌──────────▼──────────┐
-     │ pushPublic.js         │  │ pushPrivate.js    │   │ purge.js             │
-     │ - assertRole          │  │ - assertRole      │   │ - cutoff (J-5)       │
-     │ - getTokensByCEP      │  │ - getTokensByUser │   │ - archive chats+GH    │
-     │ - createDeliveryLog   │  │ - createDeliveryLog│  │ - purge messages      │
-     │ - expoPushSend        │  │ - expoPushSend     │  │ - logs d’audit        │
-     └───────────┬───────────┘  └────────┬──────────┘   └──────────┬──────────┘
-                 │                        │                        │
-                 └──────────────┬─────────┴──────────┬─────────────┘
-                                ▼                    ▼
-                          ┌───────────────┐    ┌───────────────┐
-                          │  utils.js     │    │  Firebase/GCP  │
-                          │  - admin/db   │    │  - Firestore   │
-                          │  - chunk      │    │  - Expo Push   │
-                          │  - assertRole │    │  - Scheduler   │
-                          │  - expoPush…  │    └───────────────┘
-                          │  - logs       │
-                          └───────────────┘
-⚙️ Prérequis
+---
 
-Node: 20.x (pinné)
+## 🧠 Architecture
 
-Firebase CLI: à jour
 
-Projet Firebase sélectionné (firebase use <projectId>)
+                     (Firebase)
+                ┌──────────────────┐
+                │  index.js        │   ⇦ AGGREGATOR
 
-firebase.json (racine) doit contenir :
 
+Mobile app ──call──▶│ exports = { │
+(callable) │ sendPublic..., │
+│ sendPrivate...,│
+│ purge... │
+└────────┬─────────┘
+│
+┌───────────┴───────────┐
+│ BUSINESS LOGIC (src/) │
+│ │
+┌───────────▼───────────┐ ┌────────▼─────────┐ ┌──────────▼──────────┐
+│ pushPublic.js │ │ pushPrivate.js │ │ purge.js │
+│ - assertRole │ │ - assertRole │ │ - cutoff (D-5) │
+│ - getTokensByCEP │ │ - getTokensByUser │ │ - archive chats+GH │
+│ - createDeliveryLog │ │ - createDeliveryLog│ │ - purge messages │
+│ - expoPushSend │ │ - expoPushSend │ │ - audit logs │
+└───────────┬───────────┘ └────────┬──────────┘ └──────────┬──────────┘
+│ │ │
+└──────────────┬─────────┴──────────┬─────────────┘
+▼ ▼
+┌───────────────┐ ┌───────────────┐
+│ utils.js │ │ Firebase/GCP │
+│ - admin/db │ │ - Firestore │
+│ - chunk │ │ - Expo Push │
+│ - assertRole │ │ - Scheduler │
+│ - expoPush… │ └───────────────┘
+│ - logs │
+└───────────────┘
+
+
+---
+
+## ⚙️ Requirements
+
+- **Node**: `20.x` (pinned)  
+- **Firebase CLI**: latest  
+- Firebase project selected (`firebase use <projectId>`)
+
+👉 Root `firebase.json` should contain:
+
+```json
 {
   "functions": {
     "source": "functions",
@@ -202,72 +223,71 @@ firebase.json (racine) doit contenir :
   }
 }
 
-📦 Scripts (npm)
+📦 NPM Scripts
 
-Depuis functions/ :
+Run inside functions/:
 
-npm install             # installer deps
-npm run serve           # emulateur local (functions)
-npm run deploy          # deployer uniquement les functions
-npm run logs            # suivre les logs
+npm install             # install deps
+npm run serve           # run local emulator (functions)
+npm run deploy          # deploy only functions
+npm run logs            # follow logs
 
-🔐 Sécurité & modèles Firestore
+🔐 Security & Firestore Models
 
-Custom claims requis pour les callables : role ∈ {"admin","moderator"}
-
-Exemple (côté admin SDK) :
+Custom claims required for callables: role ∈ {"admin","moderator"}
+Example (admin SDK):
 
 await admin.auth().setCustomUserClaims(uid, { role: "admin" });
 
 
-Collections attendues :
+Expected collections:
 
 devices/{deviceId} : { expoPushToken, userId, cep, ... }
 
 groups/{groupId} : { memberIds: string[] }
 
-deliveries/{logId} : logs d’envoi
+deliveries/{logId} : delivery logs
 
-groupHelps / archivedGroupHelps / chats / chatsArquivados / chats/*/mensagens
+groupHelps, archivedGroupHelps, chats, chatsArquivados, chats/*/mensagens
 
 purgeLogs, errorLogs
 
-📣 Fonctions exposées
+📣 Exposed Functions
 Callable — sendPublicAlertByCEP
 
-Data : { cep: string, title?: string, body?: string }
+Data: { cep: string, title?: string, body?: string }
 
-Effet : envoie une notif à tous les devices du CEP donné (via Expo Push API)
+Effect: sends a notification to all devices within a CEP (via Expo Push API)
 
-Logs : entrée deliveries/{logId} + retour { ok, count, logId }
+Logs: deliveries/{logId} + return { ok, count, logId }
 
 Callable — sendPrivateAlertByGroup
 
-Data : { groupId: string, title?: string, body?: string }
+Data: { groupId: string, title?: string, body?: string }
 
-Effet : envoie une notif privée aux membres d’un groupe
+Effect: sends a private notification to all members of a group
 
-Logs : deliveries/{logId} + retour { ok, count, logId }
+Logs: deliveries/{logId} + return { ok, count, logId }
 
 Cron — purgeAndArchiveOldRequestsAndChats
 
-Planification : every 24 hours — TZ America/Fortaleza
+Schedule: every 24 hours — TZ America/Fortaleza
 
-Effet :
+Effect:
 
-archive groupHelps > J+5 dans archivedGroupHelps
+archive groupHelps older than 5 days → archivedGroupHelps
 
-archive métadonnées des chats dans chatsArquivados
+archive chat metadata → chatsArquivados
 
-supprime messages (chats/*/mensagens) + doc chats
+delete chat messages (chats/*/mensagens) + chats docs
 
-journalise dans purgeLogs et errorLogs en cas d’erreur
+log purge in purgeLogs and errors in errorLogs
 
-💳 Les fonctions planifiées nécessitent la facturation activée (Cloud Scheduler).
+💳 Scheduled functions require billing enabled (Cloud Scheduler).
 
-🧪 Tester en local
+🧪 Local Testing
 
-Installer & lancer l’émulateur
+Install & start emulator
 
 cd functions
 npm install
@@ -275,75 +295,79 @@ cd ..
 firebase emulators:start --only functions
 
 
-Tester les callables
-Dans l’onglet Emulator UI, utilisez Functions > Call function
+Test callables
+In Emulator UI → Functions > Call function
 
-sendPublicAlertByCEP → payload :
+sendPublicAlertByCEP → payload:
 
-{ "cep": "62595-000", "title": "Alerte test", "body": "Ping quartier — solo" }
-
-
-sendPrivateAlertByGroup → payload :
-
-{ "groupId": "grp_test", "title": "Privé test", "body": "Ping groupe — solo" }
+{ "cep": "62595-000", "title": "Test alert", "body": "Ping neighborhood" }
 
 
-⚠️ Les callables exigent un contexte auth avec custom claims en prod.
-En émulateur, vous pouvez mock l’auth via la Console ou Functions Shell si besoin.
+sendPrivateAlertByGroup → payload:
 
-🚀 Déploiement
-# Vérifier le projet
+{ "groupId": "grp_test", "title": "Private test", "body": "Ping group" }
+
+
+⚠️ Callables in production require an auth context with custom claims.
+In the emulator, you can mock auth via Console or Functions Shell.
+
+🚀 Deployment
+# Verify Firebase project
 firebase use
 
-# Déployer uniquement les functions
+# Deploy functions only
 firebase deploy --only functions
 
-# Lister les functions
+# List deployed functions
 firebase functions:list
 
 📝 Logging
 
-Par défaut, on log en console.log/warn/error (capturé par GCP).
+By default: console.log/warn/error (captured by GCP).
 
-Optionnel : firebase-functions/logger pour un logging structuré.
+Optional: firebase-functions/logger for structured logs:
 
 const logger = require("firebase-functions/logger");
-logger.info("Contexte", { foo: "bar" });
+logger.info("Context", { foo: "bar" });
 
 
-Vous pouvez combiner les deux via des helpers (utils.js) pour avoir
-à la fois la console locale et l’indexation GCP.
+👉 Both can be combined in utils.js.
 
-🧯 Troubleshooting (rapide)
+🧯 Troubleshooting (Quick)
 
 “Cannot find module …” → cd functions && npm install
 
-“already exists: app named [DEFAULT]” → init idempotente dans utils.js (déjà géré)
+“already exists: app named [DEFAULT]” → use idempotent init in utils.js
 
-Cron qui ne tourne pas → activer facturation + vérifier Cloud Scheduler
+Cron not running → enable billing + check Cloud Scheduler
 
-Pas de notifs reçues :
+No push received:
 
-vérifier que les Expo push tokens sont valides (champ expoPushToken)
+check Expo push tokens (expoPushToken) are valid
 
-tester un envoi minimal direct via Expo Push Tool
+test minimal send via Expo Push Tool
 
-s’assurer que l’app Android a bien le channel default et les permissions
+ensure Android app has default channel and permissions
 
-🔒 Bonnes pratiques
+🔒 Best Practices
 
-Ne jamais mettre firebase-admin, firebase-functions, @google-cloud/* dans l’app mobile.
+Never bundle firebase-admin, firebase-functions, @google-cloud/* in the mobile app.
 
-Limiter les writes Firestore dans les boucles (ici c’est batché par conception).
+Batch writes to Firestore inside loops (already handled).
 
-Région unique (us-central1) → coûts & latence stables.
+Single region (us-central1) for cost & latency consistency.
 
-Idempotence : admin.apps.length === 0 avant initializeApp().
+Idempotence: always check admin.apps.length === 0 before initializeApp().
 
-🧾 Licence & Crédit
+🧾 License & Credits
 
-Propriété du projet VigiApp.
-Ce dossier functions/ est le backend de l’application (Firebase/GCP).
+Property of the VigiApp project.
+This functions/ folder is the backend of the mobile app (Firebase/GCP).
+
+
+---
+
+Want me to also add **badges** at the top (Node.js version, Firebase deploy, license) so the 
 
 ---
 
