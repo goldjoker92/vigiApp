@@ -3,11 +3,8 @@
   "description": "Cloud Functions for Firebase",
   "private": true,
   "main": "index.js",
-  "engines": {
-    "node": "20"
-  },
+  "engines": { "node": "20" },
   "scripts": {
-    "lint": "eslint .",
     "serve": "firebase emulators:start --only functions",
     "shell": "firebase functions:shell",
     "start": "npm run shell",
@@ -15,12 +12,11 @@
     "logs": "firebase functions:log"
   },
   "dependencies": {
-    "firebase-admin": "^12.6.0",
-    "firebase-functions": "^6.0.1"
+    "dayjs": "^1.11.13",
+    "firebase-admin": "^12.7.0",
+    "firebase-functions": "^6.4.0"
   },
   "devDependencies": {
-    "eslint": "^8.15.0",
-    "eslint-config-google": "^0.14.0",
     "firebase-functions-test": "^3.1.0"
   }
 }

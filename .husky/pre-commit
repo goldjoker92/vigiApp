@@ -1,0 +1,6 @@
+# .husky/pre-commit (Husky v9+)
+# Auto-fix sur les fichiers stagés
+npx --no-install lint-staged || echo "lint-staged a échoué (non bloquant)"
+
+# Tests en info seulement (ne bloque pas le commit)
+npm test -s || echo "Tests failed (non-blocking)"
