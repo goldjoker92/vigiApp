@@ -9,6 +9,7 @@ module.exports = function (api) {
         {
           root: ['.'],
           alias: {
+            '@': './',              // <— fallback générique
             '@/utils': './utils',
             '@/hooks': './hooks',
             '@/constants': './constants',
@@ -16,11 +17,11 @@ module.exports = function (api) {
             '@/store': './store',
             '@/app': './app',
           },
-          extensions: ['.tsx', '.ts', '.jsx', '.js', '.mjs', '.json'],
+          extensions: ['.tsx', '.ts', '.jsx', '.js', '.mjs', '.cjs', '.json'],
         },
       ],
-      // ⚠️ doit rester en dernier, sinon Reanimated fait des siennes
-      'react-native-reanimated/plugin',
+      'react-native-reanimated/plugin', // doit rester en dernier
     ],
   };
 };
+// doit rester en dernier
