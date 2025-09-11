@@ -1,5 +1,11 @@
-node_modules
-build
-dist
-.expo
-.expo-shared
+node_modules/
+build/
+dist/
+.expo/
+.expo-shared/
+coverage/
+
+android/
+ios/
+
+
