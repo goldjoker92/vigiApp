@@ -1,95 +1,203 @@
 // notifications.js
-// -------------------------------------------------------------
-// Expo SDK 53+ / expo-notifications (JS pur)
-// - Demande permissions
-// - Crée le channel Android ("default")
-// - Récupère le Expo Push Token (via EAS projectId)
-// - Attache des listeners (réception / clic)
-// - Envoi d'un test push via Expo Push API (DEV)
-// - Helpers "local notifications"
-// -------------------------------------------------------------
+// ======================================================================
+// VigiApp — Lib notifications (Expo SDK 53+)
+// - Handler global (foreground) — idempotent
+// - Permissions Android 13+
+// - Création du canal Android "default" — idempotent
+// - Récupération Expo Push Token (via EAS projectId)
+// - Listeners (réception / interaction) + cleanup
+// - Envoi test via Expo Push API (DEV)
+// - Notifications locales (debug)
+// - LOGS détaillés avec timestamps (masquage partiel du token)
+// ======================================================================
 
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => {
-    console.log('[Notif] Handler: display in foreground = true');
-    return { shouldShowAlert: true, shouldPlaySound: false, shouldSetBadge: false };
-  },
-});
+// ================== Logging util ==================
+const APP_TAG = 'VigiApp';
+const LIB_TAG = 'NotifLib';
+const extra = Constants?.expoConfig?.extra || {};
+const SILENCE_RELEASE = !!extra?.SILENCE_CONSOLE_IN_RELEASE; // mets true dans app.config.js/extra pour couper en release
 
+function ts() {
+  try {
+    return new Date().toISOString();
+  } catch {
+    return String(Date.now());
+  }
+}
+function log(...args) {
+  if (__DEV__ || !SILENCE_RELEASE) {
+    try {
+      console.log(`[${APP_TAG}][${LIB_TAG}][${ts()}]`, ...args);
+    } catch {}
+  }
+}
+function warn(...args) {
+  if (__DEV__ || !SILENCE_RELEASE) {
+    try {
+      console.warn(`[${APP_TAG}][${LIB_TAG}][${ts()}]`, ...args);
+    } catch {}
+  }
+}
+function err(...args) {
+  if (__DEV__ || !SILENCE_RELEASE) {
+    try {
+      console.error(`[${APP_TAG}][${LIB_TAG}][${ts()}]`, ...args);
+    } catch {}
+  }
+}
+function maskToken(tok) {
+  if (!tok) return tok;
+  const s = String(tok);
+  return s.length > 14 ? `${s.slice(0, 6)}…${s.slice(-6)} (${s.length})` : s;
+}
+function safeJson(obj, max = 1200) {
+  try {
+    return JSON.stringify(obj, null, 2).slice(0, max);
+  } catch {
+    return '[unserializable]';
+  }
+}
+
+// ================== Constantes ==================
+export const DEFAULT_CHANNEL_ID = 'default';
+
+// ================== Handler global (idempotent) ==================
+let _handlerSet = false;
+if (!_handlerSet) {
+  try {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: false,
+        shouldSetBadge: false,
+      }),
+    });
+    _handlerSet = true;
+    log('setNotificationHandler initialized');
+  } catch (e) {
+    err('setNotificationHandler failed:', e?.message || e);
+  }
+}
+
+// ================== Registration ==================
 export async function registerForPushNotificationsAsync() {
-  console.log('🔔 [register] start');
+  log('register: start');
 
   if (!Device.isDevice) {
-    console.warn('⚠️ [register] Not a physical device. Push may not work.');
+    warn('register: running on simulator/emulator — push may not work');
   }
 
+  // 1) Canal Android (idempotent)
   if (Platform.OS === 'android') {
-    console.log("🔧 [register] Creating Android channel 'default'");
-    await Notifications.setNotificationChannelAsync('default', {
-      name: 'Default',
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#FF231F7C',
-      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-      bypassDnd: false,
-      showBadge: true,
-      sound: 'default',
-    });
+    try {
+      log(`register: creating channel '${DEFAULT_CHANNEL_ID}'`);
+      await Notifications.setNotificationChannelAsync(DEFAULT_CHANNEL_ID, {
+        name: 'Default',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#FF231F7C',
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        bypassDnd: false,
+        showBadge: true,
+        sound: 'default',
+      });
+      log('register: channel ready');
+    } catch (e) {
+      err('register: channel creation failed:', e?.message || e);
+    }
   }
 
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  console.log('🔐 [register] existing permission =', existingStatus);
-  let finalStatus = existingStatus;
-  if (existingStatus !== 'granted') {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
+  // 2) Permissions (Android 13+)
+  let finalStatus = 'undetermined';
+  try {
+    const { status: existing } = await Notifications.getPermissionsAsync();
+    log('register: permissions existing =', existing);
+    finalStatus = existing;
+    if (existing !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+  } catch (e) {
+    err('register: permissions failed:', e?.message || e);
   }
   if (finalStatus !== 'granted') {
-    throw new Error('Notifications permission not granted');
+    const msg = `Notifications permission not granted (status=${finalStatus})`;
+    err('register:', msg);
+    throw new Error(msg);
   }
 
-  const extra = Constants?.expoConfig?.extra || {};
-  const projectId =
-    extra?.eas?.projectId || (Constants?.easConfig && Constants.easConfig.projectId) || undefined;
-  console.log('🪪 [register] EAS projectId =', projectId);
+  // 3) ProjectId EAS (nécessaire à getExpoPushTokenAsync)
+  const extras = Constants?.expoConfig?.extra || {};
+  const projectId = extras?.eas?.projectId || Constants?.easConfig?.projectId || undefined;
+  if (!projectId) {
+    warn('register: missing EAS projectId — check app.config.js extra.eas.projectId');
+  } else {
+    log('register: EAS projectId =', projectId);
+  }
 
-  const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId });
-  console.log('✅ [register] Expo push token =', token);
-  return token;
+  // 4) Expo Push Token
+  try {
+    const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId });
+    log('register: Expo token obtained =', maskToken(token));
+    return token;
+  } catch (e) {
+    err('register: getExpoPushTokenAsync failed:', e?.message || e);
+    throw e;
+  }
 }
 
+// ================== Listeners ==================
 export function attachNotificationListeners({ onReceive, onResponse } = {}) {
-  console.log('🧷 [listeners] attaching');
+  log('listeners: attaching');
+
   const receivedSub = Notifications.addNotificationReceivedListener((n) => {
-    console.log('📥 [listeners] RECEIVED:', JSON.stringify(n, null, 2));
-    onReceive && onReceive(n);
+    log('listeners: RECEIVED =', safeJson(n));
+    try {
+      onReceive && onReceive(n);
+    } catch (e) {
+      err('listeners:onReceive error', e?.message || e);
+    }
   });
+
   const responseSub = Notifications.addNotificationResponseReceivedListener((r) => {
-    console.log('👆 [listeners] RESPONSE:', JSON.stringify(r, null, 2));
-    onResponse && onResponse(r);
+    log('listeners: RESPONSE =', safeJson(r));
+    try {
+      onResponse && onResponse(r);
+    } catch (e) {
+      err('listeners:onResponse error', e?.message || e);
+    }
   });
-  return () => {
-    console.log('🧹 [listeners] cleanup');
+
+  const cleanup = () => {
+    log('listeners: cleanup');
     try {
       receivedSub.remove();
-    } catch {}
+      log('listeners: receivedSub removed');
+    } catch (e) {
+      warn('listeners: receivedSub remove failed', e?.message || e);
+    }
     try {
       responseSub.remove();
-    } catch {}
+      log('listeners: responseSub removed');
+    } catch (e) {
+      warn('listeners: responseSub remove failed', e?.message || e);
+    }
   };
+
+  return cleanup;
 }
 
+// ================== Envoi test (Expo Push API) ==================
 export async function sendExpoTestPushAsync(
   expoPushToken,
   message = 'Ping VigiApp 🚨 — test Expo Push API',
 ) {
   if (!expoPushToken) throw new Error('Expo push token manquant');
-  console.log('📤 [sendExpoTestPush] to', expoPushToken);
 
   const payload = {
     to: expoPushToken,
@@ -97,50 +205,91 @@ export async function sendExpoTestPushAsync(
     title: 'VigiApp — Test push',
     body: message,
     data: { ts: Date.now(), kind: 'test' },
-    channelId: 'default',
+    channelId: DEFAULT_CHANNEL_ID,
   };
 
-  const res = await fetch('https://exp.host/--/api/v2/push/send', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify(payload),
-  });
+  log(
+    'sendExpoTestPush: POST exp.host | to=',
+    maskToken(expoPushToken),
+    'payload=',
+    safeJson(payload, 400),
+  );
 
-  const text = await res.text();
-  console.log('📬 [sendExpoTestPush] response:', text);
   try {
-    return JSON.parse(text);
-  } catch {
-    return { raw: text };
+    const res = await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    const text = await res.text();
+    log('sendExpoTestPush: http', res.status, res.statusText, 'body=', text.slice(0, 800));
+
+    // Tentative de parse JSON (API Expo renvoie json)
+    try {
+      const json = JSON.parse(text);
+      const status = Array.isArray(json?.data) ? json?.data?.[0]?.status : json?.data?.status;
+      if (status && status !== 'ok') {
+        warn('sendExpoTestPush: delivery status =', status, 'json=', safeJson(json));
+      }
+      return json;
+    } catch {
+      warn('sendExpoTestPush: non-JSON response, returning raw');
+      return { raw: text };
+    }
+  } catch (e) {
+    err('sendExpoTestPush: fetch failed:', e?.message || e);
+    throw e;
   }
 }
 
+// ================== Notifications locales (debug) ==================
 export async function fireLocalNow() {
-  console.log('⏱️ [local] immediate');
-  return Notifications.scheduleNotificationAsync({
-    content: {
-      title: 'VigiApp — Local immédiate',
-      body: 'Ceci est une notification locale',
-      data: { kind: 'local_now', ts: Date.now() },
-    },
-    trigger: null,
-  });
+  log('local: immediate');
+  try {
+    const id = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'VigiApp — Local immédiate',
+        body: 'Ceci est une notification locale',
+        data: { kind: 'local_now', ts: Date.now() },
+      },
+      trigger: null,
+    });
+    log('local: scheduled immediate id=', id);
+    return id;
+  } catch (e) {
+    err('local: immediate failed:', e?.message || e);
+    throw e;
+  }
 }
 
 export async function scheduleLocalIn(seconds) {
-  const s = Number(seconds || 5);
-  console.log(`🕒 [local] schedule in ${s}s`);
-  return Notifications.scheduleNotificationAsync({
-    content: {
-      title: 'VigiApp — Local programmée',
-      body: `Déclenchée après ${s}s`,
-      data: { kind: 'local_scheduled', ts: Date.now(), delay: s },
-    },
-    trigger: { seconds: s },
-  });
+  const s = Number.isFinite(Number(seconds)) ? Number(seconds) : 5;
+  log(`local: schedule in ${s}s`);
+  try {
+    const id = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'VigiApp — Local programmée',
+        body: `Déclenchée après ${s}s`,
+        data: { kind: 'local_scheduled', ts: Date.now(), delay: s },
+      },
+      trigger: { seconds: s },
+    });
+    log('local: scheduled id=', id);
+    return id;
+  } catch (e) {
+    err('local: schedule failed:', e?.message || e);
+    throw e;
+  }
 }
 
 export async function cancelAll() {
-  console.log('🧽 [local] cancelAll');
-  return Notifications.cancelAllScheduledNotificationsAsync();
+  log('local: cancelAll');
+  try {
+    await Notifications.cancelAllScheduledNotificationsAsync();
+    log('local: cancelAll ok');
+  } catch (e) {
+    err('local: cancelAll failed:', e?.message || e);
+    throw e;
+  }
 }

@@ -26,7 +26,6 @@ export default ({ config }) => ({
 
   // --- Android ---
   android: {
-    // Garde toning de versionnage Android distinct
     version: '1.0.1',
     versionCode: 2,
     package: 'com.guigui92.vigiapp',
@@ -66,15 +65,13 @@ export default ({ config }) => ({
   plugins: [
     'expo-router',
 
-    // Notifications (⚠️ ne pas mettre `sounds: ['default']` ici)
+    // Notifications
     [
       'expo-notifications',
       {
         icon: './assets/images/notification-icon.png',
         color: '#0A84FF',
         mode: 'production',
-        // Ex. pour un son custom plus tard :
-        // sounds: ['./assets/sounds/ding.mp3'],
       },
     ],
 
@@ -105,7 +102,7 @@ export default ({ config }) => ({
       },
     ],
 
-    // ✅ Corrige l’ambiguïté Gradle de react-native-iap (choix de la saveur "play")
+    // ✅ Corrige l’ambiguïté Gradle de react-native-iap via flavor "play"
     [
       'expo-build-properties',
       {
@@ -113,12 +110,9 @@ export default ({ config }) => ({
           flavorDimensions: ['store'],
           productFlavors: {
             play: { dimension: 'store' },
-            // Si un jour tu veux Amazon, ajoute : amazon: { dimension: 'store' }
+            // amazon: { dimension: 'store' }, // si tu en as besoin plus tard
           },
-          // Alternative si tu ne veux pas créer de flavors :
-          // defaultConfig: { missingDimensionStrategy: [['store', 'play']] }
         },
-        // iOS: {} // rien de spécial ici pour l’instant
       },
     ],
   ],
