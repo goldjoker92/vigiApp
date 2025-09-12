@@ -8,7 +8,8 @@ import { doc, onSnapshot } from 'firebase/firestore';
 function shallowEqual(a, b) {
   if (a === b) return true;
   if (!a || !b) return false;
-  const ka = Object.keys(a), kb = Object.keys(b);
+  const ka = Object.keys(a),
+    kb = Object.keys(b);
   if (ka.length !== kb.length) return false;
   for (const k of ka) {
     if (a[k] !== b[k]) return false;
@@ -24,7 +25,9 @@ export function useAuthGuard() {
   useEffect(() => {
     // Nettoie toute souscription précédente si remount (StrictMode, navigation)
     if (unsubRef.current) {
-      try { unsubRef.current(); } catch {}
+      try {
+        unsubRef.current();
+      } catch {}
       unsubRef.current = null;
     }
 
@@ -33,14 +36,23 @@ export function useAuthGuard() {
         lastUserRef.current = null;
         setUser(null);
         // supprime l'abonnement au doc user s'il existait
-        if (unsubRef.current) { try { unsubRef.current(); } catch {} unsubRef.current = null; }
+        if (unsubRef.current) {
+          try {
+            unsubRef.current();
+          } catch {}
+          unsubRef.current = null;
+        }
         return;
       }
 
       const ref = doc(db, 'users', fbUser.uid);
 
       // IMPORTANT: un seul onSnapshot vivant à la fois
-      if (unsubRef.current) { try { unsubRef.current(); } catch {} }
+      if (unsubRef.current) {
+        try {
+          unsubRef.current();
+        } catch {}
+      }
       unsubRef.current = onSnapshot(
         ref,
         // évite les callbacks pour des changements de métadonnées
@@ -62,13 +74,20 @@ export function useAuthGuard() {
         },
         (err) => {
           if (__DEV__) console.warn('[useAuthGuard] onSnapshot error:', err?.message || err);
-        }
+        },
       );
     });
 
     return () => {
-      try { unsubAuth(); } catch {}
-      if (unsubRef.current) { try { unsubRef.current(); } catch {} unsubRef.current = null; }
+      try {
+        unsubAuth();
+      } catch {}
+      if (unsubRef.current) {
+        try {
+          unsubRef.current();
+        } catch {}
+        unsubRef.current = null;
+      }
     };
   }, []); // ← ne pas mettre d'autres deps
 

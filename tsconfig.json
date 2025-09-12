@@ -4,9 +4,7 @@
     "module": "ESNext",
     "forceConsistentCasingInFileNames": true,
     "paths": {
-      "@/*": [
-        "./*"
-      ]
+      "@/*": ["./*"]
     }
   },
   "include": [
@@ -17,5 +15,5 @@
     "app/(tabs)/_layout.jsx",
     "app/(tabs)/index.jsx",
     "app/chats/[chatId].jsx"
-  ],
+  ]
 }

@@ -25,15 +25,15 @@
 
 ### 🧰 Tech Stack
 
-| Tool / Library         | Usage                                   |
-|------------------------|-----------------------------------------|
-| Expo (Dev Client)      | Project bootstrapping, native modules   |
-| React Native           | Mobile UI development                   |
-| Expo Router            | File-based navigation                   |
-| Firebase               | Auth, Firestore, (optionally FCM)       |
-| Zustand                | State management                        |
-| Custom Hooks           | App-specific logic                      |
-| Google Maps SDK        | Android mapping                         |
+| Tool / Library    | Usage                                 |
+| ----------------- | ------------------------------------- |
+| Expo (Dev Client) | Project bootstrapping, native modules |
+| React Native      | Mobile UI development                 |
+| Expo Router       | File-based navigation                 |
+| Firebase          | Auth, Firestore, (optionally FCM)     |
+| Zustand           | State management                      |
+| Custom Hooks      | App-specific logic                    |
+| Google Maps SDK   | Android mapping                       |
 
 ---
 
@@ -98,9 +98,9 @@ defaultConfig {
 
 Provide the key by one of:
 
-- **Env var**  
-  - Windows (PowerShell): `setx GOOGLE_MAPS_API_KEY "AIza..."` (restart terminal)  
-  - macOS/Linux: `export GOOGLE_MAPS_API_KEY="AIza..."`  
+- **Env var**
+  - Windows (PowerShell): `setx GOOGLE_MAPS_API_KEY "AIza..."` (restart terminal)
+  - macOS/Linux: `export GOOGLE_MAPS_API_KEY="AIza..."`
 - **android/gradle.properties**: `GOOGLE_MAPS_API_KEY=AIza...`
 - **CI secrets** (recommended for pipelines)
 
@@ -189,8 +189,8 @@ npm start
 
 ### ✅ Conventions
 
-- ESLint/Prettier, functional components, hooks for logic  
-- Controlled form fields (BR masks/validation when applicable)  
+- ESLint/Prettier, functional components, hooks for logic
+- Controlled form fields (BR masks/validation when applicable)
 - **No secrets in repo**; use env/secrets
 
 ---
@@ -227,15 +227,15 @@ MIT (adjust as needed)
 
 ### 🧰 Stack
 
-| Ferramenta / Biblioteca    | Uso                                      |
-|---------------------------|-------------------------------------------|
-| Expo (Dev Client)         | Inicialização, módulos nativos            |
-| React Native              | Desenvolvimento do app                    |
-| Expo Router               | Navegação baseada em arquivos             |
-| Firebase                  | Auth, Firestore, (opcional: FCM)          |
-| Zustand                   | Gerenciamento de estado                   |
-| Hooks customizados        | Lógica da aplicação                       |
-| Google Maps SDK (Android) | Mapas no Android                          |
+| Ferramenta / Biblioteca   | Uso                              |
+| ------------------------- | -------------------------------- |
+| Expo (Dev Client)         | Inicialização, módulos nativos   |
+| React Native              | Desenvolvimento do app           |
+| Expo Router               | Navegação baseada em arquivos    |
+| Firebase                  | Auth, Firestore, (opcional: FCM) |
+| Zustand                   | Gerenciamento de estado          |
+| Hooks customizados        | Lógica da aplicação              |
+| Google Maps SDK (Android) | Mapas no Android                 |
 
 ---
 
@@ -300,8 +300,8 @@ defaultConfig {
 
 Forneça a chave por:
 
-- **Variável de ambiente**  
-  - Windows (PowerShell): `setx GOOGLE_MAPS_API_KEY "AIza..."` (reabra o terminal)  
+- **Variável de ambiente**
+  - Windows (PowerShell): `setx GOOGLE_MAPS_API_KEY "AIza..."` (reabra o terminal)
   - macOS/Linux: `export GOOGLE_MAPS_API_KEY="AIza..."`
 - **android/gradle.properties**: `GOOGLE_MAPS_API_KEY=AIza...`
 - **Segredos de CI** (recomendado)

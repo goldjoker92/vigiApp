@@ -15,35 +15,40 @@
       "presentation": { "reveal": "always", "panel": "dedicated" }
     },
 
-    { "label": "Expo: Start (Expo Go)",
+    {
+      "label": "Expo: Start (Expo Go)",
       "type": "shell",
       "command": "npx expo start --clear --go",
       "options": { "cwd": "${workspaceFolder}" },
       "presentation": { "reveal": "always", "panel": "dedicated" }
     },
 
-    { "label": "Expo: Prebuild (android/)",
+    {
+      "label": "Expo: Prebuild (android/)",
       "type": "shell",
       "command": "npx expo prebuild --clean",
       "options": { "cwd": "${workspaceFolder}" },
       "presentation": { "reveal": "always", "panel": "dedicated" }
     },
 
-    { "label": "Gradle: Clean",
+    {
+      "label": "Gradle: Clean",
       "type": "shell",
       "command": ".\\gradlew clean --no-daemon --no-parallel",
       "options": { "cwd": "${workspaceFolder}\\android" },
       "presentation": { "reveal": "always", "panel": "dedicated" }
     },
 
-    { "label": "Expo: Run Android (dev client)",
+    {
+      "label": "Expo: Run Android (dev client)",
       "type": "shell",
       "command": "npx expo run:android",
       "options": { "cwd": "${workspaceFolder}" },
       "presentation": { "reveal": "always", "panel": "dedicated" }
     },
 
-    { "label": "Expo: Start (Dev Client)",
+    {
+      "label": "Expo: Start (Dev Client)",
       "type": "shell",
       "command": "npx expo start --dev-client --clear",
       "options": { "cwd": "${workspaceFolder}" },

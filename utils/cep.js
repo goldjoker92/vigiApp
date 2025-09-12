@@ -13,14 +13,20 @@ console.log('[CEP][VER]', CEP_ENGINE_VERSION);
 // ---------- Helpers & Const ----------
 const NOMINATIM_UA = 'vigiapp/1.0 (support@vigiapp.app)';
 const onlyDigits = (s = '') => String(s || '').replace(/\D/g, '');
-const padCepMask = (cep8) => (cep8 && cep8.length === 8 ? `${cep8.slice(0,5)}-${cep8.slice(5)}` : undefined);
+const padCepMask = (cep8) =>
+  cep8 && cep8.length === 8 ? `${cep8.slice(0, 5)}-${cep8.slice(5)}` : undefined;
 
 const stripUpper = (s = '') =>
-  String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
+  String(s || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .trim();
 
 const normalize = (s = '') =>
   String(s || '')
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^\w\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .toLowerCase()
@@ -28,33 +34,78 @@ const normalize = (s = '') =>
 
 // chiffres portugais (simple & utile pour “Seis de Maio” -> “6 de Maio”)
 const PT_NUM_REPL = [
-  [/^\bzero\b/gi,'0'],[/\bum[ao]?\b/gi,'1'],[/\b(dois|duas)\b/gi,'2'],[/\b(tr[eé]s)\b/gi,'3'],
-  [/\bquatro\b/gi,'4'],[/\bcinco\b/gi,'5'],[/\bseis\b/gi,'6'],[/\bsete\b/gi,'7'],
-  [/\boito\b/gi,'8'],[/\bnove\b/gi,'9'],[/\bdez\b/gi,'10']
+  [/^\bzero\b/gi, '0'],
+  [/\bum[ao]?\b/gi, '1'],
+  [/\b(dois|duas)\b/gi, '2'],
+  [/\b(tr[eé]s)\b/gi, '3'],
+  [/\bquatro\b/gi, '4'],
+  [/\bcinco\b/gi, '5'],
+  [/\bseis\b/gi, '6'],
+  [/\bsete\b/gi, '7'],
+  [/\boito\b/gi, '8'],
+  [/\bnove\b/gi, '9'],
+  [/\bdez\b/gi, '10'],
 ];
-const wordsToDigitsPT = (str='') => PT_NUM_REPL.reduce((acc,[r,v])=>acc.replace(r,v), String(str||''));
+const wordsToDigitsPT = (str = '') =>
+  PT_NUM_REPL.reduce((acc, [r, v]) => acc.replace(r, v), String(str || ''));
 
 function canonStreet(raw = '') {
   const withDigits = wordsToDigitsPT(String(raw || '').trim());
   const s = withDigits
-    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
-    .replace(/\./g,' ')
-    .replace(/\s+/g,' ')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\./g, ' ')
+    .replace(/\s+/g, ' ')
     .toLowerCase()
     .trim();
   const noType = s
-    .replace(/^(rua|avenida|av\.?|travessa|tv\.?|alameda|estrada|rodovia|pra[çc]a)\s+/i,'')
+    .replace(/^(rua|avenida|av\.?|travessa|tv\.?|alameda|estrada|rodovia|pra[çc]a)\s+/i, '')
     .trim();
-  return noType.replace(/\b(d[eaos]{1,2})\b/g,' ').replace(/\s+/g,' ').trim();
+  return noType
+    .replace(/\b(d[eaos]{1,2})\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 const UF_MAP = {
-  'ACRE': 'AC','ALAGOAS':'AL','AMAPA':'AP','AMAPÁ':'AP','AMAZONAS':'AM','BAHIA':'BA','CEARA':'CE','CEARÁ':'CE',
-  'DISTRITO FEDERAL':'DF','ESPIRITO SANTO':'ES','ESPÍRITO SANTO':'ES','GOIAS':'GO','GOIÁS':'GO','MARANHAO':'MA','MARANHÃO':'MA',
-  'MATO GROSSO':'MT','MATO GROSSO DO SUL':'MS','MINAS GERAIS':'MG','PARA':'PA','PARÁ':'PA','PARAIBA':'PB','PARAÍBA':'PB',
-  'PARANA':'PR','PARANÁ':'PR','PERNAMBUCO':'PE','PIAUI':'PI','PIAUÍ':'PI','RIO DE JANEIRO':'RJ','RIO GRANDE DO NORTE':'RN',
-  'RIO GRANDE DO SUL':'RS','RONDONIA':'RO','RONDÔNIA':'RO','RORAIMA':'RR','SANTA CATARINA':'SC','SAO PAULO':'SP','SÃO PAULO':'SP',
-  'SERGIPE':'SE','TOCANTINS':'TO'
+  ACRE: 'AC',
+  ALAGOAS: 'AL',
+  AMAPA: 'AP',
+  AMAPÁ: 'AP',
+  AMAZONAS: 'AM',
+  BAHIA: 'BA',
+  CEARA: 'CE',
+  CEARÁ: 'CE',
+  'DISTRITO FEDERAL': 'DF',
+  'ESPIRITO SANTO': 'ES',
+  'ESPÍRITO SANTO': 'ES',
+  GOIAS: 'GO',
+  GOIÁS: 'GO',
+  MARANHAO: 'MA',
+  MARANHÃO: 'MA',
+  'MATO GROSSO': 'MT',
+  'MATO GROSSO DO SUL': 'MS',
+  'MINAS GERAIS': 'MG',
+  PARA: 'PA',
+  PARÁ: 'PA',
+  PARAIBA: 'PB',
+  PARAÍBA: 'PB',
+  PARANA: 'PR',
+  PARANÁ: 'PR',
+  PERNAMBUCO: 'PE',
+  PIAUI: 'PI',
+  PIAUÍ: 'PI',
+  'RIO DE JANEIRO': 'RJ',
+  'RIO GRANDE DO NORTE': 'RN',
+  'RIO GRANDE DO SUL': 'RS',
+  RONDONIA: 'RO',
+  RONDÔNIA: 'RO',
+  RORAIMA: 'RR',
+  'SANTA CATARINA': 'SC',
+  'SAO PAULO': 'SP',
+  'SÃO PAULO': 'SP',
+  SERGIPE: 'SE',
+  TOCANTINS: 'TO',
 };
 const stateToUF = (s = '') => {
   const up = stripUpper(s);
@@ -70,7 +121,9 @@ async function fetchJSON(url, init = {}, timeoutMs = 9000) {
     const res = await fetch(url, { ...(init || {}), signal: ctrl?.signal });
     if (!res.ok) throw new Error(`HTTP_${res.status}`);
     return await res.json();
-  } finally { if (timer) clearTimeout(timer); }
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 // ---------- Providers ----------
@@ -81,21 +134,38 @@ async function reverseGoogle(lat, lng, apiKey) {
   try {
     const data = await fetchJSON(url, {}, 9000);
     console.log('[CEP] Google status =', data?.status, 'error =', data?.error_message || '');
-    if (data?.status !== 'OK' || !Array.isArray(data?.results) || data.results.length === 0) return null;
+    if (data?.status !== 'OK' || !Array.isArray(data?.results) || data.results.length === 0)
+      return null;
 
     const res = data.results[0];
     const comps = res.address_components || [];
     const get = (type) => comps.find((x) => (x.types || []).includes(type));
     const out = {
       cep: onlyDigits(get('postal_code')?.long_name || ''),
-      street: (get('route')?.long_name || get('premise')?.long_name || get('point_of_interest')?.long_name || ''),
+      street:
+        get('route')?.long_name ||
+        get('premise')?.long_name ||
+        get('point_of_interest')?.long_name ||
+        '',
       number: get('street_number')?.long_name || '',
-      neighborhood: (get('sublocality')?.long_name || get('political')?.long_name || get('neighborhood')?.long_name || ''),
-      city: (get('administrative_area_level_2')?.long_name || get('locality')?.long_name || ''),
+      neighborhood:
+        get('sublocality')?.long_name ||
+        get('political')?.long_name ||
+        get('neighborhood')?.long_name ||
+        '',
+      city: get('administrative_area_level_2')?.long_name || get('locality')?.long_name || '',
       state: get('administrative_area_level_1')?.short_name || '',
-      lat, lng, source: 'google', place_id: res.place_id,
+      lat,
+      lng,
+      source: 'google',
+      place_id: res.place_id,
     };
-    console.log('[CEP] Google parsed =', { cep: out.cep, street: out.street, city: out.city, state: out.state });
+    console.log('[CEP] Google parsed =', {
+      cep: out.cep,
+      street: out.street,
+      city: out.city,
+      state: out.state,
+    });
     return out;
   } catch (e) {
     console.log('[CEP] Google reverse FAIL:', e?.message || e);
@@ -116,7 +186,9 @@ async function nominatimReverse(lat, lng) {
       city: a.city || a.town || a.municipality || a.locality || a.county,
       state: a.state,
       postcode: a.postcode ? onlyDigits(a.postcode) : undefined,
-      lat, lng, source: 'nominatim',
+      lat,
+      lng,
+      source: 'nominatim',
     };
     console.log('[CEP] OSM parsed =', out);
     return out;
@@ -130,7 +202,9 @@ async function viaCepByStreet(uf, city, street) {
   if (!uf || !city || !street) return [];
   const variants = [];
   const base = street.trim();
-  const noType = base.replace(/^(rua|avenida|av\.?|travessa|tv\.?|alameda|estrada|rodovia|pra[çc]a)\s+/i,'').trim();
+  const noType = base
+    .replace(/^(rua|avenida|av\.?|travessa|tv\.?|alameda|estrada|rodovia|pra[çc]a)\s+/i, '')
+    .trim();
   const digitsBase = wordsToDigitsPT(base);
   const digitsNoType = wordsToDigitsPT(noType);
   variants.push(base, noType, digitsBase, digitsNoType);
@@ -202,7 +276,7 @@ export async function resolveExactCepFromCoords(lat, lng, opts = {}) {
             numero: g.number || '',
             bairro: via.bairro || g.neighborhood || '',
             cidade: via.localidade || city || '',
-            uf: (via.uf || uf).slice(0,2).toUpperCase(),
+            uf: (via.uf || uf).slice(0, 2).toUpperCase(),
           },
         };
       }
@@ -212,8 +286,8 @@ export async function resolveExactCepFromCoords(lat, lng, opts = {}) {
         if (uf && city && street) {
           const list = await viaCepByStreet(uf, city, street);
           const canon = canonStreet(street);
-          const strict = list.filter(x => canonStreet(x.logradouro||'') === canon);
-          const pick = (strict[0] || list[0]);
+          const strict = list.filter((x) => canonStreet(x.logradouro || '') === canon);
+          const pick = strict[0] || list[0];
           if (pick?.cep) {
             const c8 = onlyDigits(pick.cep);
             const cepMasked = padCepMask(c8);
@@ -226,7 +300,7 @@ export async function resolveExactCepFromCoords(lat, lng, opts = {}) {
                 numero: g.number || '',
                 bairro: pick.bairro || g.neighborhood || '',
                 cidade: pick.localidade || city || '',
-                uf: (pick.uf || uf).slice(0,2).toUpperCase(),
+                uf: (pick.uf || uf).slice(0, 2).toUpperCase(),
               },
             };
           }
@@ -241,7 +315,7 @@ export async function resolveExactCepFromCoords(lat, lng, opts = {}) {
             numero: g.number || '',
             bairro: g.neighborhood || '',
             cidade: city || '',
-            uf: (uf || '').slice(0,2).toUpperCase(),
+            uf: (uf || '').slice(0, 2).toUpperCase(),
           },
         };
       }
@@ -252,8 +326,8 @@ export async function resolveExactCepFromCoords(lat, lng, opts = {}) {
       const list = await viaCepByStreet(uf, city, street);
       if (list.length) {
         const canon = canonStreet(street);
-        const strict = list.filter(x => canonStreet(x.logradouro||'') === canon);
-        const pick = (strict[0] || list[0]);
+        const strict = list.filter((x) => canonStreet(x.logradouro || '') === canon);
+        const pick = strict[0] || list[0];
         if (pick?.cep) {
           const c8 = onlyDigits(pick.cep);
           const cepMasked = padCepMask(c8);
@@ -266,7 +340,7 @@ export async function resolveExactCepFromCoords(lat, lng, opts = {}) {
               numero: g.number || '',
               bairro: pick.bairro || g.neighborhood || '',
               cidade: pick.localidade || city || '',
-              uf: (pick.uf || uf).slice(0,2).toUpperCase(),
+              uf: (pick.uf || uf).slice(0, 2).toUpperCase(),
             },
           };
         }
@@ -286,8 +360,8 @@ export async function resolveExactCepFromCoords(lat, lng, opts = {}) {
       console.log('[CEP] OSM→ViaCEP par rue…');
       const list = await viaCepByStreet(uf, city, street);
       const canon = canonStreet(street);
-      const strict = list.filter(x => canonStreet(x.logradouro||'') === canon);
-      const pick = (strict[0] || list[0]);
+      const strict = list.filter((x) => canonStreet(x.logradouro || '') === canon);
+      const pick = strict[0] || list[0];
       if (pick?.cep) {
         const c8 = onlyDigits(pick.cep);
         const cepMasked = padCepMask(c8);
@@ -300,13 +374,13 @@ export async function resolveExactCepFromCoords(lat, lng, opts = {}) {
             numero: rev.number || '',
             bairro: pick.bairro || rev.neighborhood || '',
             cidade: pick.localidade || rev.city || '',
-            uf: (pick.uf || uf).slice(0,2).toUpperCase(),
+            uf: (pick.uf || uf).slice(0, 2).toUpperCase(),
           },
         };
       }
     }
     if (rev.postcode && !isGenericCep(rev.postcode)) {
-      const c8 = onlyDigits(rev.postcode).slice(0,8);
+      const c8 = onlyDigits(rev.postcode).slice(0, 8);
       const via = await viaCepByCep(c8);
       if (via?.logradouro) {
         const cepMasked = padCepMask(c8);
@@ -319,7 +393,7 @@ export async function resolveExactCepFromCoords(lat, lng, opts = {}) {
             numero: rev.number || '',
             bairro: via.bairro || rev.neighborhood || '',
             cidade: via.localidade || rev.city || '',
-            uf: (via.uf || stateToUF(rev.state||'')).slice(0,2).toUpperCase(),
+            uf: (via.uf || stateToUF(rev.state || '')).slice(0, 2).toUpperCase(),
           },
         };
       }
@@ -336,7 +410,12 @@ export async function resolveExactCepFromCoords(lat, lng, opts = {}) {
     if (viaUser?.localidade && viaUser?.uf) {
       const cidadeOk = normalize(viaUser.localidade) === expCityNorm;
       const ufOk = stateToUF(viaUser.uf) === expUF;
-      console.log('[CEP] Fallback checks =', { cidadeOk, ufOk, localidade: viaUser.localidade, uf: viaUser.uf });
+      console.log('[CEP] Fallback checks =', {
+        cidadeOk,
+        ufOk,
+        localidade: viaUser.localidade,
+        uf: viaUser.uf,
+      });
       if (cidadeOk && ufOk) {
         const cepMasked = padCepMask(expectedCep8);
         console.log('[CEP] ACCEPT fallback profile CEP →', cepMasked);

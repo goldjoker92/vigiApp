@@ -2,12 +2,7 @@ import React from 'react';
 import { ScrollView, TouchableOpacity, Text, StyleSheet } from 'react-native';
 import { Plus, User, MapPin, Phone } from 'lucide-react-native';
 
-export default function QuickActions({
-  onSinalizar,
-  onProfile,
-  onMap,
-  onHelp
-}) {
+export default function QuickActions({ onSinalizar, onProfile, onMap, onHelp }) {
   const actions = [
     { label: 'Sinalizar', icon: <Plus color="#fff" size={24} />, onPress: onSinalizar },
     { label: 'Meu perfil', icon: <User color="#fff" size={24} />, onPress: onProfile },
@@ -49,7 +44,9 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
   },
   actionText: {
     color: '#fff',

@@ -3,7 +3,9 @@
   "description": "Cloud Functions for Firebase",
   "private": true,
   "main": "index.js",
-  "engines": { "node": "20" },
+  "engines": {
+    "node": "20"
+  },
   "scripts": {
     "serve": "firebase emulators:start --only functions",
     "shell": "firebase functions:shell",

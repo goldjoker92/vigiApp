@@ -33,9 +33,8 @@ export default ({ config }) => ({
 
   // --- Android (cible principale pour notifs/FCM) ---
 
-  
   android: {
-    version: "1.0.1",
+    version: '1.0.1',
     versionCode: 2,
     package: 'com.guigui92.vigiapp',
     edgeToEdgeEnabled: true,
@@ -143,7 +142,7 @@ export default ({ config }) => ({
     FIREBASE_STORAGE_BUCKET: process.env.FIREBASE_STORAGE_BUCKET,
     FIREBASE_MESSAGING_SENDER_ID: process.env.FIREBASE_MESSAGING_SENDER_ID,
     FIREBASE_APP_ID: process.env.FIREBASE_APP_ID,
-    
+
     // ✅ Lie explicitement ce repo au bon projet EAS
     eas: { projectId: '38fd672e-850f-436f-84f6-8a1626ed338a' },
   },

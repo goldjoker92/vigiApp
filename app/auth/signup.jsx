@@ -84,25 +84,50 @@ export default function SignUpScreen() {
         onPress={handleSignup}
         disabled={loading}
       >
-        <Text style={styles.buttonText}>
-          {loading ? 'Cadastrando...' : 'Cadastrar'}
-        </Text>
+        <Text style={styles.buttonText}>{loading ? 'Cadastrando...' : 'Cadastrar'}</Text>
       </TouchableOpacity>
 
       <Text style={styles.link}>
         Já possui uma conta?{' '}
-        <Text style={styles.linkAction} onPress={() => router.back()}>Entrar</Text>
+        <Text style={styles.linkAction} onPress={() => router.back()}>
+          Entrar
+        </Text>
       </Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex:1, justifyContent:'center', padding:24, backgroundColor:'#181A20' },
-  title: { fontSize:30, fontWeight:'bold', marginBottom:30, color:'#fff', textAlign:'center', letterSpacing:1 },
-  input: { borderWidth:0, backgroundColor:'#23262F', color:'#fff', padding:16, borderRadius:10, marginBottom:16, fontSize:17 },
-  button: { backgroundColor:'#22C55E', padding:16, borderRadius:10, alignItems:'center', marginBottom:16, shadowColor:'#22C55E', shadowOpacity:0.3, shadowRadius:8, elevation:2 },
-  buttonText:{ color:'#fff', fontWeight:'bold', fontSize:19, letterSpacing:0.5 },
-  link: { textAlign:'center', color:'#bbb', fontSize:16, marginTop:10 },
-  linkAction:{ color:'#22C55E', fontWeight:'bold' }
+  container: { flex: 1, justifyContent: 'center', padding: 24, backgroundColor: '#181A20' },
+  title: {
+    fontSize: 30,
+    fontWeight: 'bold',
+    marginBottom: 30,
+    color: '#fff',
+    textAlign: 'center',
+    letterSpacing: 1,
+  },
+  input: {
+    borderWidth: 0,
+    backgroundColor: '#23262F',
+    color: '#fff',
+    padding: 16,
+    borderRadius: 10,
+    marginBottom: 16,
+    fontSize: 17,
+  },
+  button: {
+    backgroundColor: '#22C55E',
+    padding: 16,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginBottom: 16,
+    shadowColor: '#22C55E',
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 19, letterSpacing: 0.5 },
+  link: { textAlign: 'center', color: '#bbb', fontSize: 16, marginTop: 10 },
+  linkAction: { color: '#22C55E', fontWeight: 'bold' },
 });

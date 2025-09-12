@@ -10,11 +10,7 @@ export function useAdminProposalListener(grupoId, currentUser, setModalVisible) 
     const unsub = onSnapshot(doc(db, 'groups', grupoId), async (snap) => {
       const grupo = snap.data();
       const proposta = grupo?.propostaAdmin;
-      if (
-        proposta &&
-        proposta.status === 'pending' &&
-        proposta.userId === currentUser.id
-      ) {
+      if (proposta && proposta.status === 'pending' && proposta.userId === currentUser.id) {
         setModalVisible(true);
       }
     });

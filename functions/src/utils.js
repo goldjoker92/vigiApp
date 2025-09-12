@@ -5,9 +5,9 @@
  * - Helpers partagés (auth, batching, Expo push, logs)
  */
 
-const functions = require("firebase-functions");
-const v1functions = require("firebase-functions/v1");
-const admin = require("firebase-admin");
+const functions = require('firebase-functions');
+const v1functions = require('firebase-functions/v1');
+const admin = require('firebase-admin');
 
 // Init admin — idempotent (évite "already exists")
 if (admin.apps.length === 0) {
@@ -24,13 +24,13 @@ function chunk(arr, size) {
 }
 
 /** Autorisation minimale par rôle via custom claims */
-function assertRole(context, allowed = ["admin", "moderator"]) {
+function assertRole(context, allowed = ['admin', 'moderator']) {
   const role = context?.auth?.token?.role;
   if (!role || !allowed.includes(role)) {
-    console.warn("[assertRole] refusé — role:", role, "required:", allowed);
+    console.warn('[assertRole] refusé — role:', role, 'required:', allowed);
     throw new functions.https.HttpsError(
-      "permission-denied",
-      "Accès refusé: rôle requis (admin/moderator)."
+      'permission-denied',
+      'Accès refusé: rôle requis (admin/moderator).',
     );
   }
 }
@@ -39,22 +39,22 @@ function assertRole(context, allowed = ["admin", "moderator"]) {
 async function expoPushSend(tokens, title, body, data = {}) {
   if (!Array.isArray(tokens) || tokens.length === 0) return [];
 
-  console.log("[expoPushSend] start", { count: tokens.length, title, body });
+  console.log('[expoPushSend] start', { count: tokens.length, title, body });
 
   const results = [];
   for (const batch of chunk(tokens, 100)) {
     const payload = batch.map((to) => ({
       to,
-      sound: "default",
+      sound: 'default',
       title,
       body,
       data,
-      channelId: "default",
+      channelId: 'default',
     }));
 
-    const res = await fetch("https://exp.host/--/api/v2/push/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+    const res = await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify(payload),
     });
 
@@ -62,53 +62,53 @@ async function expoPushSend(tokens, title, body, data = {}) {
     try {
       const json = JSON.parse(text);
       results.push(json);
-      console.log("[expoPushSend] batch ok", { size: batch.length });
+      console.log('[expoPushSend] batch ok', { size: batch.length });
     } catch {
       results.push({ raw: text });
-      console.warn("[expoPushSend] batch raw response", text?.slice(0, 256));
+      console.warn('[expoPushSend] batch raw response', text?.slice(0, 256));
     }
   }
 
-  console.log("[expoPushSend] done", { batches: results.length });
+  console.log('[expoPushSend] done', { batches: results.length });
   return results;
 }
 
 /** Log de livraison (deliveries/{id}) */
 async function createDeliveryLog(kind, meta) {
-  const ref = await db.collection("deliveries").add({
+  const ref = await db.collection('deliveries').add({
     kind,
     ...meta,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   });
-  console.log("[createDeliveryLog]", { kind, logId: ref.id });
+  console.log('[createDeliveryLog]', { kind, logId: ref.id });
   return ref;
 }
 
 /** Tokens par CEP */
 async function getTokensByCEP(cep) {
-  console.log("[getTokensByCEP] cep=", cep);
-  const snap = await db.collection("devices").where("cep", "==", cep).get();
+  console.log('[getTokensByCEP] cep=', cep);
+  const snap = await db.collection('devices').where('cep', '==', cep).get();
   const tokens = [];
   snap.forEach((doc) => {
-    const t = doc.get("expoPushToken");
+    const t = doc.get('expoPushToken');
     if (t) tokens.push(t);
   });
-  console.log("[getTokensByCEP] found tokens:", tokens.length);
+  console.log('[getTokensByCEP] found tokens:', tokens.length);
   return tokens;
 }
 
 /** Tokens par userIds (batch Firestore 'in' de 10) */
 async function getTokensByUserIds(userIds) {
-  console.log("[getTokensByUserIds] userIds length=", userIds?.length || 0);
+  console.log('[getTokensByUserIds] userIds length=', userIds?.length || 0);
   const tokens = [];
   for (const ids of chunk(userIds, 10)) {
-    const snap = await db.collection("devices").where("userId", "in", ids).get();
+    const snap = await db.collection('devices').where('userId', 'in', ids).get();
     snap.forEach((doc) => {
-      const t = doc.get("expoPushToken");
+      const t = doc.get('expoPushToken');
       if (t) tokens.push(t);
     });
   }
-  console.log("[getTokensByUserIds] tokens total:", tokens.length);
+  console.log('[getTokensByUserIds] tokens total:', tokens.length);
   return tokens;
 }
 
@@ -121,11 +121,11 @@ async function errorHandlingWrapper(functionName, callback) {
     return result;
   } catch (error) {
     console.error(`❌ [${functionName}]`, error?.message, error?.stack);
-    await db.collection("errorLogs").add({
+    await db.collection('errorLogs').add({
       functionName,
       error: error?.message,
       stack: error?.stack,
-      timestamp: admin.firestore.FieldValue.serverTimestamp()
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
     });
     return null;
   }
@@ -142,5 +142,5 @@ module.exports = {
   createDeliveryLog,
   getTokensByCEP,
   getTokensByUserIds,
-  errorHandlingWrapper
+  errorHandlingWrapper,
 };

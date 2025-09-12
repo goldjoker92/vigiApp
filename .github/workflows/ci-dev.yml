@@ -52,7 +52,7 @@ jobs:
         uses: expo/expo-github-action@v8
         with:
           eas-version: latest
-          token: ${{ secrets.cliToken }}  # ton secret Expo
+          token: ${{ secrets.cliToken }} # ton secret Expo
 
       - name: EAS build (dev, no-wait)
         run: npx eas build --platform android --profile development --non-interactive --no-wait

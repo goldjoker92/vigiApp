@@ -8,7 +8,6 @@ import { House, MapPinned, Users, User } from 'lucide-react-native'; // Remplace
 import { Tabs, useRouter } from 'expo-router';
 import { isProfileIncomplete } from '../../utils/isProfileIncomplete';
 
-
 export default function TabsLayout() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const { user } = useUserStore();
@@ -26,7 +25,6 @@ export default function TabsLayout() {
     }
   }, [user, router]);
 
-
   return (
     <View style={{ flex: 1, backgroundColor: '#181A20' }}>
       {/* Header */}
@@ -34,18 +32,18 @@ export default function TabsLayout() {
         user={user}
         notifs={user?.notifs || 0}
         onMenuPress={() => setDrawerOpen(true)}
-        onSearchPress={() => {/* Action de recherche future */}}
-        onNotifPress={() => {/* Navigation notifications future */}}
+        onSearchPress={() => {
+          /* Action de recherche future */
+        }}
+        onNotifPress={() => {
+          /* Navigation notifications future */
+        }}
       />
       {/* Menu latéral */}
-      <SideDrawer
-        visible={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        user={user}
-      />
+      <SideDrawer visible={drawerOpen} onClose={() => setDrawerOpen(false)} user={user} />
       {/* Tabs (Expo Router) */}
       <Tabs
-        tabBar={props => <CustomTabBar {...props} />}
+        tabBar={(props) => <CustomTabBar {...props} />}
         screenOptions={{
           headerShown: false,
         }}

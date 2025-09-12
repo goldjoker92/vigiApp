@@ -30,7 +30,7 @@ function AnimatedSkeletonLine({ style, delay = 0 }) {
       Animated.sequence([
         Animated.timing(opacity, { toValue: 1, duration: 600, delay, useNativeDriver: true }),
         Animated.timing(opacity, { toValue: 0.5, duration: 600, useNativeDriver: true }),
-      ])
+      ]),
     ).start();
   }, [delay, opacity]);
   return <Animated.View style={[style, { opacity }]} />;
@@ -48,16 +48,15 @@ function GroupSkeleton() {
 
 // ---- Affichage du créateur (friendly)
 function getCriador(grupo, user) {
-  if (!grupo) return "Desconhecido";
+  if (!grupo) return 'Desconhecido';
   if (grupo.creatorUserId && grupo.creatorNome) {
     return grupo.creatorUserId === user?.id || grupo.creatorUserId === user?.uid
-      ? user?.apelido || user?.username || "Você"
+      ? user?.apelido || user?.username || 'Você'
       : grupo.creatorNome;
   }
   if (grupo.creatorNome) return grupo.creatorNome;
-  if (Array.isArray(grupo.members) && grupo.members[0]?.apelido)
-    return grupo.members[0].apelido;
-  return "Desconhecido";
+  if (Array.isArray(grupo.members) && grupo.members[0]?.apelido) return grupo.members[0].apelido;
+  return 'Desconhecido';
 }
 
 export default function HomeScreen() {
@@ -83,14 +82,16 @@ export default function HomeScreen() {
 
   // --- GROUPES DISPOS À REJOINDRE (pas déjà membre)
   const outrosGrupos = (grupos || []).filter(
-    g =>
+    (g) =>
       !(g.membersIds || []).includes(user?.id || user?.uid) &&
-      (g.members?.length || 0) < (g.maxMembers || 30)
+      (g.members?.length || 0) < (g.maxMembers || 30),
   );
 
   // ---- Salutation dynamique
   const horaBrasil = new Date().toLocaleTimeString('pt-BR', {
-    hour: '2-digit', hour12: false, timeZone: 'America/Fortaleza'
+    hour: '2-digit',
+    hour12: false,
+    timeZone: 'America/Fortaleza',
   });
   const hora = parseInt(horaBrasil, 10);
   let saudacao = 'Bom dia';
@@ -117,7 +118,7 @@ export default function HomeScreen() {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={{ flex: 1 }}
     >
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
@@ -129,13 +130,10 @@ export default function HomeScreen() {
         {/* --- PAS DE GROUPE --- */}
         {!groupId && !loadingGrupo ? (
           <View style={styles.infoBox}>
-            <Text style={{ color: '#bbb', fontSize: 16, marginBottom: 12, textAlign: "center" }}>
+            <Text style={{ color: '#bbb', fontSize: 16, marginBottom: 12, textAlign: 'center' }}>
               Nenhum grupo encontrado
             </Text>
-            <TouchableOpacity
-              style={styles.createBtn}
-              onPress={() => router.push("/group-create")}
-            >
+            <TouchableOpacity style={styles.createBtn} onPress={() => router.push('/group-create')}>
               <PlusCircle color="#FFD600" size={22} style={{ marginRight: -15 }} />
               <Text style={styles.createBtnText}>Criar grupo com vizinhos do seu CEP</Text>
             </TouchableOpacity>
@@ -155,39 +153,58 @@ export default function HomeScreen() {
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Feather name="map-pin" size={16} color="#60a5fa" />
-              <Text style={{ color: '#eee', fontSize: 14, marginLeft: 4 }}>
-                {grupo.cep}
-              </Text>
+              <Text style={{ color: '#eee', fontSize: 14, marginLeft: 4 }}>{grupo.cep}</Text>
               <Text style={{ marginHorizontal: 8, color: '#666' }}>|</Text>
               <FontAwesome name="users" size={16} color="#facc15" />
               <Text style={{ color: '#eee', fontSize: 14, marginLeft: 4 }}>
                 {grupo.members?.length || 0} / {grupo.maxMembers || 30} vizinhos
               </Text>
             </View>
-            <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-                  <Text>pub</Text>
-                  <Link href="/test-ads">Voir la bannière AdMob (test)</Link>
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+              <Text>pub</Text>
+              <Link href="/test-ads">Voir la bannière AdMob (test)</Link>
             </View>
           </TouchableOpacity>
         ) : null}
 
         {/* --- GROUPES À REJOINDRE --- */}
         <AvailableGroupsCarousel groups={outrosGrupos} loading={loadingGrupos} />
-
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#181A20" },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#181A20' },
   container: { backgroundColor: '#181A20', padding: 18, paddingBottom: 120 },
-  greeting: { color: '#fff', fontSize: 27, fontWeight: '700', marginBottom: 18, marginTop: 5, alignSelf: 'flex-start' },
+  greeting: {
+    color: '#fff',
+    fontSize: 27,
+    fontWeight: '700',
+    marginBottom: 18,
+    marginTop: 5,
+    alignSelf: 'flex-start',
+  },
   username: { color: '#00C859', fontWeight: '900' },
-  groupCard: { backgroundColor: '#202228', borderRadius: 15, padding: 18, marginBottom: 20, alignItems: 'flex-start', shadowColor: '#00C859', shadowOpacity: 0.09, shadowRadius: 5 },
+  groupCard: {
+    backgroundColor: '#202228',
+    borderRadius: 15,
+    padding: 18,
+    marginBottom: 20,
+    alignItems: 'flex-start',
+    shadowColor: '#00C859',
+    shadowOpacity: 0.09,
+    shadowRadius: 5,
+  },
   groupTitle: { color: '#6cffe5', fontWeight: 'bold', fontSize: 17, marginBottom: 4 },
   groupName: { color: '#00C859', fontWeight: '900', fontSize: 21, marginBottom: 3 },
-  infoBox: { marginTop: 30, alignItems: 'center', padding: 18, backgroundColor: '#23262F', borderRadius: 14 },
+  infoBox: {
+    marginTop: 30,
+    alignItems: 'center',
+    padding: 18,
+    backgroundColor: '#23262F',
+    borderRadius: 14,
+  },
   createBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -206,54 +223,54 @@ const styles = StyleSheet.create({
     shadowRadius: 5,
   },
   createBtnText: {
-    color: "#00C859",
-    fontWeight: "bold",
+    color: '#00C859',
+    fontWeight: 'bold',
     marginLeft: 10,
     fontSize: 16,
     textAlign: 'center',
     flex: 1,
   },
   skeletonCard: {
-    backgroundColor: "#23262F",
+    backgroundColor: '#23262F',
     borderRadius: 16,
     padding: 20,
     marginBottom: 22,
     marginTop: 14,
-    shadowColor: "#00C859",
+    shadowColor: '#00C859',
     shadowOpacity: 0.07,
     shadowRadius: 7,
     minHeight: 130,
-    justifyContent: "center",
+    justifyContent: 'center',
   },
   skeletonLineLarge: {
-    backgroundColor: "#30323b",
+    backgroundColor: '#30323b',
     height: 22,
     borderRadius: 9,
     marginBottom: 13,
-    width: "80%",
-    alignSelf: "flex-start",
+    width: '80%',
+    alignSelf: 'flex-start',
   },
   skeletonLineShort: {
-    backgroundColor: "#363946",
+    backgroundColor: '#363946',
     height: 16,
     borderRadius: 8,
     marginBottom: 13,
-    width: "45%",
-    alignSelf: "flex-start",
+    width: '45%',
+    alignSelf: 'flex-start',
   },
   skeletonLine: {
-    backgroundColor: "#30323b",
+    backgroundColor: '#30323b',
     height: 15,
     borderRadius: 7,
     marginBottom: 11,
-    width: "65%",
-    alignSelf: "flex-start",
+    width: '65%',
+    alignSelf: 'flex-start',
   },
   skeletonLineThin: {
-    backgroundColor: "#363946",
+    backgroundColor: '#363946',
     height: 13,
     borderRadius: 7,
-    width: "35%",
-    alignSelf: "flex-start",
+    width: '35%',
+    alignSelf: 'flex-start',
   },
 });
