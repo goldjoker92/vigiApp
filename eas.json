@@ -15,16 +15,14 @@
     "preview": {
       "node": "20.19.5",
       "distribution": "internal",
-      "android": {
-        "buildType": "apk"
-      },
+      "android": { "buildType": "apk" },
       "cache": { "disabled": true },
       "env": { "EXPO_NODE_VERSION": "20.19.5" }
     },
     "production": {
       "node": "20.19.5",
       "android": {
-        "gradleCommand": ":app:bundlePlayRelease"
+        "gradleCommand": ":app:bundleRelease"
       },
       "cache": { "disabled": true },
       "env": { "EXPO_NODE_VERSION": "20.19.5" }
