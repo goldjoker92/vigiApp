@@ -1,6 +1,6 @@
-﻿{
+{
   "cli": {
-    "version": "\u003e= 12.0.0",
+    "version": ">= 12.0.0",
     "appVersionSource": "local"
   },
   "build": {
@@ -8,12 +8,8 @@
       "node": "20.19.5",
       "developmentClient": true,
       "distribution": "internal",
-      "android": {
-        "buildType": "apk"
-      },
-      "cache": {
-        "disabled": true
-      },
+      "android": { "buildType": "apk" },
+      "cache": { "disabled": true },
       "env": {
         "EXPO_NODE_VERSION": "20.19.5"
       }
@@ -21,18 +17,14 @@
     "preview": {
       "node": "20.19.5",
       "distribution": "internal",
-      "cache": {
-        "disabled": true
-      },
+      "cache": { "disabled": true },
       "env": {
         "EXPO_NODE_VERSION": "20.19.5"
       }
     },
     "production": {
       "node": "20.19.5",
-      "cache": {
-        "disabled": true
-      },
+      "cache": { "disabled": true },
       "env": {
         "EXPO_NODE_VERSION": "20.19.5"
       }
@@ -41,5 +33,4 @@
   "submit": {
     "production": {}
   }
-  
 }
