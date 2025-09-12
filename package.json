@@ -15,7 +15,9 @@
     "android:bare": "cd android && gradlew installDebug",
     "prepare": "husky",
     "preinstall": "node -e \"const fs=require('fs'),c=require('crypto');const p='package-lock.json';const h=fs.existsSync(p)?c.createHash('sha256').update(fs.readFileSync(p)).digest('hex'):'MISSING';console.log('LOCK SHA256:',h,' SIZE:',fs.existsSync(p)?fs.statSync(p).size:0);\"",
-    "eas-build-pre-install": "bash ./eas-build-pre-install.sh"
+    "eas-build-pre-install": "bash ./eas-build-pre-install.sh",
+    "android:bare:assemble": "cd android && ./gradlew :app:assemblePlayDebug",
+    "android:bare:install": "cd android && ./gradlew :app:installPlayDebug"
   },
   "engines": {
     "node": ">=18 <21"
