@@ -1,25 +1,46 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator, Modal, KeyboardAvoidingView, Platform } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  Alert,
+  ActivityIndicator,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { db, auth } from '../firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import {
-  MapPin, Bell, AlertTriangle, HandHeart, Flame, ShieldAlert,
-  Bolt, Car, FileQuestion, Send, UserX
-} from "lucide-react-native";
+  MapPin,
+  Bell,
+  AlertTriangle,
+  HandHeart,
+  Flame,
+  ShieldAlert,
+  Bolt,
+  Car,
+  FileQuestion,
+  Send,
+  UserX,
+} from 'lucide-react-native';
 import { useAuthGuard } from '../hooks/useAuthGuard';
 import { useUserStore } from '../store/users'; // adapte selon ton projet
 
 const categories = [
-  { label: "Roubo/Furto", icon: ShieldAlert, severity: "medium", color: "#FFA500" },
-  { label: "Agressão", icon: UserX, severity: "medium", color: "#FFA500" },
-  { label: "Incidente de trânsito", icon: Car, severity: "minor", color: "#FFE600" },
-  { label: "Incêndio", icon: Flame, severity: "grave", color: "#FF3B30" },
-  { label: "Falta de luz", icon: Bolt, severity: "minor", color: "#FFE600" },
-  { label: "Mal súbito (problema de saúde)", icon: HandHeart, severity: "grave", color: "#FF3B30" },
-  { label: "Outros", icon: FileQuestion, severity: "minor", color: "#007AFF" }
+  { label: 'Roubo/Furto', icon: ShieldAlert, severity: 'medium', color: '#FFA500' },
+  { label: 'Agressão', icon: UserX, severity: 'medium', color: '#FFA500' },
+  { label: 'Incidente de trânsito', icon: Car, severity: 'minor', color: '#FFE600' },
+  { label: 'Incêndio', icon: Flame, severity: 'grave', color: '#FF3B30' },
+  { label: 'Falta de luz', icon: Bolt, severity: 'minor', color: '#FFE600' },
+  { label: 'Mal súbito (problema de saúde)', icon: HandHeart, severity: 'grave', color: '#FF3B30' },
+  { label: 'Outros', icon: FileQuestion, severity: 'minor', color: '#007AFF' },
 ];
 
 const MAX_GEO_ATTEMPTS = 3;
@@ -51,7 +72,7 @@ export default function GrupoReportScreen() {
   const dateBR = now.toLocaleDateString('pt-BR');
   const timeBR = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
-  const selectedCategory = categories.find(c => c.label === categoria);
+  const selectedCategory = categories.find((c) => c.label === categoria);
   const severityColor = selectedCategory?.color || '#FF3B30';
 
   // GÉOLOCALISATION LOGIC identique au flow public, mais sans champ adresse éditable à l’UI
@@ -68,7 +89,7 @@ export default function GrupoReportScreen() {
       // Précision haute
       const loc = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Highest,
-        timeout: 4000
+        timeout: 4000,
       });
 
       setLocal({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
@@ -81,26 +102,26 @@ export default function GrupoReportScreen() {
         });
 
         if (addr && addr.length > 0) {
-          let rua = addr[0].street || "Não recuperado";
-          let numero = addr[0].streetNumber || addr[0].name || "";
-          if (numero && rua.includes(numero)) numero = "";
+          let rua = addr[0].street || 'Não recuperado';
+          let numero = addr[0].streetNumber || addr[0].name || '';
+          if (numero && rua.includes(numero)) numero = '';
           setAddress({
             rua,
             numero,
-            cidade: addr[0].city || groupCidade || "Não recuperado",
-            estado: addr[0].region || groupEstado || "Não recuperado",
-            cep: addr[0].postalCode || groupCep || "Não recuperado",
+            cidade: addr[0].city || groupCidade || 'Não recuperado',
+            estado: addr[0].region || groupEstado || 'Não recuperado',
+            cep: addr[0].postalCode || groupCep || 'Não recuperado',
           });
         } else if (tryCount < MAX_GEO_ATTEMPTS) {
           setTimeout(() => tryGetLocationAndAddress(tryCount + 1), 400);
           return;
         } else {
           setAddress({
-            rua: "Não recuperado",
-            numero: "",
-            cidade: groupCidade || "Não recuperado",
-            estado: groupEstado || "Não recuperado",
-            cep: groupCep || "Não recuperado",
+            rua: 'Não recuperado',
+            numero: '',
+            cidade: groupCidade || 'Não recuperado',
+            estado: groupEstado || 'Não recuperado',
+            cep: groupCep || 'Não recuperado',
           });
         }
         setLoadingLoc(false);
@@ -108,11 +129,11 @@ export default function GrupoReportScreen() {
         setModalVisible(false);
       } catch (_) {
         setAddress({
-          rua: "Não recuperado",
-          numero: "",
-          cidade: groupCidade || "Não recuperado",
-          estado: groupEstado || "Não recuperado",
-          cep: groupCep || "Não recuperado",
+          rua: 'Não recuperado',
+          numero: '',
+          cidade: groupCidade || 'Não recuperado',
+          estado: groupEstado || 'Não recuperado',
+          cep: groupCep || 'Não recuperado',
         });
         setLoadingLoc(false);
         setShowManualLoc(false);
@@ -146,7 +167,7 @@ export default function GrupoReportScreen() {
     if (!local) return Alert.alert('Localização ausente.');
     if (!groupId) return Alert.alert('Você não está em nenhum grupo.');
     try {
-      await addDoc(collection(db, "groupAlerts"), {
+      await addDoc(collection(db, 'groupAlerts'), {
         userId: auth.currentUser?.uid,
         apelido: user?.apelido || '',
         categoria,
@@ -154,17 +175,17 @@ export default function GrupoReportScreen() {
         gravidade: selectedCategory?.severity || '',
         color: severityColor,
         groupId,
-        rua: address?.rua || "Não recuperado",
-        numero: address?.numero || "",
-        cidade: address?.cidade || groupCidade || "Não recuperado",
-        estado: address?.estado || groupEstado || "Não recuperado",
-        cep: address?.cep || groupCep || "Não recuperado",
+        rua: address?.rua || 'Não recuperado',
+        numero: address?.numero || '',
+        cidade: address?.cidade || groupCidade || 'Não recuperado',
+        estado: address?.estado || groupEstado || 'Não recuperado',
+        cep: address?.cep || groupCep || 'Não recuperado',
         location: local,
         date: dateBR,
         time: timeBR,
-        createdAt: serverTimestamp()
+        createdAt: serverTimestamp(),
       });
-      Alert.alert("Alerta enviado!", "Seu alerta foi registrado.");
+      Alert.alert('Alerta enviado!', 'Seu alerta foi registrado.');
       router.replace('/(tabs)/home');
     } catch (e) {
       Alert.alert('Erro', e.message);
@@ -187,19 +208,27 @@ export default function GrupoReportScreen() {
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 24 : 0}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 24 : 0}
     >
-      <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={styles.scrollContainer}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.container}>
           <View style={styles.alertCard}>
             <AlertTriangle color="#fff" size={26} style={{ marginRight: 12 }} />
             <View style={{ flex: 1 }}>
               <Text style={styles.alertTitle}>⚠️ Atenção!</Text>
               <Text style={styles.alertMsg}>
-                Toda declaração feita no aplicativo envolve sua <Text style={{ fontWeight: "bold" }}>boa fé</Text> e <Text style={{ fontWeight: "bold" }}>responsabilidade</Text>.
-                {"\n"}Nunca substitua os serviços de emergência!
-                {"\n"}<Text style={{ fontWeight: "bold" }}>☎️ Ligue 190 (Polícia) ou 192 (Samu) em caso de risco ou emergência.</Text>
+                Toda declaração feita no aplicativo envolve sua{' '}
+                <Text style={{ fontWeight: 'bold' }}>boa fé</Text> e{' '}
+                <Text style={{ fontWeight: 'bold' }}>responsabilidade</Text>.{'\n'}Nunca substitua
+                os serviços de emergência!
+                {'\n'}
+                <Text style={{ fontWeight: 'bold' }}>
+                  ☎️ Ligue 190 (Polícia) ou 192 (Samu) em caso de risco ou emergência.
+                </Text>
               </Text>
             </View>
           </View>
@@ -216,12 +245,23 @@ export default function GrupoReportScreen() {
                 key={label}
                 style={[
                   styles.categoriaBtn,
-                  categoria === label && { backgroundColor: color, borderColor: color }
+                  categoria === label && { backgroundColor: color, borderColor: color },
                 ]}
                 onPress={() => setCategoria(label)}
               >
-                <Icon size={18} color={categoria === label ? "#fff" : color} style={{ marginRight: 7 }} />
-                <Text style={[styles.categoriaText, categoria === label && { color: '#fff', fontWeight: 'bold' }]}>{label}</Text>
+                <Icon
+                  size={18}
+                  color={categoria === label ? '#fff' : color}
+                  style={{ marginRight: 7 }}
+                />
+                <Text
+                  style={[
+                    styles.categoriaText,
+                    categoria === label && { color: '#fff', fontWeight: 'bold' },
+                  ]}
+                >
+                  {label}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -249,26 +289,26 @@ export default function GrupoReportScreen() {
                 latitude: local.latitude,
                 longitude: local.longitude,
                 latitudeDelta: 0.01,
-                longitudeDelta: 0.01
+                longitudeDelta: 0.01,
               }}
             >
               <Marker coordinate={{ latitude: local.latitude, longitude: local.longitude }} />
             </MapView>
           )}
 
-          {loadingLoc && (
-            <ActivityIndicator style={{ marginVertical: 8 }} color="#22C55E" />
-          )}
+          {loadingLoc && <ActivityIndicator style={{ marginVertical: 8 }} color="#22C55E" />}
 
           {/* MODALE d’échec */}
           <Modal visible={modalVisible} animationType="fade" transparent>
             <View style={styles.modalOverlay}>
               <View style={styles.modalContent}>
                 <Text style={styles.modalText}>
-                  Localização não capturada. Você vai usar a localização manual com o botão da localização abaixo do <Text style={{ fontWeight: "bold" }}>CEP</Text>. Clique em OK para continuer.
+                  Localização não capturada. Você vai usar a localização manual com o botão da
+                  localização abaixo do <Text style={{ fontWeight: 'bold' }}>CEP</Text>. Clique em
+                  OK para continuer.
                 </Text>
                 <TouchableOpacity style={styles.modalBtn} onPress={handleModalOk}>
-                  <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 16 }}>OK</Text>
+                  <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>OK</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -288,8 +328,8 @@ export default function GrupoReportScreen() {
               styles.sendBtn,
               {
                 backgroundColor: isBtnActive ? severityColor : '#FF3B30',
-                opacity: isBtnActive ? 1 : 0.65
-              }
+                opacity: isBtnActive ? 1 : 0.65,
+              },
             ]}
             onPress={handleSend}
             disabled={!isBtnActive}
@@ -304,8 +344,8 @@ export default function GrupoReportScreen() {
 }
 
 const styles = StyleSheet.create({
-  scrollContainer: { paddingBottom: 36, backgroundColor: "#181A20" },
-  container: { padding: 22, flex: 1, backgroundColor: "#181A20" },
+  scrollContainer: { paddingBottom: 36, backgroundColor: '#181A20' },
+  container: { padding: 22, flex: 1, backgroundColor: '#181A20' },
   alertCard: {
     flexDirection: 'row',
     backgroundColor: '#FF3B30',
@@ -314,91 +354,100 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 19,
     marginTop: 18,
-    shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 7,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 7,
     elevation: 3,
   },
-  alertTitle: { color: "#fff", fontSize: 17, fontWeight: 'bold', marginBottom: 2 },
-  alertMsg: { color: "#fff", fontSize: 15 },
-  title: { fontSize: 22, fontWeight: "bold", marginBottom: 15, color: '#fff', flexDirection: "row", alignItems: "center" },
-  categoriaGroup: { flexDirection: "row", flexWrap: "wrap", marginBottom: 16, gap: 6 },
+  alertTitle: { color: '#fff', fontSize: 17, fontWeight: 'bold', marginBottom: 2 },
+  alertMsg: { color: '#fff', fontSize: 15 },
+  title: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    marginBottom: 15,
+    color: '#fff',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  categoriaGroup: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 16, gap: 6 },
   categoriaBtn: {
-    backgroundColor: "#23262F",
+    backgroundColor: '#23262F',
     padding: 10,
     borderRadius: 9,
     margin: 3,
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
     borderWidth: 2,
-    borderColor: "#23262F",
+    borderColor: '#23262F',
     minWidth: 110,
-    justifyContent: 'center'
+    justifyContent: 'center',
   },
-  categoriaText: { color: "#22C55E", fontWeight: "500", fontSize: 15 },
+  categoriaText: { color: '#22C55E', fontWeight: '500', fontSize: 15 },
   label: { color: '#fff', marginBottom: 4, marginTop: 12 },
   input: {
     borderWidth: 1,
-    borderColor: "#353840",
-    backgroundColor: "#222",
-    color: "#fff",
+    borderColor: '#353840',
+    backgroundColor: '#222',
+    color: '#fff',
     padding: 12,
     borderRadius: 7,
-    marginBottom: 10
+    marginBottom: 10,
   },
   cepBox: {
-    backgroundColor: "#181A20",
+    backgroundColor: '#181A20',
     borderRadius: 9,
     padding: 14,
     alignItems: 'center',
     marginVertical: 9,
     borderWidth: 1,
-    borderColor: "#333"
+    borderColor: '#333',
   },
-  cepText: { fontSize: 20, color: "#22C55E", fontWeight: "bold", letterSpacing: 1 },
+  cepText: { fontSize: 20, color: '#22C55E', fontWeight: 'bold', letterSpacing: 1 },
   map: {
     width: '100%',
     height: 130,
     borderRadius: 10,
     marginBottom: 12,
-    marginTop: 2
+    marginTop: 2,
   },
   sendBtn: {
     borderRadius: 10,
     padding: 17,
-    alignItems: "center",
+    alignItems: 'center',
     marginTop: 14,
-    flexDirection: "row",
-    justifyContent: "center"
+    flexDirection: 'row',
+    justifyContent: 'center',
   },
-  sendBtnText: { color: "#fff", fontWeight: "bold", fontSize: 18 },
+  sendBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 18 },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.46)',
     justifyContent: 'center',
-    alignItems: 'center'
+    alignItems: 'center',
   },
   modalContent: {
-    backgroundColor: "#23262F",
+    backgroundColor: '#23262F',
     borderRadius: 15,
     padding: 28,
     alignItems: 'center',
-    width: '85%'
+    width: '85%',
   },
   modalText: { color: '#fff', fontSize: 17, marginBottom: 18, textAlign: 'center' },
   modalBtn: {
     backgroundColor: '#22C55E',
     borderRadius: 8,
     paddingVertical: 12,
-    paddingHorizontal: 28
+    paddingHorizontal: 28,
   },
   locBtn: {
-    backgroundColor: "#e6f2ff",
+    backgroundColor: '#e6f2ff',
     borderRadius: 8,
     padding: 12,
     marginBottom: 9,
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
     alignSelf: 'center',
     marginTop: 20,
   },
-  locBtnText: { color: "#22C55E", fontWeight: "bold" },
+  locBtnText: { color: '#22C55E', fontWeight: 'bold' },
 });

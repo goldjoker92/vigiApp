@@ -1,10 +1,18 @@
-import React from "react";
-import { View, Text, TextInput } from "react-native";
-import MaskInput, { Masks } from "react-native-mask-input";
+import React from 'react';
+import { View, Text, TextInput } from 'react-native';
+import MaskInput, { Masks } from 'react-native-mask-input';
 
-const row = { flexDirection: "row", alignItems: "center" };
-const inputStyle = { flex: 1, borderWidth: 0, backgroundColor: "#23262F", color: "#fff", padding: 16, borderRadius: 10, fontSize: 17 };
-const icon = (ok) => <Text style={{ marginLeft: 8 }}>{ok ? "🟢" : "🔴"}</Text>;
+const row = { flexDirection: 'row', alignItems: 'center' };
+const inputStyle = {
+  flex: 1,
+  borderWidth: 0,
+  backgroundColor: '#23262F',
+  color: '#fff',
+  padding: 16,
+  borderRadius: 10,
+  fontSize: 17,
+};
+const icon = (ok) => <Text style={{ marginLeft: 8 }}>{ok ? '🟢' : '🔴'}</Text>;
 
 export function CpfField({ value, onChange, valid }) {
   return (
@@ -74,7 +82,14 @@ export function UFField({ value, onChange }) {
   return (
     <TextInput
       value={value}
-      onChangeText={(t) => onChange(t.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2))}
+      onChangeText={(t) =>
+        onChange(
+          t
+            .toUpperCase()
+            .replace(/[^A-Z]/g, '')
+            .slice(0, 2),
+        )
+      }
       placeholder="UF (ex: CE)"
       style={inputStyle}
       maxLength={2}

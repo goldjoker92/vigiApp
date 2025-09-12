@@ -31,12 +31,21 @@ if (!__DEV__) {
 // === Fallback UI en cas de bug JS (Error Boundary) ===
 function MyFallback({ error }) {
   return (
-    <View style={{ flex:1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#181A20' }}>
-      <Text style={{ color:'#FFD600', fontWeight:'bold', fontSize:20, marginBottom:16 }}>Oops !</Text>
-      <Text style={{ color:'#fff', textAlign:'center', fontSize:16, marginBottom:10 }}>
-        {error?.message || "Une erreur est survenue."}
+    <View
+      style={{
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: '#181A20',
+      }}
+    >
+      <Text style={{ color: '#FFD600', fontWeight: 'bold', fontSize: 20, marginBottom: 16 }}>
+        Oops !
       </Text>
-      <Text style={{ color:'#aaa', fontSize:12 }}>Essaie de relancer l’application.</Text>
+      <Text style={{ color: '#fff', textAlign: 'center', fontSize: 16, marginBottom: 10 }}>
+        {error?.message || 'Une erreur est survenue.'}
+      </Text>
+      <Text style={{ color: '#aaa', fontSize: 12 }}>Essaie de relancer l’application.</Text>
     </View>
   );
 }

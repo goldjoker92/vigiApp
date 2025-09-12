@@ -27,24 +27,85 @@ export default function GrupoSinalizarScreen() {
   const normalize = useCallback(
     (s) =>
       String(s || '')
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
         .replace(/\s+/g, ' ')
         .toLowerCase()
         .trim(),
-    []
+    [],
   );
   const toUF = useCallback((s) => {
     const up = String(s || '')
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      .toUpperCase().trim();
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase()
+      .trim();
     const map = {
-      AC:'AC',AL:'AL',AP:'AP',AM:'AM',BA:'BA',CE:'CE',DF:'DF',ES:'ES',GO:'GO',MA:'MA',MT:'MT',MS:'MS',MG:'MG',
-      PA:'PA',PB:'PB',PR:'PR',PE:'PE',PI:'PI',RJ:'RJ',RN:'RN',RS:'RS',RO:'RO',RR:'RR',SC:'SC',SP:'SP',SE:'SE',TO:'TO',
-      ACRE:'AC',ALAGOAS:'AL',AMAPA:'AP','AMAPÁ':'AP',AMAZONAS:'AM',BAHIA:'BA',CEARA:'CE','CEARÁ':'CE','DISTRITO FEDERAL':'DF',
-      'ESPIRITO SANTO':'ES','ESPÍRITO SANTO':'ES',GOIAS:'GO','GOIÁS':'GO',MARANHAO:'MA','MARANHÃO':'MA','MATO GROSSO':'MT',
-      'MATO GROSSO DO SUL':'MS','MINAS GERAIS':'MG',PARA:'PA','PARÁ':'PA',PARAIBA:'PB','PARAÍBA':'PB',PARANA:'PR','PARANÁ':'PR',
-      PERNAMBUCO:'PE',PIAUI:'PI','PIAUÍ':'PI','RIO DE JANEIRO':'RJ','RIO GRANDE DO NORTE':'RN','RIO GRANDE DO SUL':'RS',
-      RONDONIA:'RO','RONDÔNIA':'RO',RORAIMA:'RR','SANTA CATARINA':'SC','SAO PAULO':'SP','SÃO PAULO':'SP',SERGIPE:'SE',TOCANTINS:'TO'
+      AC: 'AC',
+      AL: 'AL',
+      AP: 'AP',
+      AM: 'AM',
+      BA: 'BA',
+      CE: 'CE',
+      DF: 'DF',
+      ES: 'ES',
+      GO: 'GO',
+      MA: 'MA',
+      MT: 'MT',
+      MS: 'MS',
+      MG: 'MG',
+      PA: 'PA',
+      PB: 'PB',
+      PR: 'PR',
+      PE: 'PE',
+      PI: 'PI',
+      RJ: 'RJ',
+      RN: 'RN',
+      RS: 'RS',
+      RO: 'RO',
+      RR: 'RR',
+      SC: 'SC',
+      SP: 'SP',
+      SE: 'SE',
+      TO: 'TO',
+      ACRE: 'AC',
+      ALAGOAS: 'AL',
+      AMAPA: 'AP',
+      AMAPÁ: 'AP',
+      AMAZONAS: 'AM',
+      BAHIA: 'BA',
+      CEARA: 'CE',
+      CEARÁ: 'CE',
+      'DISTRITO FEDERAL': 'DF',
+      'ESPIRITO SANTO': 'ES',
+      'ESPÍRITO SANTO': 'ES',
+      GOIAS: 'GO',
+      GOIÁS: 'GO',
+      MARANHAO: 'MA',
+      MARANHÃO: 'MA',
+      'MATO GROSSO': 'MT',
+      'MATO GROSSO DO SUL': 'MS',
+      'MINAS GERAIS': 'MG',
+      PARA: 'PA',
+      PARÁ: 'PA',
+      PARAIBA: 'PB',
+      PARAÍBA: 'PB',
+      PARANA: 'PR',
+      PARANÁ: 'PR',
+      PERNAMBUCO: 'PE',
+      PIAUI: 'PI',
+      PIAUÍ: 'PI',
+      'RIO DE JANEIRO': 'RJ',
+      'RIO GRANDE DO NORTE': 'RN',
+      'RIO GRANDE DO SUL': 'RS',
+      RONDONIA: 'RO',
+      RONDÔNIA: 'RO',
+      RORAIMA: 'RR',
+      'SANTA CATARINA': 'SC',
+      'SAO PAULO': 'SP',
+      'SÃO PAULO': 'SP',
+      SERGIPE: 'SE',
+      TOCANTINS: 'TO',
     };
     return map[up] || (/^[A-Z]{2}$/.test(up) ? up : '');
   }, []);
@@ -53,10 +114,15 @@ export default function GrupoSinalizarScreen() {
     (p, ms = 9000) =>
       new Promise((resolve, reject) => {
         const t = setTimeout(() => reject(new Error('LOCATION_TIMEOUT')), ms);
-        p.then((v) => { clearTimeout(t); resolve(v); })
-         .catch((e) => { clearTimeout(t); reject(e); });
+        p.then((v) => {
+          clearTimeout(t);
+          resolve(v);
+        }).catch((e) => {
+          clearTimeout(t);
+          reject(e);
+        });
       }),
-    []
+    [],
   );
 
   const getBestCoordsRetry = useCallback(async () => {
@@ -67,7 +133,7 @@ export default function GrupoSinalizarScreen() {
           accuracy: Location.Accuracy.BestForNavigation,
           mayShowUserSettingsDialog: true,
         }),
-        9000
+        9000,
       );
       console.log('[SINALIZAR] T#1 OK coords =', g1.coords);
       return g1.coords;
@@ -88,7 +154,9 @@ export default function GrupoSinalizarScreen() {
               unsub();
             }
           }
-        } catch (_) { /* ignore */ }
+        } catch (_) {
+          /* ignore */
+        }
         if (best) {
           console.log('[SINALIZAR] T#2 OK best fix =', best);
           resolve(best);
@@ -101,7 +169,9 @@ export default function GrupoSinalizarScreen() {
       try {
         unsub = await Location.watchPositionAsync(
           { accuracy: Location.Accuracy.BestForNavigation, timeInterval: 500, distanceInterval: 0 },
-          (loc) => { best = loc?.coords || best; }
+          (loc) => {
+            best = loc?.coords || best;
+          },
         );
       } catch (e) {
         clearTimeout(timer);
@@ -122,15 +192,21 @@ export default function GrupoSinalizarScreen() {
       const cepAmbigu = !currentCep8 || isGenericCep(currentCep8) || isGenericCep(userCep8);
       return villeOk && ufOk && cepAmbigu;
     },
-    [normalize, toUF]
+    [normalize, toUF],
   );
 
   const checkLocationAndDispatch = useCallback(async () => {
-    if (isRunningRef.current) { console.log('[SINALIZAR] Ignoré (déjà en cours)'); return; }
+    if (isRunningRef.current) {
+      console.log('[SINALIZAR] Ignoré (déjà en cours)');
+      return;
+    }
     isRunningRef.current = true;
 
     console.log('[SINALIZAR] START — hasGoogleKey =', hasGoogleKey(), 'user =', {
-      cep: user?.cep, cidade: user?.cidade, estado: user?.estado, groupId: user?.groupId
+      cep: user?.cep,
+      cidade: user?.cidade,
+      estado: user?.estado,
+      groupId: user?.groupId,
     });
 
     try {
@@ -151,7 +227,7 @@ export default function GrupoSinalizarScreen() {
       const coords = await getBestCoordsRetry();
       console.log('[SINALIZAR] Coords finales =', coords);
 
-      const userCepRef = String(user?.cep || user?.cepRef || '').replace(/\D/g,'');
+      const userCepRef = String(user?.cep || user?.cepRef || '').replace(/\D/g, '');
       const userCidade = String(user?.cidade || '');
       const userUF = toUF(user?.estado);
 
@@ -162,10 +238,16 @@ export default function GrupoSinalizarScreen() {
         expectedCity: userCidade,
         expectedUF: userUF,
       });
-      const currentCep8 = String(res.cep || '').replace(/\D/g,'');
-      console.log('[SINALIZAR] RESOLVE DONE →', { cep: res.cep, addr: res.address, candidates: (res.candidates||[]).length });
+      const currentCep8 = String(res.cep || '').replace(/\D/g, '');
+      console.log('[SINALIZAR] RESOLVE DONE →', {
+        cep: res.cep,
+        addr: res.address,
+        candidates: (res.candidates || []).length,
+      });
 
-      if (sameZone(currentCep8, userCepRef, res.address?.cidade, res.address?.uf, userCidade, userUF)) {
+      if (
+        sameZone(currentCep8, userCepRef, res.address?.cidade, res.address?.uf, userCidade, userUF)
+      ) {
         console.log('[SINALIZAR] SAME ZONE → afficher modale 2 choix');
         Alert.alert(
           'Tipo de alerta',
@@ -188,21 +270,30 @@ export default function GrupoSinalizarScreen() {
             },
             {
               text: 'Público',
-              onPress: () => { console.log('[SINALIZAR] Choix: public → /report'); router.replace('/report'); },
+              onPress: () => {
+                console.log('[SINALIZAR] Choix: public → /report');
+                router.replace('/report');
+              },
               style: 'default',
             },
             {
               text: 'Cancelar',
               style: 'cancel',
-              onPress: () => { console.log('[SINALIZAR] Choix: annuler → /home'); router.replace('/(tabs)/home'); },
+              onPress: () => {
+                console.log('[SINALIZAR] Choix: annuler → /home');
+                router.replace('/(tabs)/home');
+              },
             },
           ],
-          { cancelable: true }
+          { cancelable: true },
         );
       } else {
         console.log('[SINALIZAR] HORS ZONE → toast + /report');
         setToastVisible(true);
-        setTimeout(() => { setToastVisible(false); router.replace('/report'); }, TOAST_DURATION);
+        setTimeout(() => {
+          setToastVisible(false);
+          router.replace('/report');
+        }, TOAST_DURATION);
       }
     } catch (err) {
       console.log('[SINALIZAR] ERREUR =', err?.message || err);
@@ -214,7 +305,9 @@ export default function GrupoSinalizarScreen() {
     }
   }, [router, user, getBestCoordsRetry, toUF, sameZone]);
 
-  useEffect(() => { if (user) checkLocationAndDispatch(); }, [user, checkLocationAndDispatch]);
+  useEffect(() => {
+    if (user) checkLocationAndDispatch();
+  }, [user, checkLocationAndDispatch]);
 
   return (
     <View style={styles.container}>
@@ -233,6 +326,11 @@ export default function GrupoSinalizarScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#181A20', justifyContent: 'center', alignItems: 'center' },
+  container: {
+    flex: 1,
+    backgroundColor: '#181A20',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   txt: { color: '#fff', marginTop: 15, fontSize: 17 },
 });

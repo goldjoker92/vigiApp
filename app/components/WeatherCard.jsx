@@ -1,6 +1,6 @@
 // components/WeatherCard.jsx
-import { useEffect, useState } from "react";
-import { View, Text, ActivityIndicator, StyleSheet } from "react-native";
+import { useEffect, useState } from 'react';
+import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 
 export default function WeatherCard({ cep }) {
   const [weather, setWeather] = useState(null);
@@ -15,9 +15,11 @@ export default function WeatherCard({ cep }) {
         // Récupère la ville à partir du CEP
         const cepResp = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
         const cepJson = await cepResp.json();
-        const cidade = cepJson.localidade || "Desconhecida";
+        const cidade = cepJson.localidade || 'Desconhecida';
         // Récupère la météo de la ville
-        const resp = await fetch(`https://api.openweathermap.org/data/2.5/weather?q=${cidade},BR&lang=pt_br&appid=${process.env.OPENWEATHER_API_KEY}&units=metric`);
+        const resp = await fetch(
+          `https://api.openweathermap.org/data/2.5/weather?q=${cidade},BR&lang=pt_br&appid=${process.env.OPENWEATHER_API_KEY}&units=metric`,
+        );
         const json = await resp.json();
         setWeather({
           description: json.weather[0]?.description,
@@ -33,12 +35,18 @@ export default function WeatherCard({ cep }) {
     fetchWeather();
   }, [cep]);
 
-  if (loading) return (
-    <View style={styles.card}><ActivityIndicator color="#00C859" /></View>
-  );
-  if (!weather) return (
-    <View style={styles.card}><Text style={{ color: '#fff' }}>Erro ao buscar clima</Text></View>
-  );
+  if (loading)
+    return (
+      <View style={styles.card}>
+        <ActivityIndicator color="#00C859" />
+      </View>
+    );
+  if (!weather)
+    return (
+      <View style={styles.card}>
+        <Text style={{ color: '#fff' }}>Erro ao buscar clima</Text>
+      </View>
+    );
 
   return (
     <View style={styles.card}>
@@ -50,8 +58,15 @@ export default function WeatherCard({ cep }) {
 }
 
 const styles = StyleSheet.create({
-  card: { width: '100%', backgroundColor: '#24262e', borderRadius: 16, padding: 18, marginBottom: 14, alignItems: 'flex-start' },
+  card: {
+    width: '100%',
+    backgroundColor: '#24262e',
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 14,
+    alignItems: 'flex-start',
+  },
   city: { color: '#ffe568', fontWeight: 'bold', fontSize: 17, marginBottom: 5 },
   temp: { color: '#fff', fontWeight: 'bold', fontSize: 29, marginBottom: 4 },
-  desc: { color: '#bbb', fontSize: 16 }
+  desc: { color: '#bbb', fontSize: 16 },
 });

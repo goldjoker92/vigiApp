@@ -1,5 +1,4 @@
-
-import React, { useState } from "react";
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -11,17 +10,17 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-} from "react-native";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { useRouter } from "expo-router";
-import { auth } from "../firebase";
-import { loadUserProfile } from "../utils/loadUserProfile";
-import { DEV_ACCOUNTS, DEV_PASSWORD } from "../src/dev/accounts";
+} from 'react-native';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { useRouter } from 'expo-router';
+import { auth } from '../firebase';
+import { loadUserProfile } from '../utils/loadUserProfile';
+import { DEV_ACCOUNTS, DEV_PASSWORD } from '../src/dev/accounts';
 
 export default function LoginScreen() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [senha, setSenha] = useState("");
+  const [email, setEmail] = useState('');
+  const [senha, setSenha] = useState('');
   const [loading, setLoading] = useState(false);
   const [devIndex, setDevIndex] = useState(0);
 
@@ -31,16 +30,16 @@ export default function LoginScreen() {
       const mail = email.trim();
       const pass = senha;
       if (!mail || !pass) {
-        Alert.alert("Erro", "Preencha e-mail e senha.");
+        Alert.alert('Erro', 'Preencha e-mail e senha.');
         setLoading(false);
         return;
       }
       const cred = await signInWithEmailAndPassword(auth, mail, pass);
       await loadUserProfile(cred.user.uid);
-      router.replace("/(tabs)/home");
-      console.log("Instance Firebase Auth ID no componente:", auth?.app?.name);
+      router.replace('/(tabs)/home');
+      console.log('Instance Firebase Auth ID no componente:', auth?.app?.name);
     } catch (error) {
-      Alert.alert("Erro", String(error?.message || error));
+      Alert.alert('Erro', String(error?.message || error));
     } finally {
       setLoading(false);
     }
@@ -48,16 +47,13 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={{ flex: 1 }}
     >
-      <ScrollView
-        contentContainerStyle={{ flexGrow: 1 }}
-        keyboardShouldPersistTaps="handled"
-      >
+      <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
         <View style={styles.container}>
           <Image
-            source={require("../assets/images/logoNameVigiApp.png")}
+            source={require('../assets/images/logoNameVigiApp.png')}
             style={styles.logo}
             resizeMode="contain"
           />
@@ -84,10 +80,10 @@ export default function LoginScreen() {
           />
 
           <TouchableOpacity style={styles.button} onPress={handleLogin}>
-            <Text style={styles.buttonText}>{loading ? "Entrando..." : "Entrar"}</Text>
+            <Text style={styles.buttonText}>{loading ? 'Entrando...' : 'Entrar'}</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={() => router.push("/auth/signup")}>
+          <TouchableOpacity onPress={() => router.push('/auth/signup')}>
             <Text style={styles.link}>
               Não tem conta? <Text style={styles.linkHighlight}>Cadastre-se</Text>
             </Text>
@@ -120,46 +116,46 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: "center",
+    justifyContent: 'center',
     padding: 24,
-    backgroundColor: "#181A20",
+    backgroundColor: '#181A20',
   },
   logo: {
     width: 400,
     height: 400,
-    alignSelf: "center",
+    alignSelf: 'center',
     marginBottom: 5,
   },
   input: {
     borderWidth: 0,
-    backgroundColor: "#23262F",
-    color: "#fff",
+    backgroundColor: '#23262F',
+    color: '#fff',
     padding: 14,
     borderRadius: 8,
     marginBottom: 10,
     fontSize: 16,
   },
   button: {
-    backgroundColor: "#007AFF",
+    backgroundColor: '#007AFF',
     padding: 16,
     borderRadius: 8,
-    alignItems: "center",
+    alignItems: 'center',
     marginBottom: 16,
   },
-  buttonText: { color: "#fff", fontWeight: "bold", fontSize: 18 },
-  link: { color: "#aaa", textAlign: "center", fontSize: 15 },
-  linkHighlight: { color: "#00C859", fontWeight: "bold" },
+  buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 18 },
+  link: { color: '#aaa', textAlign: 'center', fontSize: 15 },
+  linkHighlight: { color: '#00C859', fontWeight: 'bold' },
 
   // Bouton DEV (overlay, seulement en __DEV__)
   devBtn: {
-    position: "absolute",
+    position: 'absolute',
     right: 16,
     bottom: 16,
-    backgroundColor: "#22C55E",
+    backgroundColor: '#22C55E',
     paddingVertical: 10,
     paddingHorizontal: 14,
     borderRadius: 999,
     elevation: 3,
   },
-  devBtnText: { color: "#0b111a", fontWeight: "800" },
+  devBtnText: { color: '#0b111a', fontWeight: '800' },
 });

@@ -1,24 +1,19 @@
-import React from "react";
-import { Modal, View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from "react-native";
-import { Feather } from "@expo/vector-icons";
+import React from 'react';
+import { Modal, View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 
 export default function ConfirmModal({
   visible,
-  title = "",
-  description = "",
-  confirmLabel = "Sim",
-  cancelLabel = "Não",
+  title = '',
+  description = '',
+  confirmLabel = 'Sim',
+  cancelLabel = 'Não',
   loading = false,
   onConfirm,
   onCancel,
 }) {
   return (
-    <Modal
-      transparent
-      animationType="fade"
-      visible={visible}
-      onRequestClose={onCancel}
-    >
+    <Modal transparent animationType="fade" visible={visible} onRequestClose={onCancel}>
       <View style={styles.backdrop}>
         <View style={styles.container}>
           {title ? <Text style={styles.title}>{title}</Text> : null}
@@ -32,7 +27,7 @@ export default function ConfirmModal({
               activeOpacity={0.8}
             >
               <Feather name="x-circle" size={20} color="#b55a43" />
-              <Text style={[styles.btnText, { color: "#b55a43" }]}>{cancelLabel}</Text>
+              <Text style={[styles.btnText, { color: '#b55a43' }]}>{cancelLabel}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.confirmBtn}
@@ -45,7 +40,7 @@ export default function ConfirmModal({
               ) : (
                 <>
                   <Feather name="check-circle" size={20} color="#43b57b" />
-                  <Text style={[styles.btnText, { color: "#43b57b" }]}>{confirmLabel}</Text>
+                  <Text style={[styles.btnText, { color: '#43b57b' }]}>{confirmLabel}</Text>
                 </>
               )}
             </TouchableOpacity>
@@ -72,9 +67,9 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 19,
-    color: "#FFD600",
-    fontWeight: "bold",
-    textAlign: "center",
+    color: '#FFD600',
+    fontWeight: 'bold',
+    textAlign: 'center',
     marginBottom: 14,
   },
   message: {

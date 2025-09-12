@@ -19,7 +19,7 @@ export default function GroupJoinScreen() {
         setGroupId(groupId);
         Toast.show({
           type: 'success',
-          text1: "Você entrou no grupo!",
+          text1: 'Você entrou no grupo!',
         });
         Vibration.vibrate(60);
         setTimeout(() => {
@@ -28,7 +28,7 @@ export default function GroupJoinScreen() {
       } catch (e) {
         Toast.show({
           type: 'error',
-          text1: "Erro ao juntar-se",
+          text1: 'Erro ao juntar-se',
           text2: e.message,
         });
         Vibration.vibrate([0, 80, 40, 80]);
@@ -41,7 +41,14 @@ export default function GroupJoinScreen() {
   }, [user, groupId, router, setGroupId]);
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#181A20", alignItems: "center", justifyContent: "center" }}>
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: '#181A20',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
       <ActivityIndicator color="#00C859" size="large" />
     </View>
   );

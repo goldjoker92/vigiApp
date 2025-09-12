@@ -38,20 +38,26 @@ import {
 // ───────────────────────── helpers ─────────────────────────
 
 // logger silencieux en prod
-const log = (...args) => { if (__DEV__) console.log(...args); };
+const log = (...args) => {
+  if (__DEV__) console.log(...args);
+};
 
 // Attend un user Auth (max 3s) si `auth.currentUser` est encore vide
 const waitForAuthUser = () =>
   new Promise((resolve, reject) => {
     let unsub;
     const timeout = setTimeout(() => {
-      try { unsub && unsub(); } catch {}
+      try {
+        unsub && unsub();
+      } catch {}
       reject(new Error('timeout-wait-auth'));
     }, 3000);
     unsub = onAuthStateChanged(auth, (u) => {
       if (u) {
         clearTimeout(timeout);
-        try { unsub && unsub(); } catch {}
+        try {
+          unsub && unsub();
+        } catch {}
         resolve(u);
       }
     });
@@ -137,26 +143,53 @@ export default function ProfileOnboardingScreen() {
       }
     }
     run();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [cep, cepOk, endereco]);
 
   const handleSave = async () => {
     log('[ONBOARD][SAVE] start');
 
     // validations obligatoires
-    if (!email || !nome || !apelido || !cpf || !dataNascimento || !telefone || !estado || !cidade || !cep) {
+    if (
+      !email ||
+      !nome ||
+      !apelido ||
+      !cpf ||
+      !dataNascimento ||
+      !telefone ||
+      !estado ||
+      !cidade ||
+      !cep
+    ) {
       log('[ONBOARD][SAVE][VALID] champs manquants');
       Alert.alert('Preencha todos os campos obrigatórios (*)');
       return;
     }
-    if (!cpfOk) { log('[ONBOARD][SAVE][VALID] cpf invalido:', cpf); return Alert.alert('CPF inválido'); }
-    if (!cepOk) { log('[ONBOARD][SAVE][VALID] cep invalido:', cep); return Alert.alert('CEP inválido'); }
-    if (!phoneOk) { log('[ONBOARD][SAVE][VALID] telefone invalido:', telefone); return Alert.alert('Telefone inválido'); }
-    if (!dobOk)  { log('[ONBOARD][SAVE][VALID] data nasc invalida:', dataNascimento); return Alert.alert('Data de nascimento inválida'); }
+    if (!cpfOk) {
+      log('[ONBOARD][SAVE][VALID] cpf invalido:', cpf);
+      return Alert.alert('CPF inválido');
+    }
+    if (!cepOk) {
+      log('[ONBOARD][SAVE][VALID] cep invalido:', cep);
+      return Alert.alert('CEP inválido');
+    }
+    if (!phoneOk) {
+      log('[ONBOARD][SAVE][VALID] telefone invalido:', telefone);
+      return Alert.alert('Telefone inválido');
+    }
+    if (!dobOk) {
+      log('[ONBOARD][SAVE][VALID] data nasc invalida:', dataNascimento);
+      return Alert.alert('Data de nascimento inválida');
+    }
     // if (!maiorIdade) return Alert.alert('Usuário menor de idade');
 
     const telefoneE164 = phoneToE164BR(telefone);
-    if (!telefoneE164) { log('[ONBOARD][SAVE][VALID] telefone E164 invalido:', telefone); return Alert.alert('Telefone inválido'); }
+    if (!telefoneE164) {
+      log('[ONBOARD][SAVE][VALID] telefone E164 invalido:', telefone);
+      return Alert.alert('Telefone inválido');
+    }
 
     const payload = {
       nome: nome.trim(),
@@ -235,10 +268,20 @@ export default function ProfileOnboardingScreen() {
         />
 
         <Label text="Nome completo" obrigatorio />
-        <TextInput style={styles.input} placeholder="Nome completo" value={nome} onChangeText={setNome} />
+        <TextInput
+          style={styles.input}
+          placeholder="Nome completo"
+          value={nome}
+          onChangeText={setNome}
+        />
 
         <Label text="Apelido (exibe no app)" obrigatorio />
-        <TextInput style={styles.input} placeholder="Apelido" value={apelido} onChangeText={setApelido} />
+        <TextInput
+          style={styles.input}
+          placeholder="Apelido"
+          value={apelido}
+          onChangeText={setApelido}
+        />
 
         <Label text="CPF" obrigatorio />
         <CpfField value={cpf} onChange={setCpf} valid={cpfOk} />
@@ -261,16 +304,31 @@ export default function ProfileOnboardingScreen() {
         <UFField value={estado} onChange={setEstado} />
 
         <Label text="Cidade" obrigatorio />
-        <TextInput style={styles.input} placeholder="Cidade" value={cidade} onChangeText={setCidade} />
+        <TextInput
+          style={styles.input}
+          placeholder="Cidade"
+          value={cidade}
+          onChangeText={setCidade}
+        />
 
         <Label text="CEP" obrigatorio />
         <CepField value={cep} onChange={setCep} loading={cepLoading} valid={cepOk} />
 
         <Label text="Profissão" obrigatorio={false} />
-        <TextInput style={styles.input} placeholder="Profissão (opcional)" value={profissao} onChangeText={setProfissao} />
+        <TextInput
+          style={styles.input}
+          placeholder="Profissão (opcional)"
+          value={profissao}
+          onChangeText={setProfissao}
+        />
 
         <Label text="Sexo" obrigatorio={false} />
-        <TextInput style={styles.input} placeholder="Sexo (opcional)" value={sexo} onChangeText={setSexo} />
+        <TextInput
+          style={styles.input}
+          placeholder="Sexo (opcional)"
+          value={sexo}
+          onChangeText={setSexo}
+        />
 
         <TouchableOpacity
           style={[styles.button, loading && { opacity: 0.6, pointerEvents: 'none' }]}
@@ -286,9 +344,34 @@ export default function ProfileOnboardingScreen() {
 
 const styles = StyleSheet.create({
   container: { flexGrow: 1, padding: 24, backgroundColor: '#181A20', paddingBottom: 40 },
-  title: { fontSize: 30, fontWeight: 'bold', marginBottom: 30, color: '#fff', textAlign: 'center', letterSpacing: 1 },
-  input: { borderWidth: 0, backgroundColor: '#23262F', color: '#fff', padding: 16, borderRadius: 10, marginBottom: 16, fontSize: 17 },
-  button: { backgroundColor: '#22C55E', padding: 16, borderRadius: 10, alignItems: 'center', marginTop: 12, shadowColor: '#22C55E', shadowOpacity: 0.3, shadowRadius: 8, elevation: 2 },
+  title: {
+    fontSize: 30,
+    fontWeight: 'bold',
+    marginBottom: 30,
+    color: '#fff',
+    textAlign: 'center',
+    letterSpacing: 1,
+  },
+  input: {
+    borderWidth: 0,
+    backgroundColor: '#23262F',
+    color: '#fff',
+    padding: 16,
+    borderRadius: 10,
+    marginBottom: 16,
+    fontSize: 17,
+  },
+  button: {
+    backgroundColor: '#22C55E',
+    padding: 16,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginTop: 12,
+    shadowColor: '#22C55E',
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 2,
+  },
   buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 19, letterSpacing: 0.5 },
   label: { color: '#fff', fontWeight: '500', marginBottom: 6, marginLeft: 2 },
   required: { color: '#FF4C4C', fontWeight: 'bold', fontSize: 16 },

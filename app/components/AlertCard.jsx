@@ -9,7 +9,9 @@ export default function AlertCard({ title, subtitle, badge }) {
         <Text style={styles.title}>{title}</Text>
         {badge ? <Text style={styles.badge}>{badge}</Text> : null}
       </View>
-      <Text style={styles.subtitle} numberOfLines={2}>{subtitle}</Text>
+      <Text style={styles.subtitle} numberOfLines={2}>
+        {subtitle}
+      </Text>
     </View>
   );
 }
@@ -39,7 +41,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     marginLeft: 8,
-    fontSize: 14
+    fontSize: 14,
   },
-  subtitle: { color: '#00C859', fontSize: 16, marginTop: 8 }
+  subtitle: { color: '#00C859', fontSize: 16, marginTop: 8 },
 });

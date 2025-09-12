@@ -9,7 +9,7 @@ module.exports = function (api) {
         {
           root: ['.'],
           alias: {
-            '@': './',              // <— fallback générique
+            '@': './', // <— fallback générique
             '@/utils': './utils',
             '@/hooks': './hooks',
             '@/constants': './constants',

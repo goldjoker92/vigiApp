@@ -65,7 +65,7 @@ app-example
 # ───────── Firebase Functions ─────────
 functions/node_modules/
 functions/dist/
-functions/lib/
+functions/libs/
 
 android/
 ios/

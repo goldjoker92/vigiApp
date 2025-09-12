@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef } from 'react';
 import {
   Modal,
   KeyboardAvoidingView,
@@ -11,17 +11,17 @@ import {
   TouchableWithoutFeedback,
   Keyboard,
   ScrollView,
-} from "react-native";
-import { Feather } from "@expo/vector-icons";
+} from 'react-native';
+import { Feather } from '@expo/vector-icons';
 
 export default function NovaDemandaModal({ visible, onClose, onCreate }) {
-  const [desc, setDesc] = useState("");
+  const [desc, setDesc] = useState('');
   const [loading, setLoading] = useState(false);
   const inputRef = useRef();
 
   // Reset à l'ouverture
   React.useEffect(() => {
-    if (visible) setDesc("");
+    if (visible) setDesc('');
   }, [visible]);
 
   // Fermer sur backdrop
@@ -36,7 +36,7 @@ export default function NovaDemandaModal({ visible, onClose, onCreate }) {
     setLoading(true);
     try {
       await onCreate(desc.trim());
-      setDesc("");
+      setDesc('');
       onClose();
     } catch (_) {
       // Toast d’erreur possible ici
@@ -47,16 +47,11 @@ export default function NovaDemandaModal({ visible, onClose, onCreate }) {
   if (!visible) return null;
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-    >
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <TouchableWithoutFeedback onPress={handleBackdropPress}>
         <View style={styles.overlay}>
           <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : undefined}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             style={{ flex: 1 }}
             keyboardVerticalOffset={72}
           >
@@ -90,18 +85,12 @@ export default function NovaDemandaModal({ visible, onClose, onCreate }) {
                       <Text style={styles.btnCancelText}>Cancelar</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[
-                        styles.btn,
-                        styles.btnCreate,
-                        !desc.trim() && { opacity: 0.7 },
-                      ]}
+                      style={[styles.btn, styles.btnCreate, !desc.trim() && { opacity: 0.7 }]}
                       onPress={handleCreate}
                       disabled={loading || !desc.trim()}
                     >
                       <Feather name="check" size={20} color="#fff" />
-                      <Text style={styles.btnCreateText}>
-                        {loading ? "Criando..." : "Criar"}
-                      </Text>
+                      <Text style={styles.btnCreateText}>{loading ? 'Criando...' : 'Criar'}</Text>
                     </TouchableOpacity>
                   </View>
                 </ScrollView>
@@ -117,76 +106,76 @@ export default function NovaDemandaModal({ visible, onClose, onCreate }) {
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: "rgba(10,12,22,0.7)",
-    justifyContent: "center",
-    alignItems: "center",
+    backgroundColor: 'rgba(10,12,22,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
     paddingHorizontal: 16,
   },
   modalBox: {
-    backgroundColor: "#181A20",
+    backgroundColor: '#181A20',
     borderRadius: 17,
     padding: 22,
     minWidth: 300,
     maxWidth: 430,
-    width: "100%",
+    width: '100%',
     elevation: 7,
-    shadowColor: "#000",
+    shadowColor: '#000',
     shadowOpacity: 0.23,
     shadowRadius: 13,
   },
   title: {
     fontSize: 23,
-    fontWeight: "bold",
-    color: "#FFD600",
+    fontWeight: 'bold',
+    color: '#FFD600',
     marginBottom: 16,
-    textAlign: "center",
+    textAlign: 'center',
   },
   label: {
-    fontWeight: "600",
-    color: "#FFD600",
+    fontWeight: '600',
+    color: '#FFD600',
     marginBottom: 4,
     fontSize: 15.5,
   },
   input: {
-    backgroundColor: "#22242D",
-    color: "#fff",
+    backgroundColor: '#22242D',
+    color: '#fff',
     borderRadius: 12,
     padding: 13,
     fontSize: 16.5,
     minHeight: 72,
     marginBottom: 17,
     borderWidth: 1.2,
-    borderColor: "#FFD600",
+    borderColor: '#FFD600',
   },
   btnRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     marginTop: 4,
   },
   btn: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingVertical: 11,
     paddingHorizontal: 20,
     borderRadius: 9,
   },
   btnCancel: {
-    backgroundColor: "#23262F",
-    borderColor: "#FFD600",
+    backgroundColor: '#23262F',
+    borderColor: '#FFD600',
     borderWidth: 2,
   },
   btnCancelText: {
-    color: "#FFD600",
-    fontWeight: "bold",
+    color: '#FFD600',
+    fontWeight: 'bold',
     fontSize: 18,
     marginLeft: 7,
   },
   btnCreate: {
-    backgroundColor: "#00C859",
+    backgroundColor: '#00C859',
   },
   btnCreateText: {
-    color: "#fff",
-    fontWeight: "bold",
+    color: '#fff',
+    fontWeight: 'bold',
     fontSize: 18,
     marginLeft: 7,
   },
