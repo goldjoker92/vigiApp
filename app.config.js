@@ -101,7 +101,8 @@ export default ({ config }) => ({
       },
     ],
 
-    // ✅ Flavors propres: force une dimension 'store' avec la seule saveur 'play'
+    // ✅ Flavors: crée la dimension 'store' avec la seule saveur 'play'
+    //   -> Gradle choisit automatiquement la variante 'play' de react-native-iap
     [
       'expo-build-properties',
       {
@@ -126,7 +127,7 @@ export default ({ config }) => ({
     androidCollapsedTitle: 'VigiApp',
   },
 
-  // --- Variables d'env exposées ---
+  // --- Env exposées ---
   extra: {
     EXPO_PUBLIC_GOOGLE_MAPS_KEY: process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY,
     OPENWEATHER_API_KEY: process.env.OPENWEATHER_API_KEY,
@@ -142,7 +143,7 @@ export default ({ config }) => ({
     FIREBASE_MESSAGING_SENDER_ID: process.env.FIREBASE_MESSAGING_SENDER_ID,
     FIREBASE_APP_ID: process.env.FIREBASE_APP_ID,
 
-    // Lien EAS explicite
+    // EAS project
     eas: { projectId: '38fd672e-850f-436f-84f6-8a1626ed338a' },
   },
 });
