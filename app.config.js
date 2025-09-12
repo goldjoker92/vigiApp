@@ -43,7 +43,6 @@ export default ({ config }) => ({
       'android.permission.POST_NOTIFICATIONS',
       'android.permission.WAKE_LOCK',
       'android.permission.RECEIVE_BOOT_COMPLETED',
-      // Les autres viennent des modules utilisés (location/camera, etc.)
     ],
   },
 
@@ -102,9 +101,18 @@ export default ({ config }) => ({
       },
     ],
 
-    // ✅ Force Gradle à choisir la variante IAP "play" quand la dimension 'store' est requise
-    //   (évite l’ambiguïté amazon/play en debug & release)
-    './plugins/withIapStoreDimension.js',
+    // ✅ Flavors propres: force une dimension 'store' avec la seule saveur 'play'
+    [
+      'expo-build-properties',
+      {
+        android: {
+          flavorDimensions: ['store'],
+          productFlavors: {
+            play: { dimension: 'store' },
+          },
+        },
+      },
+    ],
   ],
 
   // --- Expériences ---
