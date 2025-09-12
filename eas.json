@@ -16,8 +16,7 @@
       "node": "20.19.5",
       "distribution": "internal",
       "android": {
-        "buildType": "apk",
-        "gradleCommand": ":app:assemblePlayDebug"
+        "buildType": "apk"
       },
       "cache": { "disabled": true },
       "env": { "EXPO_NODE_VERSION": "20.19.5" }
