@@ -36,14 +36,14 @@ export default ({ config }) => ({
     },
     // Google Maps Android
     config: { googleMaps: { apiKey: process.env.ANDROID_MAPS_API_KEY } },
-    // FCM (place le fichier à la racine du projet)
+    // FCM (fichier à la racine du projet)
     googleServicesFile: './google-services.json',
     // Permissions Android 13+
     permissions: [
       'android.permission.POST_NOTIFICATIONS',
       'android.permission.WAKE_LOCK',
       'android.permission.RECEIVE_BOOT_COMPLETED',
-      // Laisse Expo ajouter les permissions dynamiques (location/camera) via modules utilisés
+      // Les autres viennent des modules utilisés (location/camera, etc.)
     ],
   },
 
@@ -88,7 +88,7 @@ export default ({ config }) => ({
     [
       'react-native-google-mobile-ads',
       {
-        // IDs de test Google (ok pour dev). Remplace en prod.
+        // IDs de test (ok en dev). Remplace en prod.
         androidAppId: 'ca-app-pub-3940256099942544~3347511713',
         iosAppId: 'ca-app-pub-3940256099942544~1458002511',
       },
@@ -102,18 +102,9 @@ export default ({ config }) => ({
       },
     ],
 
-    // ✅ Corrige l’ambiguïté Gradle de react-native-iap via flavor "play"
-    [
-      'expo-build-properties',
-      {
-        android: {
-          defaultConfig: {
-          missingDimensionStrategy: [['store', 'play']],
-            // amazon: { dimension: 'store' }, // si tu en as besoin plus tard
-          },
-        },
-      },
-    ],
+    // ✅ Force Gradle à choisir la variante IAP "play" quand la dimension 'store' est requise
+    //   (évite l’ambiguïté amazon/play en debug & release)
+    './plugins/withIapStoreDimension.js',
   ],
 
   // --- Expériences ---
@@ -143,7 +134,7 @@ export default ({ config }) => ({
     FIREBASE_MESSAGING_SENDER_ID: process.env.FIREBASE_MESSAGING_SENDER_ID,
     FIREBASE_APP_ID: process.env.FIREBASE_APP_ID,
 
-    // Lien EAS explicite (peut être retiré si géré via .eas/project.json)
+    // Lien EAS explicite
     eas: { projectId: '38fd672e-850f-436f-84f6-8a1626ed338a' },
   },
 });
