@@ -98,6 +98,9 @@
       "@types/eslint-scope": "^3.7.7",
       "@types/node": "^24.3.0",
       "@types/react": "~19.0.10",
+      "ajv": "^8.17.1",
+      "ajv-formats": "^2.1.1",
+      "ajv-keywords": "^5.1.0",
       "babel-jest": "29.7.0",
       "babel-plugin-module-resolver": "^5.0.2",
       "dotenv": "^17.2.2",
@@ -113,7 +116,25 @@
       "react-dom": "^19.0.0",
       "react-test-renderer": "19.0.0",
       "scheduler": "^0.25.0",
+      "schema-utils": "^4.3.2",
       "typescript": "~5.8.3",
       "webpack": "^5.101.3"
-   }
+   },
+  "overrides": {
+    "schema-utils": "^4.3.2",
+
+    "ajv": "^8.17.1",
+    "ajv-formats": "^2.1.1",
+    "ajv-keywords": "^5.1.0",
+    "json-schema-traverse": "^1.0.0",
+
+    "eslint": {
+      "ajv": "6.12.6",
+      "json-schema-traverse": "0.4.1"
+    },
+    "@eslint/eslintrc": {
+      "ajv": "6.12.6",
+      "json-schema-traverse": "0.4.1"
+    }
+  }
 }
