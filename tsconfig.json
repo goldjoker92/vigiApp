@@ -18,5 +18,4 @@
     "app/(tabs)/index.jsx",
     "app/chats/[chatId].jsx"
   ],
-  "extends": "expo/tsconfig.base"
 }
