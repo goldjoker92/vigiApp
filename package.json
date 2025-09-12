@@ -113,7 +113,7 @@
       "jest-expo": "^53.0.9",
       "lint-staged": "^15.5.2",
       "prettier": "^3.6.2",
-      "react-dom": "^19.0.0",
+      "react-dom": "19.0.0",
       "react-test-renderer": "19.0.0",
       "scheduler": "^0.25.0",
       "schema-utils": "^4.3.2",
@@ -121,6 +121,7 @@
       "webpack": "^5.101.3"
    },
   "overrides": {
+    "react-dom": "19.0.0",
     "schema-utils": "^4.3.2",
 
     "ajv": "^8.17.1",
