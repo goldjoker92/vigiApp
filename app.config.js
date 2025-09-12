@@ -107,9 +107,8 @@ export default ({ config }) => ({
       'expo-build-properties',
       {
         android: {
-          flavorDimensions: ['store'],
-          productFlavors: {
-            play: { dimension: 'store' },
+          defaultConfig: {
+          missingDimensionStrategy: [['store', 'play']],
             // amazon: { dimension: 'store' }, // si tu en as besoin plus tard
           },
         },
