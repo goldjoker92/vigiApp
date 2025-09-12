@@ -26,6 +26,7 @@ export default ({ config }) => ({
 
   // --- Android ---
   android: {
+    // Garde toning de versionnage Android distinct
     version: '1.0.1',
     versionCode: 2,
     package: 'com.guigui92.vigiapp',
@@ -36,13 +37,14 @@ export default ({ config }) => ({
     },
     // Google Maps Android
     config: { googleMaps: { apiKey: process.env.ANDROID_MAPS_API_KEY } },
-    // FCM (place le fichier à la racine)
+    // FCM (place le fichier à la racine du projet)
     googleServicesFile: './google-services.json',
     // Permissions Android 13+
     permissions: [
       'android.permission.POST_NOTIFICATIONS',
       'android.permission.WAKE_LOCK',
       'android.permission.RECEIVE_BOOT_COMPLETED',
+      // Laisse Expo ajouter les permissions dynamiques (location/camera) via modules utilisés
     ],
   },
 
@@ -64,7 +66,7 @@ export default ({ config }) => ({
   plugins: [
     'expo-router',
 
-    // Notifications (⚠️ pas de `sounds: ['default']`)
+    // Notifications (⚠️ ne pas mettre `sounds: ['default']` ici)
     [
       'expo-notifications',
       {
@@ -89,6 +91,7 @@ export default ({ config }) => ({
     [
       'react-native-google-mobile-ads',
       {
+        // IDs de test Google (ok pour dev). Remplace en prod.
         androidAppId: 'ca-app-pub-3940256099942544~3347511713',
         iosAppId: 'ca-app-pub-3940256099942544~1458002511',
       },
@@ -108,10 +111,14 @@ export default ({ config }) => ({
       {
         android: {
           flavorDimensions: ['store'],
-          productFlavors: { play: { dimension: 'store' } },
-          // Alternative si tu ne veux pas de flavors :
+          productFlavors: {
+            play: { dimension: 'store' },
+            // Si un jour tu veux Amazon, ajoute : amazon: { dimension: 'store' }
+          },
+          // Alternative si tu ne veux pas créer de flavors :
           // defaultConfig: { missingDimensionStrategy: [['store', 'play']] }
         },
+        // iOS: {} // rien de spécial ici pour l’instant
       },
     ],
   ],
