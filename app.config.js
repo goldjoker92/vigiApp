@@ -1,9 +1,10 @@
-// app.config.js (fix: remove invalid 'sounds: ["default"]')
+// app.config.js
 import 'dotenv/config';
 
 export default ({ config }) => ({
   ...config,
 
+  // --- App metadata ---
   name: 'VigiApp',
   slug: 'vigiapp',
   owner: 'goldjoker92',
@@ -14,6 +15,7 @@ export default ({ config }) => ({
   userInterfaceStyle: 'automatic',
   newArchEnabled: true,
 
+  // --- iOS ---
   ios: {
     supportsTablet: true,
     bundleIdentifier: 'com.guigui92.vigiapp',
@@ -22,6 +24,7 @@ export default ({ config }) => ({
     // googleServicesFile: './GoogleService-Info.plist',
   },
 
+  // --- Android ---
   android: {
     version: '1.0.1',
     versionCode: 2,
@@ -31,8 +34,11 @@ export default ({ config }) => ({
       foregroundImage: './assets/images/adaptive-icon.png',
       backgroundColor: '#ffffff',
     },
+    // Google Maps Android
     config: { googleMaps: { apiKey: process.env.ANDROID_MAPS_API_KEY } },
+    // FCM (place le fichier à la racine)
     googleServicesFile: './google-services.json',
+    // Permissions Android 13+
     permissions: [
       'android.permission.POST_NOTIFICATIONS',
       'android.permission.WAKE_LOCK',
@@ -40,29 +46,32 @@ export default ({ config }) => ({
     ],
   },
 
+  // --- Splash ---
   splash: {
     image: './assets/images/logoVigiApp.png',
     backgroundColor: '#181A20',
     resizeMode: 'contain',
   },
 
+  // --- Web ---
   web: {
     bundler: 'metro',
     output: 'static',
     favicon: './assets/images/favicon.png',
   },
 
+  // --- Plugins ---
   plugins: [
     'expo-router',
 
-    // ✅ FIXED: removed invalid `sounds: ['default']`
+    // Notifications (⚠️ pas de `sounds: ['default']`)
     [
       'expo-notifications',
       {
         icon: './assets/images/notification-icon.png',
         color: '#0A84FF',
         mode: 'production',
-        // To use a real custom sound later:
+        // Ex. pour un son custom plus tard :
         // sounds: ['./assets/sounds/ding.mp3'],
       },
     ],
@@ -92,10 +101,25 @@ export default ({ config }) => ({
         enableGooglePay: true,
       },
     ],
+
+    // ✅ Corrige l’ambiguïté Gradle de react-native-iap (choix de la saveur "play")
+    [
+      'expo-build-properties',
+      {
+        android: {
+          flavorDimensions: ['store'],
+          productFlavors: { play: { dimension: 'store' } },
+          // Alternative si tu ne veux pas de flavors :
+          // defaultConfig: { missingDimensionStrategy: [['store', 'play']] }
+        },
+      },
+    ],
   ],
 
+  // --- Expériences ---
   experiments: { typedRoutes: true },
 
+  // --- Fallback global notifications ---
   notification: {
     icon: './assets/images/notification-icon.png',
     color: '#0A84FF',
@@ -103,6 +127,7 @@ export default ({ config }) => ({
     androidCollapsedTitle: 'VigiApp',
   },
 
+  // --- Variables d'env exposées ---
   extra: {
     EXPO_PUBLIC_GOOGLE_MAPS_KEY: process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY,
     OPENWEATHER_API_KEY: process.env.OPENWEATHER_API_KEY,
@@ -110,6 +135,7 @@ export default ({ config }) => ({
     RC_API_KEY_ANDROID: process.env.RC_API_KEY_ANDROID,
     STRIPE_PUBLISHABLE_KEY: process.env.STRIPE_PUBLISHABLE_KEY,
 
+    // Firebase Web
     FIREBASE_API_KEY: process.env.FIREBASE_API_KEY,
     FIREBASE_AUTH_DOMAIN: process.env.FIREBASE_AUTH_DOMAIN,
     FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID,
@@ -117,7 +143,7 @@ export default ({ config }) => ({
     FIREBASE_MESSAGING_SENDER_ID: process.env.FIREBASE_MESSAGING_SENDER_ID,
     FIREBASE_APP_ID: process.env.FIREBASE_APP_ID,
 
-    // si tu préfères laisser EAS lier le projet via .eas/project.json, tu peux retirer ceci
+    // Lien EAS explicite (peut être retiré si géré via .eas/project.json)
     eas: { projectId: '38fd672e-850f-436f-84f6-8a1626ed338a' },
   },
 });
