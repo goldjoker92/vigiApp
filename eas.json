@@ -1,6 +1,6 @@
 ﻿{
   "cli": {
-    "version": "\u003e= 12.0.0",
+    "version": ">= 12.0.0",
     "appVersionSource": "local"
   },
   "build": {
@@ -8,38 +8,32 @@
       "node": "20.19.5",
       "developmentClient": true,
       "distribution": "internal",
-      "android": {
-        "buildType": "apk"
-      },
-      "cache": {
-        "disabled": true
-      },
-      "env": {
-        "EXPO_NODE_VERSION": "20.19.5"
-      }
+      "android": { "buildType": "apk" },
+      "cache": { "disabled": true },
+      "env": { "EXPO_NODE_VERSION": "20.19.5" }
     },
     "preview": {
       "node": "20.19.5",
       "distribution": "internal",
-      "cache": {
-        "disabled": true
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assemblePlayDebug"
       },
-      "env": {
-        "EXPO_NODE_VERSION": "20.19.5"
-      }
+      "cache": { "disabled": true },
+      "env": { "EXPO_NODE_VERSION": "20.19.5" }
     },
     "production": {
       "node": "20.19.5",
-      "cache": {
-        "disabled": true
+      "android": {
+        "gradleCommand": ":app:bundlePlayRelease"
       },
-      "env": {
-        "EXPO_NODE_VERSION": "20.19.5"
-      }
+      "cache": { "disabled": true },
+      "env": { "EXPO_NODE_VERSION": "20.19.5" }
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "android": { "track": "internal" }
+    }
   }
-  
 }

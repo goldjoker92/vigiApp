@@ -7,14 +7,11 @@ function addMissingDimensionStrategy(gradle) {
   if (gradle.includes(`missingDimensionStrategy 'store'`)) return gradle;
 
   // Ajoute dans defaultConfig { ... }
-  return gradle.replace(
-    /defaultConfig\s*\{([\s\S]*?)\n\}/m,
-    (match) => {
-      if (match.includes(`missingDimensionStrategy 'store'`)) return match;
-      const insertion = `\n        // Force la variante IAP "play" par défaut\n        missingDimensionStrategy 'store', 'play'\n`;
-      return match.replace(/\n\}/m, `${insertion}    }\n`);
-    }
-  );
+  return gradle.replace(/defaultConfig\s*\{([\s\S]*?)\n\}/m, (match) => {
+    if (match.includes(`missingDimensionStrategy 'store'`)) return match;
+    const insertion = `\n        // Force la variante IAP "play" par défaut\n        missingDimensionStrategy 'store', 'play'\n`;
+    return match.replace(/\n\}/m, `${insertion}    }\n`);
+  });
 }
 
 const withIapStoreDimension = (config) => {
