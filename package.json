@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "vigiapp",
   "version": "1.0.0",
   "private": true,
@@ -71,6 +71,7 @@
     "react-native": "0.79.5",
     "react-native-gesture-handler": "2.24.0",
     "react-native-google-mobile-ads": "^15.7.0",
+    "react-native-linear-gradient": "2.8.3",
     "react-native-maps": "1.20.1",
     "react-native-mask-input": "^1.2.3",
     "react-native-modal": "^14.0.0-rc.1",
@@ -88,8 +89,7 @@
     "react-native-swipe-list-view": "^3.2.9",
     "react-native-toast-message": "^2.3.3",
     "zod": "^4.1.5",
-    "zustand": "^5.0.8",
-    "react-native-linear-gradient": "2.8.3"
+    "zustand": "^5.0.8"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
