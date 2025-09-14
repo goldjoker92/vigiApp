@@ -1,9 +1,9 @@
-{
+﻿{
   "name": "vigiapp",
   "version": "1.0.0",
   "private": true,
   "main": "expo-router/entry",
-  "packageManager": "npm@10.8.2",
+  "packageManager": "yarn@1.22.22",
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
