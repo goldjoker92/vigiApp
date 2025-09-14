@@ -1,32 +1,24 @@
-{
+﻿{
   "cli": { "version": ">= 12.0.0", "appVersionSource": "local" },
   "build": {
     "development": {
       "node": "20.19.5",
       "developmentClient": true,
       "distribution": "internal",
-      "android": {
-        "buildType": "apk",
-        "gradleCommand": ":app:assembleLocalDebug"
-      },
+      "android": { "buildType": "apk" },
       "cache": { "disabled": true },
       "env": { "EXPO_NODE_VERSION": "20.19.5", "AUDIENCE": "local" }
     },
     "preview": {
       "node": "20.19.5",
       "distribution": "internal",
-      "android": {
-        "buildType": "apk",
-        "gradleCommand": ":app:assembleLocalDebug"
-      },
+      "android": { "buildType": "apk" },
       "cache": { "disabled": true },
       "env": { "EXPO_NODE_VERSION": "20.19.5", "AUDIENCE": "local" }
     },
     "production": {
       "node": "20.19.5",
-      "android": {
-        "buildType": "app-bundle"
-      },
+      "android": { "buildType": "app-bundle" },
       "cache": { "disabled": true },
       "env": { "EXPO_NODE_VERSION": "20.19.5", "AUDIENCE": "local" }
     },
@@ -34,18 +26,13 @@
       "node": "20.19.5",
       "developmentClient": true,
       "distribution": "internal",
-      "android": {
-        "buildType": "apk",
-        "gradleCommand": ":app:assembleTouristDebug"
-      },
+      "android": { "buildType": "apk" },
       "cache": { "disabled": true },
       "env": { "EXPO_NODE_VERSION": "20.19.5", "AUDIENCE": "tourist" }
     },
     "touristProd": {
       "node": "20.19.5",
-      "android": {
-        "gradleCommand": ":app:bundleTouristRelease"
-      },
+      "android": { "buildType": "app-bundle" },
       "cache": { "disabled": true },
       "env": { "EXPO_NODE_VERSION": "20.19.5", "AUDIENCE": "tourist" }
     }
