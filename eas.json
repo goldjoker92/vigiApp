@@ -25,7 +25,7 @@
     "production": {
       "node": "20.19.5",
       "android": {
-        "gradleCommand": ":app:bundleLocalRelease"
+        "buildType": "app-bundle"
       },
       "cache": { "disabled": true },
       "env": { "EXPO_NODE_VERSION": "20.19.5", "AUDIENCE": "local" }
