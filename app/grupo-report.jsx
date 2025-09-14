@@ -84,7 +84,9 @@ export default function GrupoReportScreen() {
         const ask = await Location.requestForegroundPermissionsAsync();
         status = ask.status;
       }
-      if (status !== 'granted') throw new Error('Permission refusée');
+      if (status !== 'granted') {
+        throw new Error('Permission refusée');
+      }
 
       // Précision haute
       const loc = await Location.getCurrentPositionAsync({
@@ -104,7 +106,9 @@ export default function GrupoReportScreen() {
         if (addr && addr.length > 0) {
           let rua = addr[0].street || 'Não recuperado';
           let numero = addr[0].streetNumber || addr[0].name || '';
-          if (numero && rua.includes(numero)) numero = '';
+          if (numero && rua.includes(numero)) {
+            numero = '';
+          }
           setAddress({
             rua,
             numero,
@@ -162,10 +166,18 @@ export default function GrupoReportScreen() {
   };
 
   const handleSend = async () => {
-    if (!categoria) return Alert.alert('Selecione uma categoria.');
-    if (!descricao.trim()) return Alert.alert('Descreva o ocorrido.');
-    if (!local) return Alert.alert('Localização ausente.');
-    if (!groupId) return Alert.alert('Você não está em nenhum grupo.');
+    if (!categoria) {
+      return Alert.alert('Selecione uma categoria.');
+    }
+    if (!descricao.trim()) {
+      return Alert.alert('Descreva o ocorrido.');
+    }
+    if (!local) {
+      return Alert.alert('Localização ausente.');
+    }
+    if (!groupId) {
+      return Alert.alert('Você não está em nenhum grupo.');
+    }
     try {
       await addDoc(collection(db, 'groupAlerts'), {
         userId: auth.currentUser?.uid,
@@ -192,8 +204,12 @@ export default function GrupoReportScreen() {
     }
   };
 
-  if (user === undefined) return <ActivityIndicator style={{ flex: 1 }} color="#22C55E" />;
-  if (!user) return null;
+  if (user === undefined) {
+    return <ActivityIndicator style={{ flex: 1 }} color="#22C55E" />;
+  }
+  if (!user) {
+    return null;
+  }
 
   const isBtnActive = !!(
     categoria &&
