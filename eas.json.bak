@@ -1,68 +1,51 @@
-﻿{
+{
   "cli": { "version": ">= 12.0.0", "appVersionSource": "local" },
   "build": {
     "development": {
       "node": "20.19.5",
       "developmentClient": true,
       "distribution": "internal",
-      "android": { "buildType": "apk" },
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleLocalDebug"
+      },
       "cache": { "disabled": true },
       "env": { "EXPO_NODE_VERSION": "20.19.5", "AUDIENCE": "local" }
     },
-
-    "dev-arm64": {
-      "node": "20.19.5",
-      "developmentClient": true,
-      "distribution": "internal",
-      "android": { "buildType": "apk" },
-      "cache": { "disabled": true },
-      "env": {
-        "EXPO_NODE_VERSION": "20.19.5",
-        "AUDIENCE": "local",
-        "REACT_NATIVE_ARCHITECTURES": "arm64-v8a"
-      }
-    },
-
-    "dev-emulator": {
-      "node": "20.19.5",
-      "developmentClient": true,
-      "distribution": "internal",
-      "android": { "buildType": "apk" },
-      "cache": { "disabled": true },
-      "env": {
-        "EXPO_NODE_VERSION": "20.19.5",
-        "AUDIENCE": "local",
-        "REACT_NATIVE_ARCHITECTURES": "x86_64"
-      }
-    },
-
     "preview": {
       "node": "20.19.5",
       "distribution": "internal",
-      "android": { "buildType": "apk" },
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleLocalDebug"
+      },
       "cache": { "disabled": true },
       "env": { "EXPO_NODE_VERSION": "20.19.5", "AUDIENCE": "local" }
     },
-
     "production": {
       "node": "20.19.5",
-      "android": { "buildType": "app-bundle" },
+      "android": {
+        "buildType": "app-bundle"
+      },
       "cache": { "disabled": true },
       "env": { "EXPO_NODE_VERSION": "20.19.5", "AUDIENCE": "local" }
     },
-
     "touristDev": {
       "node": "20.19.5",
       "developmentClient": true,
       "distribution": "internal",
-      "android": { "buildType": "apk" },
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleTouristDebug"
+      },
       "cache": { "disabled": true },
       "env": { "EXPO_NODE_VERSION": "20.19.5", "AUDIENCE": "tourist" }
     },
-
     "touristProd": {
       "node": "20.19.5",
-      "android": { "buildType": "app-bundle" },
+      "android": {
+        "gradleCommand": ":app:bundleTouristRelease"
+      },
       "cache": { "disabled": true },
       "env": { "EXPO_NODE_VERSION": "20.19.5", "AUDIENCE": "tourist" }
     }
