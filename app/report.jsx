@@ -64,8 +64,12 @@ export default function ReportScreen() {
   const [loadingLoc, setLoadingLoc] = useState(false);
   const [cepPrecision, setCepPrecision] = useState('none');
 
-  if (user === undefined) return <ActivityIndicator style={{ flex: 1 }} color="#22C55E" />;
-  if (!user) return null;
+  if (user === undefined) {
+    return <ActivityIndicator style={{ flex: 1 }} color="#22C55E" />;
+  }
+  if (!user) {
+    return null;
+  }
 
   const now = new Date();
   const dateBR = now.toLocaleDateString('pt-BR');
@@ -110,8 +114,11 @@ export default function ReportScreen() {
       const rua = res.address?.logradouro || '';
       const numero = res.address?.numero || '';
       let ruaNumeroVal = '';
-      if (rua && numero) ruaNumeroVal = `${rua}, ${numero}`;
-      else ruaNumeroVal = rua || numero || '';
+      if (rua && numero) {
+        ruaNumeroVal = `${rua}, ${numero}`;
+      } else {
+        ruaNumeroVal = rua || numero || '';
+      }
 
       setRuaNumero(ruaNumeroVal.trim());
       setCidade(res.address?.cidade || '');
@@ -144,12 +151,21 @@ export default function ReportScreen() {
 
   const handleSend = async () => {
     console.log('[REPORT] handleSend START');
-    if (!categoria) return Alert.alert('Selecione uma categoria.');
-    if (!ruaNumero.trim()) return Alert.alert('Preencha o campo Rua e número.');
-    if (!cidade.trim() || !estado.trim()) return Alert.alert('Preencha cidade e estado.');
-    if (!descricao.trim()) return Alert.alert('Descreva o ocorrido.');
-    if (!local?.latitude || !local?.longitude)
+    if (!categoria) {
+      return Alert.alert('Selecione uma categoria.');
+    }
+    if (!ruaNumero.trim()) {
+      return Alert.alert('Preencha o campo Rua e número.');
+    }
+    if (!cidade.trim() || !estado.trim()) {
+      return Alert.alert('Preencha cidade e estado.');
+    }
+    if (!descricao.trim()) {
+      return Alert.alert('Descreva o ocorrido.');
+    }
+    if (!local?.latitude || !local?.longitude) {
       return Alert.alert('Use sua localização para posicionar o alerta.');
+    }
 
     try {
       // expiresAt = now + 90 jours (pour TTL Firestore)
