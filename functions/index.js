@@ -1,18 +1,15 @@
-/**
- * VigiApp — Cloud Functions (Node 20, CJS)
- * Agrégateur des exports (ne contient pas de logique métier).
- * On garde des noms d'exports IDENTIQUES pour éviter toute régression.
- */
+const admin = require('firebase-admin');
+const { setGlobalOptions } = require('firebase-functions/v2');
 
-const functions = require('firebase-functions');
+admin.initializeApp();
 
-// Options globales pour tout le code (région + limites)
-functions.setGlobalOptions({
-  region: 'us-central1',
+setGlobalOptions({
+  // Mets la région qui t’arrange (BR conseillé)
+  region: process.env.FUNCTIONS_REGION || 'southamerica-east1',
   maxInstances: 10,
 });
 
-// Exports modulaires (les noms DOIVENT rester identiques)
+// 👉 modules dans functions/src/
 exports.purgeAndArchiveOldRequestsAndChats =
   require('./src/purge').purgeAndArchiveOldRequestsAndChats;
 exports.sendPublicAlertByCEP = require('./src/pushPublic').sendPublicAlertByCEP;

@@ -37,7 +37,9 @@ const safeJson = (obj, max = 800) => {
   }
 };
 const maskToken = (t) => {
-  if (!t) return t;
+  if (!t) {
+    return t;
+  }
   const s = String(t);
   return s.length > 14 ? `${s.slice(0, 6)}…${s.slice(-6)}(${s.length})` : s;
 };
@@ -45,7 +47,9 @@ const maskToken = (t) => {
 // ---- Utils
 function chunk(arr, size) {
   const out = [];
-  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  for (let i = 0; i < arr.length; i += size) {
+    out.push(arr.slice(i, i + size));
+  }
   return out;
 }
 
@@ -77,7 +81,9 @@ async function expoPushSend(tokens, title, body, data = {}) {
 
   const unique = dedupe(tokens);
   const dupes = tokens.length - unique.length;
-  if (dupes > 0) warn(`[expoPushSend] removed duplicates: ${dupes}`);
+  if (dupes > 0) {
+    warn(`[expoPushSend] removed duplicates: ${dupes}`);
+  }
 
   log('[expoPushSend] start', {
     count: unique.length,
@@ -143,7 +149,7 @@ async function expoPushSend(tokens, title, body, data = {}) {
         log(`[expoPushSend] batch ${batchIndex} ok=${okCount}`);
       }
       results.push(json);
-    } catch (e) {
+    } catch (_e) {
       warn(`[expoPushSend] non-JSON response (batch ${batchIndex})`, (text || '').slice(0, 256));
       results.push({ raw: text });
     }
@@ -164,7 +170,9 @@ async function expoPushSendWithMap(tokens, title, body, data = {}) {
 
   const unique = dedupe(tokens);
   const dupes = tokens.length - unique.length;
-  if (dupes > 0) warn(`[expoPushSendWithMap] removed duplicates: ${dupes}`);
+  if (dupes > 0) {
+    warn(`[expoPushSendWithMap] removed duplicates: ${dupes}`);
+  }
 
   log('[expoPushSendWithMap] start', {
     count: unique.length,
@@ -219,7 +227,7 @@ async function expoPushSendWithMap(tokens, title, body, data = {}) {
     try {
       const json = JSON.parse(text);
       results.push(json);
-    } catch (e) {
+    } catch (_e) {
       warn(
         `[expoPushSendWithMap] non-JSON response (batch ${batchIndex})`,
         (text || '').slice(0, 256),
@@ -235,13 +243,16 @@ async function expoPushSendWithMap(tokens, title, body, data = {}) {
 // ---- Résumé des résultats Expo (ok/error par code)
 function summarizeExpoResults(results) {
   const summary = { ok: 0, error: 0, errorsByCode: {} };
-  if (!Array.isArray(results)) return summary;
+  if (!Array.isArray(results)) {
+    return summary;
+  }
 
   for (const r of results) {
     const arr = Array.isArray(r?.data) ? r.data : [];
     for (const t of arr) {
-      if (t?.status === 'ok') summary.ok += 1;
-      else if (t?.status === 'error') {
+      if (t?.status === 'ok') {
+        summary.ok += 1;
+      } else if (t?.status === 'error') {
         summary.error += 1;
         const code = t?.details?.error || 'unknown';
         summary.errorsByCode[code] = (summary.errorsByCode[code] || 0) + 1;
@@ -292,7 +303,9 @@ async function cleanInvalidTokens(expoResults, tokenMap) {
 
   for (const grp of chunk(invalidTokens, 10)) {
     const snap = await db.collection('devices').where('expoPushToken', 'in', grp).get();
-    if (snap.empty) continue;
+    if (snap.empty) {
+      continue;
+    }
 
     const batch = db.batch();
     snap.forEach((doc) => {
@@ -327,7 +340,9 @@ async function getTokensByCEP(cep) {
   const tokens = [];
   snap.forEach((doc) => {
     const t = doc.get('expoPushToken');
-    if (t) tokens.push(t);
+    if (t) {
+      tokens.push(t);
+    }
   });
   log('[getTokensByCEP] found=', tokens.length, 'sample=', tokens.slice(0, 3).map(maskToken));
   return tokens;
@@ -335,13 +350,17 @@ async function getTokensByCEP(cep) {
 
 async function getTokensByUserIds(userIds) {
   log('[getTokensByUserIds] input length=', userIds?.length || 0);
-  if (!Array.isArray(userIds) || userIds.length === 0) return [];
+  if (!Array.isArray(userIds) || userIds.length === 0) {
+    return [];
+  }
   const tokens = [];
   for (const ids of chunk(userIds, 10)) {
     const snap = await db.collection('devices').where('userId', 'in', ids).get();
     snap.forEach((doc) => {
       const t = doc.get('expoPushToken');
-      if (t) tokens.push(t);
+      if (t) {
+        tokens.push(t);
+      }
     });
   }
   log(
