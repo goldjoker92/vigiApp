@@ -1,6 +1,11 @@
-# .husky/pre-commit (Husky v9+)
-# Auto-fix sur les fichiers stagés
-npx --no-install lint-staged || echo "lint-staged a échoué (non bloquant)"
+# Husky v9 - pré-commit 100% non bloquant
 
-# Tests en info seulement (ne bloque pas le commit)
-npm test -s || echo "Tests failed (non-blocking)"
+echo "[husky] format + lint (non-bloquant)…"
+npx --no-install lint-staged || echo "[husky] lint-staged a échoué (non bloquant)"
+
+echo "[husky] tests rapides (non-bloquants)…"
+node -e "require('fs').mkdirSync('tmp',{recursive:true})"
+npm run test:quick || echo "[husky] tests en échec (non bloquant)"
+
+echo "[husky] mise à jour du rapport…"
+node scripts/husky-report-single.js --hook pre-commit || echo "[husky] rapport partiel (non bloquant)"

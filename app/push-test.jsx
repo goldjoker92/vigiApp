@@ -59,13 +59,17 @@ export default function PushTestScreen() {
     try {
       setLoading(true);
       const t = await registerForPushNotificationsAsync();
-      if (mounted.current) setToken(t);
+      if (mounted.current) {
+        setToken(t);
+      }
       Alert.alert('Token obtenu', 'Tu peux maintenant tester un push.');
     } catch (e) {
       console.error('register error', e);
       Alert.alert('Erreur', e?.message || 'Impossible d’obtenir le token');
     } finally {
-      if (mounted.current) setLoading(false);
+      if (mounted.current) {
+        setLoading(false);
+      }
     }
   }
 
@@ -83,7 +87,9 @@ export default function PushTestScreen() {
       console.error('send push error', e);
       Alert.alert('Erreur d’envoi', e?.message || 'Impossible d’envoyer le push');
     } finally {
-      if (mounted.current) setSending(false);
+      if (mounted.current) {
+        setSending(false);
+      }
     }
   }
 
@@ -116,7 +122,9 @@ export default function PushTestScreen() {
       console.error('save device error', e);
       Alert.alert('Erreur enregistrement', e?.message || 'inconnue');
     } finally {
-      if (mounted.current) setSaving(false);
+      if (mounted.current) {
+        setSaving(false);
+      }
     }
   }
 
