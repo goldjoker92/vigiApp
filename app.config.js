@@ -11,17 +11,15 @@ export default ({ config }) => ({
   version: '1.0.0',
   orientation: 'portrait',
   icon: './assets/images/icon.png',
-  scheme: 'vigiapp',
+  scheme: 'vigiapp',                 // deep links "app-only"
   userInterfaceStyle: 'automatic',
-  newArchEnabled: true,
+  newArchEnabled: true,               // OK avec SDK 53 / RN 0.79
 
-  // --- iOS ---
+  // --- iOS (laisse par défaut, on ne shippe pas iOS en V1) ---
   ios: {
     supportsTablet: true,
     bundleIdentifier: 'com.guigui92.vigiapp',
-    merchantIdentifier: 'merchant.com.guigui92.vigiapp',
-    config: { googleMapsApiKey: process.env.IOS_MAPS_API_KEY },
-    // googleServicesFile: './GoogleService-Info.plist',
+    // Pas de Stripe/iOS merchant ici en V1
   },
 
   // --- Android ---
@@ -34,16 +32,31 @@ export default ({ config }) => ({
       foregroundImage: './assets/images/adaptive-icon.png',
       backgroundColor: '#ffffff',
     },
-    // Google Maps Android
+
+    // Google Maps (facultatif)
     config: { googleMaps: { apiKey: process.env.ANDROID_MAPS_API_KEY } },
-    // FCM (fichier à la racine du projet)
+
+    // FCM (Expo copiera vers android/app/google-services.json)
     googleServicesFile: './google-services.json',
-    // Permissions Android 13+
+
+    // Permissions (Android 13+) + AD_ID pour AdMob
     permissions: [
       'android.permission.POST_NOTIFICATIONS',
       'android.permission.WAKE_LOCK',
       'android.permission.RECEIVE_BOOT_COMPLETED',
+      'com.google.android.gms.permission.AD_ID'
     ],
+
+    // Intent-filters pour ouvrir des écrans précis via scheme (notifs/partages internes)
+    intentFilters: [
+      {
+        action: 'VIEW',
+        categories: ['BROWSABLE', 'DEFAULT'],
+        data: [
+          { scheme: 'vigiapp' },                // vigiapp://...
+        ]
+      }
+    ]
   },
 
   // --- Splash ---
@@ -53,7 +66,7 @@ export default ({ config }) => ({
     resizeMode: 'contain',
   },
 
-  // --- Web ---
+  // --- Web (inutile pour V1, mais inoffensif) ---
   web: {
     bundler: 'metro',
     output: 'static',
@@ -64,16 +77,17 @@ export default ({ config }) => ({
   plugins: [
     'expo-router',
 
-    // Notifications
+    // Notifications (plugin Expo) — options supportées
     [
       'expo-notifications',
       {
         icon: './assets/images/notification-icon.png',
         color: '#0A84FF',
-        mode: 'production',
+        // pas de "mode: 'production'" ici (clé non supportée)
       },
     ],
 
+    // Splash (ok)
     [
       'expo-splash-screen',
       {
@@ -84,33 +98,24 @@ export default ({ config }) => ({
       },
     ],
 
+    // AdMob (IDs de test en dev — remplace l’androidAppId en prod)
     [
       'react-native-google-mobile-ads',
       {
-        // IDs de test (ok en dev). Remplace en prod.
-        androidAppId: 'ca-app-pub-3940256099942544~3347511713',
-        iosAppId: 'ca-app-pub-3940256099942544~1458002511',
+        androidAppId: 'ca-app-pub-3940256099942544~3347511713'
       },
     ],
 
-    [
-      '@stripe/stripe-react-native',
-      {
-        merchantIdentifier: 'merchant.com.guigui92.vigiapp',
-        enableGooglePay: true,
-      },
-    ],
-
-    // ✅ Flavors: crée la dimension 'store' avec la seule saveur 'play'
-    //   -> Gradle choisit automatiquement la variante 'play' de react-native-iap
+    // Build properties : on fige toolchain pour éviter la drift Gradle
     [
       'expo-build-properties',
       {
         android: {
-          flavorDimensions: ['store'],
-          productFlavors: {
-            play: { dimension: 'store' },
-          },
+          // Expo 53 le fait déjà, on les rend explicites
+          compileSdkVersion: 35,
+          targetSdkVersion: 35,
+          kotlinVersion: '2.0.21',
+          // Pas de flavors "play" (IAP supprimé)
         },
       },
     ],
@@ -132,10 +137,10 @@ export default ({ config }) => ({
     EXPO_PUBLIC_GOOGLE_MAPS_KEY: process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY,
     OPENWEATHER_API_KEY: process.env.OPENWEATHER_API_KEY,
 
+    // RevenueCat (Android)
     RC_API_KEY_ANDROID: process.env.RC_API_KEY_ANDROID,
-    STRIPE_PUBLISHABLE_KEY: process.env.STRIPE_PUBLISHABLE_KEY,
 
-    // Firebase Web
+    // Firebase Web (si tu utilises le SDK JS côté web/services)
     FIREBASE_API_KEY: process.env.FIREBASE_API_KEY,
     FIREBASE_AUTH_DOMAIN: process.env.FIREBASE_AUTH_DOMAIN,
     FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID,
@@ -143,7 +148,7 @@ export default ({ config }) => ({
     FIREBASE_MESSAGING_SENDER_ID: process.env.FIREBASE_MESSAGING_SENDER_ID,
     FIREBASE_APP_ID: process.env.FIREBASE_APP_ID,
 
-    // EAS project
+    // EAS
     eas: { projectId: '38fd672e-850f-436f-84f6-8a1626ed338a' },
   },
 });
