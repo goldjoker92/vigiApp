@@ -1,25 +1,29 @@
 // app.config.js
 import 'dotenv/config';
 
+// 🔎 Logger build-time (facultatif) — décommente pour vérifier que les vars .env sont bien lues
+// const mask = (s = '') => (s ? s.slice(0, 6) + '…' + s.slice(-4) : '(vide)');
+// console.log('[VigiApp build] EXPO_PUBLIC_GOOGLE_MAPS_KEY =', mask(process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY));
+// console.log('[VigiApp build] FIREBASE_PROJECT_ID        =', process.env.FIREBASE_PROJECT_ID || '(vide)');
+
 export default ({ config }) => ({
   ...config,
 
-  // --- App metadata ---
+  // --- App ---
   name: 'VigiApp',
   slug: 'vigiapp',
   owner: 'goldjoker92',
   version: '1.0.0',
   orientation: 'portrait',
   icon: './assets/images/icon.png',
-  scheme: 'vigiapp',                 // deep links "app-only"
+  scheme: 'vigiapp',
   userInterfaceStyle: 'automatic',
-  newArchEnabled: true,               // OK avec SDK 53 / RN 0.79
+  newArchEnabled: true,
 
-  // --- iOS (laisse par défaut, on ne shippe pas iOS en V1) ---
+  // --- iOS (pas ciblé V1) ---
   ios: {
     supportsTablet: true,
     bundleIdentifier: 'com.guigui92.vigiapp',
-    // Pas de Stripe/iOS merchant ici en V1
   },
 
   // --- Android ---
@@ -33,30 +37,39 @@ export default ({ config }) => ({
       backgroundColor: '#ffffff',
     },
 
-    // Google Maps (facultatif)
-    config: { googleMaps: { apiKey: process.env.ANDROID_MAPS_API_KEY } },
+    // ✅ Google Maps injectée depuis .env (source unique)
+    config: {
+      googleMaps: {
+        apiKey:
+          process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY // clé que tu as déjà dans .env
+          || process.env.ANDROID_MAPS_API_KEY     // fallback (optionnel)
+          || '',
+      },
+      // AdMob App ID (test). En prod: remplace par ton ID réel.
+      googleMobileAdsAppId: 'ca-app-pub-3940256099942544~3347511713',
+    },
 
-    // FCM (Expo copiera vers android/app/google-services.json)
-    googleServicesFile: './google-services.json',
-
-    // Permissions (Android 13+) + AD_ID pour AdMob
+    // ✅ Permissions nécessaires (géoloc + Ads)
     permissions: [
       'android.permission.POST_NOTIFICATIONS',
       'android.permission.WAKE_LOCK',
       'android.permission.RECEIVE_BOOT_COMPLETED',
-      'com.google.android.gms.permission.AD_ID'
+      'com.google.android.gms.permission.AD_ID',
+      'android.permission.ACCESS_FINE_LOCATION',
+      'android.permission.ACCESS_COARSE_LOCATION',
     ],
 
-    // Intent-filters pour ouvrir des écrans précis via scheme (notifs/partages internes)
+    // FCM
+    googleServicesFile: './google-services.json',
+
+    // Deep links
     intentFilters: [
       {
         action: 'VIEW',
         categories: ['BROWSABLE', 'DEFAULT'],
-        data: [
-          { scheme: 'vigiapp' },                // vigiapp://...
-        ]
-      }
-    ]
+        data: [{ scheme: 'vigiapp' }],
+      },
+    ],
   },
 
   // --- Splash ---
@@ -66,7 +79,7 @@ export default ({ config }) => ({
     resizeMode: 'contain',
   },
 
-  // --- Web (inutile pour V1, mais inoffensif) ---
+  // --- Web (inoffensif) ---
   web: {
     bundler: 'metro',
     output: 'static',
@@ -76,55 +89,14 @@ export default ({ config }) => ({
   // --- Plugins ---
   plugins: [
     'expo-router',
-
-    // Notifications (plugin Expo) — options supportées
-    [
-      'expo-notifications',
-      {
-        icon: './assets/images/notification-icon.png',
-        color: '#0A84FF',
-        // pas de "mode: 'production'" ici (clé non supportée)
-      },
-    ],
-
-    // Splash (ok)
-    [
-      'expo-splash-screen',
-      {
-        image: './assets/images/splash-icon.png',
-        imageWidth: 200,
-        resizeMode: 'contain',
-        backgroundColor: '#ffffff',
-      },
-    ],
-
-    // AdMob (IDs de test en dev — remplace l’androidAppId en prod)
-    [
-      'react-native-google-mobile-ads',
-      {
-        androidAppId: 'ca-app-pub-3940256099942544~3347511713'
-      },
-    ],
-
-    // Build properties : on fige toolchain pour éviter la drift Gradle
-    [
-      'expo-build-properties',
-      {
-        android: {
-          // Expo 53 le fait déjà, on les rend explicites
-          compileSdkVersion: 35,
-          targetSdkVersion: 35,
-          kotlinVersion: '2.0.21',
-          // Pas de flavors "play" (IAP supprimé)
-        },
-      },
-    ],
+    ['expo-notifications', { icon: './assets/images/notification-icon.png', color: '#0A84FF' }],
+    ['expo-splash-screen', { image: './assets/images/splash-icon.png', imageWidth: 200, resizeMode: 'contain', backgroundColor: '#ffffff' }],
+    ['react-native-google-mobile-ads', { androidAppId: 'ca-app-pub-3940256099942544~3347511713' }],
+    ['expo-build-properties', { android: { compileSdkVersion: 35, targetSdkVersion: 35, kotlinVersion: '2.0.21' } }],
   ],
 
-  // --- Expériences ---
   experiments: { typedRoutes: true },
 
-  // --- Fallback global notifications ---
   notification: {
     icon: './assets/images/notification-icon.png',
     color: '#0A84FF',
@@ -132,23 +104,17 @@ export default ({ config }) => ({
     androidCollapsedTitle: 'VigiApp',
   },
 
-  // --- Env exposées ---
+  // --- Variables exposées runtime (utiles dans ton JS) ---
   extra: {
     EXPO_PUBLIC_GOOGLE_MAPS_KEY: process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY,
     OPENWEATHER_API_KEY: process.env.OPENWEATHER_API_KEY,
-
-    // RevenueCat (Android)
     RC_API_KEY_ANDROID: process.env.RC_API_KEY_ANDROID,
-
-    // Firebase Web (si tu utilises le SDK JS côté web/services)
     FIREBASE_API_KEY: process.env.FIREBASE_API_KEY,
     FIREBASE_AUTH_DOMAIN: process.env.FIREBASE_AUTH_DOMAIN,
     FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID,
     FIREBASE_STORAGE_BUCKET: process.env.FIREBASE_STORAGE_BUCKET,
     FIREBASE_MESSAGING_SENDER_ID: process.env.FIREBASE_MESSAGING_SENDER_ID,
     FIREBASE_APP_ID: process.env.FIREBASE_APP_ID,
-
-    // EAS
     eas: { projectId: '38fd672e-850f-436f-84f6-8a1626ed338a' },
   },
 });
