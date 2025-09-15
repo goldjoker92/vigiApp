@@ -96,12 +96,7 @@ async function geocodeWithOsm({ logradouro, bairro, localidade, uf }, { userAgen
  * @returns {Promise<{ lat:number, lng:number, source:string, fromCache:boolean, cep:string, address?:object }>}
  */
 export async function resolveCepToLatLng(cepRaw, options = {}) {
-  const {
-    forceRefresh = false,
-    maxAgeDays = 180,
-    userAgent,
-    sleepMs = 200,
-  } = options;
+  const { forceRefresh = false, maxAgeDays = 180, userAgent, sleepMs = 200 } = options;
 
   const cep = normalizeCep(cepRaw);
   if (!cep) throw new Error('CEP inválido');

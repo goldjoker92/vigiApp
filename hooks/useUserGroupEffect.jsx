@@ -1,6 +1,6 @@
-import { useEffect } from "react";
-import { useUserStore } from "../store/users";
-import { getUserGroupId } from "../utils/getUserGroupId";
+import { useEffect } from 'react';
+import { useUserStore } from '../store/users';
+import { getUserGroupId } from '../utils/getUserGroupId';
 
 /**
  * Hook: recharge le groupId quand l'utilisateur se connecte/déconnecte
@@ -18,7 +18,7 @@ export function useUserGroupEffect() {
       getUserGroupId(user.id)
         .then((foundGroupId) => {
           setGroupId(foundGroupId);
-          console.log("[useUserGroupEffect] GroupId rechargé après login/boot:", foundGroupId);
+          console.log('[useUserGroupEffect] GroupId rechargé après login/boot:', foundGroupId);
         })
         .finally(() => {
           setIsGroupLoading(false);
@@ -27,7 +27,7 @@ export function useUserGroupEffect() {
     if (!user?.id) {
       setGroupId(null);
       setIsGroupLoading(false);
-      console.log("[useUserGroupEffect] User déconnecté, groupId reset");
+      console.log('[useUserGroupEffect] User déconnecté, groupId reset');
     }
   }, [user?.id, groupId, setGroupId, setIsGroupLoading]);
 }

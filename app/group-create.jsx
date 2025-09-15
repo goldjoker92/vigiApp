@@ -1,22 +1,32 @@
-import { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Vibration, KeyboardAvoidingView, Platform, ActivityIndicator } from "react-native";
+import { useState } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Vibration,
+  KeyboardAvoidingView,
+  Platform,
+  ActivityIndicator,
+} from 'react-native';
 // Update the import path if the correct location is different, for example:
-import { useUserStore } from "../store/users";
+import { useUserStore } from '../store/users';
 // Or, if your store is in a different folder, adjust accordingly:
 // import { useUserStore } from "../../stores/users";
 // import { useUserStore } from "../../store/userStore";
 // Update the import path to match the actual location of groupService.js
-import { createGroup } from "../services/groupService";
+import { createGroup } from '../services/groupService';
 import Toast from 'react-native-toast-message';
-import { PlusCircle } from "lucide-react-native";
+import { PlusCircle } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 // Update the import path below to the correct location of useAuthGuard in your project
 import { useAuthGuard } from '../hooks/useAuthGuard';
 
 export default function GroupCreateScreen() {
   const user = useAuthGuard();
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
   const { setGroupId } = useUserStore();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -25,12 +35,12 @@ export default function GroupCreateScreen() {
 
   const handleCreate = async () => {
     if (!name) {
-      Toast.show({ type: 'error', text1: "Informe o nome do grupo!" });
+      Toast.show({ type: 'error', text1: 'Informe o nome do grupo!' });
       Vibration.vibrate([0, 100, 50, 100]);
       return;
     }
     if (!user || !user.id || !user.apelido || !user.nome || !user.cpf || !user.cep) {
-      Toast.show({ type: 'error', text1: "Perfil usuário incompleto!" });
+      Toast.show({ type: 'error', text1: 'Perfil usuário incompleto!' });
       Vibration.vibrate([0, 100, 50, 100]);
       return;
     }
@@ -48,17 +58,17 @@ export default function GroupCreateScreen() {
       setGroupId(groupId);
       Toast.show({
         type: 'success',
-        text1: "Grupo criado com sucesso!",
+        text1: 'Grupo criado com sucesso!',
         text2: name,
       });
       Vibration.vibrate(60);
       setTimeout(() => {
-        router.replace("/(tabs)/vizinhos");
+        router.replace('/(tabs)/vizinhos');
       }, 1000);
     } catch (e) {
       Toast.show({
         type: 'error',
-        text1: "Erro ao criar grupo",
+        text1: 'Erro ao criar grupo',
         text2: e.message,
       });
       Vibration.vibrate([0, 100, 50, 100]);
@@ -69,8 +79,8 @@ export default function GroupCreateScreen() {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      style={{ flex: 1, backgroundColor: "#181A20" }}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ flex: 1, backgroundColor: '#181A20' }}
     >
       <View style={styles.container}>
         <Text style={styles.title}>Criar novo grupo</Text>
@@ -97,7 +107,7 @@ export default function GroupCreateScreen() {
             disabled={loading}
           >
             <PlusCircle color="#fff" size={22} style={{ marginRight: 6 }} />
-            <Text style={styles.buttonText}>{loading ? "Criando..." : "Criar novo grupo"}</Text>
+            <Text style={styles.buttonText}>{loading ? 'Criando...' : 'Criar novo grupo'}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -109,41 +119,41 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     paddingHorizontal: 24,
-    backgroundColor: "#181A20",
-    justifyContent: "center",
-    alignItems: "center",
+    backgroundColor: '#181A20',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   title: {
-    color: "#00C859",
+    color: '#00C859',
     fontSize: 27,
     marginBottom: 28,
-    fontWeight: "bold",
+    fontWeight: 'bold',
     textAlign: 'center',
     letterSpacing: 0.2,
   },
   form: {
-    width: "100%",
+    width: '100%',
     maxWidth: 410,
-    alignSelf: "center",
-    alignItems: "center",
+    alignSelf: 'center',
+    alignItems: 'center',
   },
   input: {
-    width: "100%",
-    backgroundColor: "#23262F",
-    color: "#fff",
+    width: '100%',
+    backgroundColor: '#23262F',
+    color: '#fff',
     borderRadius: 12,
     padding: 16,
     marginBottom: 18,
     fontSize: 16,
   },
   button: {
-    flexDirection: "row",
-    backgroundColor: "#22C55E",
+    flexDirection: 'row',
+    backgroundColor: '#22C55E',
     borderRadius: 12,
     padding: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    width: "100%",
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
     marginTop: 6,
     marginBottom: 14,
     shadowColor: '#22C55E',
@@ -152,8 +162,8 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   buttonText: {
-    color: "#fff",
-    fontWeight: "bold",
+    color: '#fff',
+    fontWeight: 'bold',
     fontSize: 17,
     marginLeft: 8,
   },

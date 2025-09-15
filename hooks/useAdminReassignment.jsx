@@ -9,11 +9,15 @@ import dayjs from 'dayjs';
  */
 export async function startAdminReassignment(grupo, user) {
   console.log('[ADMIN] Démarrage de la passation admin...');
-  const apelidosSorted = [...grupo.apelidos].filter(a => a !== user.apelido).sort((a, b) => a.localeCompare(b));
+  const apelidosSorted = [...grupo.apelidos]
+    .filter((a) => a !== user.apelido)
+    .sort((a, b) => a.localeCompare(b));
   const membrosDetalhados = grupo.membrosDetalhados || [];
 
   // Filtre pour ne prendre que les membres encore présents
-  const candidates = apelidosSorted.map(apelido => membrosDetalhados.find(m => m.apelido === apelido)).filter(Boolean);
+  const candidates = apelidosSorted
+    .map((apelido) => membrosDetalhados.find((m) => m.apelido === apelido))
+    .filter(Boolean);
 
   for (let i = 0; i < candidates.length; i++) {
     const membro = candidates[i];
@@ -35,7 +39,10 @@ export async function startAdminReassignment(grupo, user) {
     await new Promise((resolve) => {
       const unsub = onSnapshot(doc(db, 'groups', grupo.id), (snap) => {
         const g = snap.data();
-        if (g?.propostaAdmin?.userId === membro.id && ['accepted', 'refused'].includes(g?.propostaAdmin?.status)) {
+        if (
+          g?.propostaAdmin?.userId === membro.id &&
+          ['accepted', 'refused'].includes(g?.propostaAdmin?.status)
+        ) {
           result = g.propostaAdmin.status === 'accepted';
           unsub();
           resolve();

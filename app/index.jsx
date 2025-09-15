@@ -1,5 +1,4 @@
-// app/auth/login.jsx
-import React, { useState } from "react";
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -11,88 +10,50 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-} from "react-native";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { useRouter } from "expo-router";
-import { auth } from "../firebase";
-import { loadUserProfile } from "../utils/loadUserProfile";
-import { DEV_ACCOUNTS, DEV_PASSWORD } from "../src/dev/accounts";
-
-// ✅ RNFirebase v22 (API modulaire)
-import { getApp } from "@react-native-firebase/app";
-import {
-  getMessaging,
-  requestPermission,
-  registerDeviceForRemoteMessages,
-  setAutoInitEnabled,
-  getToken,
-  onTokenRefresh,
-} from "@react-native-firebase/messaging";
+} from 'react-native';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { useRouter } from 'expo-router';
+import { auth } from '../firebase';
+import { loadUserProfile } from '../utils/loadUserProfile';
+import { DEV_ACCOUNTS, DEV_PASSWORD } from '../src/dev/accounts';
 
 export default function LoginScreen() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [senha, setSenha] = useState("");
+  const [email, setEmail] = useState('');
+  const [senha, setSenha] = useState('');
+  const [loading, setLoading] = useState(false);
   const [devIndex, setDevIndex] = useState(0);
 
-  // --- Helper: récupère et log le token silencieusement (console) ---
-  const fetchAndLogFcmToken = async () => {
-    try {
-      const app = getApp();
-      const msg = getMessaging(app);
-
-      // Permissions (Android 13+/iOS) – ne bloque pas si refus
-      try { await requestPermission(msg); } catch {}
-
-      // Enregistrement Play Services / APNS
-      try { await registerDeviceForRemoteMessages(msg); } catch {}
-
-      // Auto-init ON (au cas où)
-      try { await setAutoInitEnabled(msg, true); } catch {}
-
-      // Token courant
-      const token = await getToken(msg);
-      console.log("[FCM] Token récupéré:", token);
-
-      // Listener refresh (console only)
-      onTokenRefresh(msg, (t) => console.log("[FCM] Token refresh:", t));
-    } catch (e) {
-      console.log("[FCM] Erreur récupération token:", e?.message || e);
-    }
-  };
-  // ------------------------------------------------------------------
-
   const handleLogin = async () => {
+    setLoading(true);
     try {
       const mail = email.trim();
       const pass = senha;
       if (!mail || !pass) {
-        Alert.alert("Erro", "Preencha e-mail e senha.");
+        Alert.alert('Erro', 'Preencha e-mail e senha.');
+        setLoading(false);
         return;
       }
-
       const cred = await signInWithEmailAndPassword(auth, mail, pass);
       await loadUserProfile(cred.user.uid);
-
-      // Récupération FCM silencieuse (log console uniquement)
-      fetchAndLogFcmToken().catch((e) => console.log("[FCM] Erreur récupération token (outer):", e?.message || e));
-
-      router.replace("/(tabs)/home");
-      console.log("Firebase App:", auth?.app?.name);
+      router.replace('/(tabs)/home');
+      console.log('Instance Firebase Auth ID no componente:', auth?.app?.name);
     } catch (error) {
-      Alert.alert("Erro", String(error?.message || error));
+      Alert.alert('Erro', String(error?.message || error));
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={{ flex: 1 }}
     >
       <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
         <View style={styles.container}>
           <Image
-            source={require("../assets/images/logoNameVigiApp.png")}
+            source={require('../assets/images/logoNameVigiApp.png')}
             style={styles.logo}
             resizeMode="contain"
           />
@@ -119,10 +80,10 @@ export default function LoginScreen() {
           />
 
           <TouchableOpacity style={styles.button} onPress={handleLogin}>
-            <Text style={styles.buttonText}>Entrar</Text>
+            <Text style={styles.buttonText}>{loading ? 'Entrando...' : 'Entrar'}</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={() => router.push("/auth/signup")}>
+          <TouchableOpacity onPress={() => router.push('/auth/signup')}>
             <Text style={styles.link}>
               Não tem conta? <Text style={styles.linkHighlight}>Cadastre-se</Text>
             </Text>
@@ -153,29 +114,48 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: "center", padding: 24, backgroundColor: "#181A20" },
-  logo: { width: 400, height: 400, alignSelf: "center", marginBottom: 5 },
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: 24,
+    backgroundColor: '#181A20',
+  },
+  logo: {
+    width: 400,
+    height: 400,
+    alignSelf: 'center',
+    marginBottom: 5,
+  },
   input: {
-    backgroundColor: "#23262F",
-    color: "#fff",
+    borderWidth: 0,
+    backgroundColor: '#23262F',
+    color: '#fff',
     padding: 14,
     borderRadius: 8,
     marginBottom: 10,
     fontSize: 16,
   },
-  button: { backgroundColor: "#007AFF", padding: 16, borderRadius: 8, alignItems: "center", marginBottom: 16 },
-  buttonText: { color: "#fff", fontWeight: "bold", fontSize: 18 },
-  link: { color: "#aaa", textAlign: "center", fontSize: 15 },
-  linkHighlight: { color: "#00C859", fontWeight: "bold" },
+  button: {
+    backgroundColor: '#007AFF',
+    padding: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 18 },
+  link: { color: '#aaa', textAlign: 'center', fontSize: 15 },
+  linkHighlight: { color: '#00C859', fontWeight: 'bold' },
+
+  // Bouton DEV (overlay, seulement en __DEV__)
   devBtn: {
-    position: "absolute",
+    position: 'absolute',
     right: 16,
     bottom: 16,
-    backgroundColor: "#22C55E",
+    backgroundColor: '#22C55E',
     paddingVertical: 10,
     paddingHorizontal: 14,
     borderRadius: 999,
     elevation: 3,
   },
-  devBtnText: { color: "#0b111a", fontWeight: "800" },
+  devBtnText: { color: '#0b111a', fontWeight: '800' },
 });

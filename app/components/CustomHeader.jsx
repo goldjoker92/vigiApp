@@ -7,11 +7,7 @@ export default function CustomHeader({ notifs = 0, onMenuPress, onSearchPress, o
   return (
     <View style={styles.headerContainer}>
       {/* Logo */}
-      <Image 
-      source={logoVigiApp} 
-      style={styles.logoImage}
-      resizeMode="contain" 
-      />
+      <Image source={logoVigiApp} style={styles.logoImage} resizeMode="contain" />
 
       {/* Actions */}
       <View style={styles.actionsRow}>
@@ -41,9 +37,9 @@ export default function CustomHeader({ notifs = 0, onMenuPress, onSearchPress, o
 
 const styles = StyleSheet.create({
   logoImage: {
-    width: 120,    // ajuste selon la taille voulue
+    width: 120, // ajuste selon la taille voulue
     height: 60,
-    marginLeft:-10,
+    marginLeft: -10,
     padding: 5,
   },
   headerContainer: {
@@ -57,7 +53,7 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 20,
     borderBottomRightRadius: 20,
     elevation: 5,
-    shadowColor: "#000",
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.08,
     shadowRadius: 8,
@@ -102,5 +98,5 @@ const styles = StyleSheet.create({
     borderRadius: 50,
     backgroundColor: '#F6F8FA',
     elevation: 2,
-  }
+  },
 });

@@ -1,5 +1,5 @@
 // utils de base pour formats BR
-export const onlyDigits = (s = "") => String(s).replace(/\D+/g, "");
+export const onlyDigits = (s = '') => String(s).replace(/\D+/g, '');
 
 export function isValidCEP(cepDigits) {
   return /^\d{8}$/.test(onlyDigits(cepDigits));
@@ -40,23 +40,23 @@ export function parseBRDateToISO(ddmmyyyy) {
   const [, dd, mm, yyyy] = m;
   const d = new Date(`${yyyy}-${mm}-${dd}T00:00:00Z`);
   // vérifs basiques : mois 1-12, jour cohérent
-  if (d.getUTCFullYear() !== +yyyy || d.getUTCMonth() + 1 !== +mm || d.getUTCDate() !== +dd) return null;
+  if (d.getUTCFullYear() !== +yyyy || d.getUTCMonth() + 1 !== +mm || d.getUTCDate() !== +dd)
+    return null;
   if (d > new Date()) return null; // pas dans le futur
   return `${yyyy}-${mm}-${dd}`;
 }
 
 export function ageFromISO(iso) {
   if (!iso) return null;
-  const [y, m, d] = iso.split("-").map(Number);
+  const [y, m, d] = iso.split('-').map(Number);
   const now = new Date();
   let age = now.getFullYear() - y;
-  const beforeBDay =
-    now.getMonth() + 1 < m || (now.getMonth() + 1 === m && now.getDate() < d);
+  const beforeBDay = now.getMonth() + 1 < m || (now.getMonth() + 1 === m && now.getDate() < d);
   if (beforeBDay) age--;
   return age;
 }
 
 export function isAdultFromISO(iso) {
   const age = ageFromISO(iso);
-  return typeof age === "number" && age >= 18;
+  return typeof age === 'number' && age >= 18;
 }

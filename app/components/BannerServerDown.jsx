@@ -1,7 +1,7 @@
 // src/components/BannerServerDown.js
-import React from "react";
-import { View, Text, StyleSheet } from "react-native";
-import { MaterialIcons } from "@expo/vector-icons";
+import React from 'react';
+import { View, Text, StyleSheet } from 'react-native';
+import { MaterialIcons } from '@expo/vector-icons';
 
 export default function BannerServerDown() {
   return (
@@ -10,8 +10,8 @@ export default function BannerServerDown() {
       <View style={{ flex: 1 }}>
         <Text style={styles.title}>Servidor indisponível</Text>
         <Text style={styles.desc}>
-          Desculpe, não foi possível conectar ao servidor agora.
-          Algumas funções estão temporariamente inativas.
+          Desculpe, não foi possível conectar ao servidor agora. Algumas funções estão
+          temporariamente inativas.
         </Text>
       </View>
     </View>
@@ -20,31 +20,31 @@ export default function BannerServerDown() {
 
 const styles = StyleSheet.create({
   banner: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    backgroundColor: "#23262F",
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#23262F',
     borderBottomWidth: 2,
-    borderBottomColor: "#FFD600",
+    borderBottomColor: '#FFD600',
     paddingVertical: 14,
     paddingHorizontal: 18,
     marginBottom: 0,
-    shadowColor: "#FFD600",
+    shadowColor: '#FFD600',
     shadowOpacity: 0.06,
     shadowRadius: 6,
     elevation: 2,
     zIndex: 1000,
   },
   title: {
-    color: "#FFD600",
-    fontWeight: "bold",
+    color: '#FFD600',
+    fontWeight: 'bold',
     fontSize: 17,
     marginBottom: 2,
   },
   desc: {
-    color: "#fff",
+    color: '#fff',
     fontSize: 13.7,
     marginTop: 1,
-    fontWeight: "400",
+    fontWeight: '400',
     lineHeight: 18,
   },
 });

@@ -21,7 +21,13 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#181A20', padding: 24 },
+  container: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#181A20',
+    padding: 24,
+  },
   title: { color: '#fff', fontSize: 24, fontWeight: 'bold', marginBottom: 14 },
   info: { color: '#aaa', fontSize: 16, marginBottom: 6, textAlign: 'center' },
 });
