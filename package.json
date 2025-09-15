@@ -23,7 +23,10 @@
     "android:bare:assemble": "cd android && ./gradlew :app:assemblePlayDebug",
     "android:bare:install": "cd android && ./gradlew :app:installPlayDebug",
     "test": "jest",
-    "test:quick": "node scripts/husky-run-tests.js"
+    "format": "prettier --write .",
+    "test:quick": "jest -u -w 1 --silent --findRelatedTests --passWithNoTests",
+    "husky:report": "node scripts/husky-report-single.js",
+    "deps:check": "expo install --check"
   },
   "engines": {
     "node": ">=18 <21"
