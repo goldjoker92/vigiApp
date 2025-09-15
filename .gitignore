@@ -60,3 +60,5 @@ reports/
 # ───────── Fichiers locaux spécifiques ─────────
 README-ADMIN-PRIVATE.md
 *.local
+husky_report.md
+
