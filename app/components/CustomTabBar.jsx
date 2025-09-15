@@ -5,8 +5,8 @@ import { useRouter } from 'expo-router';
 const TABS = [
   { name: 'home', label: 'Início', icon: House },
   { name: 'mapa', label: 'Mapa', icon: MapPinned },
-  { name: 'vizinhos', label: 'Vizinhos', icon: Users  },
-  { name: 'profile', label: 'Perfil', icon: User }
+  { name: 'vizinhos', label: 'Vizinhos', icon: Users },
+  { name: 'profile', label: 'Perfil', icon: User },
 ];
 
 export default function CustomTabBar({ state, descriptors, navigation }) {
@@ -24,10 +24,8 @@ export default function CustomTabBar({ state, descriptors, navigation }) {
               style={styles.tabBtn}
               activeOpacity={0.7}
             >
-              <Icon color={isFocused ? "#00C859" : "#bbb"} size={26} />
-              <Text style={[styles.tabLabel, isFocused && { color: '#00C859' }]}>
-                {tab.label}
-              </Text>
+              <Icon color={isFocused ? '#00C859' : '#bbb'} size={26} />
+              <Text style={[styles.tabLabel, isFocused && { color: '#00C859' }]}>{tab.label}</Text>
             </TouchableOpacity>
           );
         })}
@@ -37,7 +35,7 @@ export default function CustomTabBar({ state, descriptors, navigation }) {
       <TouchableOpacity
         style={[
           styles.fab,
-          { backgroundColor: state.index === 1 ? '#007AFF' : '#FF4444' } // <- couleur dynamique: bleu si tab "mapa" actif, rouge sinon
+          { backgroundColor: state.index === 1 ? '#007AFF' : '#FF4444' }, // <- couleur dynamique: bleu si tab "mapa" actif, rouge sinon
         ]}
         activeOpacity={0.9}
         onPress={() => router.push('/grupo-sinalizar')}
@@ -57,10 +55,18 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(24,26,32,0.97)',
     borderTopLeftRadius: 22,
     borderTopRightRadius: 22,
-    shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 9,
-    height: TAB_BAR_HEIGHT, alignItems: 'center', justifyContent: 'space-around',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 9,
+    height: TAB_BAR_HEIGHT,
+    alignItems: 'center',
+    justifyContent: 'space-around',
     paddingBottom: Platform.OS === 'ios' ? 26 : 10,
-    position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 2,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 2,
     borderTopWidth: 0,
   },
   tabBtn: { alignItems: 'center', flex: 1, justifyContent: 'center' },
@@ -79,7 +85,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.21,
     shadowRadius: 11,
     shadowOffset: { width: 0, height: 4 },
-    zIndex: 99
+    zIndex: 99,
   },
-  fabText: { color: '#fff', fontWeight: 'bold', marginLeft: 12, fontSize: 16, letterSpacing: 0.5 }
+  fabText: { color: '#fff', fontWeight: 'bold', marginLeft: 12, fontSize: 16, letterSpacing: 0.5 },
 });

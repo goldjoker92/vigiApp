@@ -1,8 +1,8 @@
 // src/hooks/usePersistentQueue.js
-import { useEffect, useRef } from "react";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useEffect, useRef } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const STORAGE_KEY = "@offlineQueue";
+const STORAGE_KEY = '@offlineQueue';
 
 export function usePersistentQueue({ isOnline, onFlush }) {
   const queue = useRef([]);

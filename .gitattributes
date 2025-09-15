@@ -1,0 +1,26 @@
+﻿# ---------------------------------------
+# Gestion des fins de ligne pour Git
+# ---------------------------------------
+
+# Par défaut, Git normalise les fichiers texte en LF dans le repo,
+# et convertit en CRLF sous Windows si core.autocrlf=true.
+* text=auto eol=lf
+
+# ---------------------------------------
+# Exceptions importantes
+# ---------------------------------------
+
+# Le lockfile doit rester strictement identique byte par byte,
+# sinon npm ci échoue (différences de hash entre Windows et Linux).
+# => On désactive toute conversion pour lui.
+package-lock.json -text
+
+# Les scripts bash doivent tourner sur Linux (EAS, CI).
+# On force LF pour éviter le bug du shebang (#!/usr/bin/env...).
+*.sh text eol=lf
+
+# (Optionnel) Force LF aussi pour les fichiers de config sensibles
+# (YAML, JSON, etc.), histoire d’éviter des diffs fantômes CRLF/LF.
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf

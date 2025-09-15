@@ -1,5 +1,5 @@
 // src/hooks/useQueueOfflineActions.js
-import { useRef } from "react";
+import { useRef } from 'react';
 
 export function useQueueOfflineActions({ isOnline, onFlush }) {
   // Queue locale en mémoire (tu peux la brancher à AsyncStorage si tu veux persister)
@@ -20,4 +20,4 @@ export function useQueueOfflineActions({ isOnline, onFlush }) {
 
   return enqueue;
 }
-// src/hooks/useQueueOfflineActions.js  
+// src/hooks/useQueueOfflineActions.js

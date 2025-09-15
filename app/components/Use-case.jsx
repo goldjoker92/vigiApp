@@ -1,16 +1,16 @@
-import { useServerStatus } from "@/hooks/useServerStatus";
-import { usePersistentQueue } from "@/hooks/usePersistentQueue";
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { useServerStatus } from '@/hooks/useServerStatus';
+import { usePersistentQueue } from '@/hooks/usePersistentQueue';
+import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 
 // ...
 
 const UseCase = ({ db, chatId, user, input, setInput, Toast }) => {
-  const isOnline = useServerStatus({ url: "https://api.ton-backend.com/ping" });
+  const isOnline = useServerStatus({ url: 'https://api.ton-backend.com/ping' });
 
   const flushAction = async (msg) => {
     // Ici, c'est l'envoi réel du message à Firebase/Firestore
     // (à adapter à ton code d’envoi réel)
-    await addDoc(collection(db, "chats", chatId, "messages"), {
+    await addDoc(collection(db, 'chats', chatId, 'messages'), {
       ...msg,
       createdAt: serverTimestamp(),
     });
@@ -24,19 +24,19 @@ const UseCase = ({ db, chatId, user, input, setInput, Toast }) => {
     const msg = {
       text: input.trim(),
       senderId: user.uid,
-      senderApelido: user.apelido || user.displayName || "Você",
+      senderApelido: user.apelido || user.displayName || 'Você',
       system: false,
     };
-    setInput("");
+    setInput('');
     if (isOnline) {
       await flushAction(msg);
     } else {
       enqueue(msg);
       // Optionnel : Affiche une info/badge "en attente d'envoi"
       Toast.show({
-        type: "info",
-        text1: "Mensagem salva offline",
-        text2: "Será enviada quando a conexão voltar.",
+        type: 'info',
+        text1: 'Mensagem salva offline',
+        text2: 'Será enviada quando a conexão voltar.',
       });
     }
   };
@@ -47,7 +47,7 @@ const UseCase = ({ db, chatId, user, input, setInput, Toast }) => {
       <input
         type="text"
         value={input}
-        onChange={e => setInput(e.target.value)}
+        onChange={(e) => setInput(e.target.value)}
         placeholder="Digite sua mensagem"
       />
       <button onClick={handleSend}>Enviar</button>

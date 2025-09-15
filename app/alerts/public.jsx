@@ -1,5 +1,13 @@
 import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  ScrollView,
+} from 'react-native';
 import * as Location from 'expo-location';
 import { db, auth } from '../../firebase'; // <-- attention au chemin relatif !
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
@@ -17,8 +25,8 @@ import {
   Send,
   UserX,
   ShieldCheck,
-  ChevronLeft
-} from "lucide-react-native";
+  ChevronLeft,
+} from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 
 export default function PublicAlertScreen() {
@@ -29,14 +37,14 @@ export default function PublicAlertScreen() {
   const [address, setAddress] = useState('');
 
   const categories = [
-    { label: "Roubo/Furto", icon: ShieldAlert },
-    { label: "Agressão", icon: UserX },
-    { label: "Incidente de trânsito", icon: Car },
-    { label: "Incêndio", icon: Flame },
-    { label: "Falta de luz", icon: Bolt },
-    { label: "Falta d’água", icon: Droplet },
-    { label: "Mal súbito (problema de saúde)", icon: HandHeart },
-    { label: "Outros", icon: FileQuestion }
+    { label: 'Roubo/Furto', icon: ShieldAlert },
+    { label: 'Agressão', icon: UserX },
+    { label: 'Incidente de trânsito', icon: Car },
+    { label: 'Incêndio', icon: Flame },
+    { label: 'Falta de luz', icon: Bolt },
+    { label: 'Falta d’água', icon: Droplet },
+    { label: 'Mal súbito (problema de saúde)', icon: HandHeart },
+    { label: 'Outros', icon: FileQuestion },
   ];
 
   // Géolocalisation
@@ -51,9 +59,7 @@ export default function PublicAlertScreen() {
 
   // Gestion cases à cocher
   const toggleCategoria = (cat) => {
-    setCategorias(prev =>
-      prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
-    );
+    setCategorias((prev) => (prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]));
   };
 
   // Envoi Firestore + notif friendly
@@ -62,18 +68,18 @@ export default function PublicAlertScreen() {
     if (!local) return Alert.alert('Por favor, informe sua localização.');
     if (!descricao.trim()) return Alert.alert('Descreva o ocorrido (obrigatório).');
     try {
-      await addDoc(collection(db, "publicAlerts"), {
+      await addDoc(collection(db, 'publicAlerts'), {
         userId: auth.currentUser.uid,
         categorias,
         descricao,
         location: local,
         address,
         radius: 500,
-        createdAt: serverTimestamp()
+        createdAt: serverTimestamp(),
       });
       Alert.alert(
-        "Alerta enviado!",
-        "Seu alerta foi registrado com sucessoooooooooooooooo! Lembre-se: sua declaração envolve sua responsabilidade e não substitui os serviços de emergência. ☎️ Ligue 190 (Polícia) ou 192 (Samu) em caso de urgência."
+        'Alerta enviado!',
+        'Seu alerta foi registrado com sucessoooooooooooooooo! Lembre-se: sua declaração envolve sua responsabilidade e não substitui os serviços de emergência. ☎️ Ligue 190 (Polícia) ou 192 (Samu) em caso de urgência.',
       );
       router.replace('/home');
     } catch (e) {
@@ -90,9 +96,14 @@ export default function PublicAlertScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.alertTitle}>⚠️ Atenção!</Text>
             <Text style={styles.alertMsg}>
-              Toda declaração feita no aplicativo envolve sua <Text style={{ fontWeight: "bold" }}>boa fé</Text> e <Text style={{ fontWeight: "bold" }}>responsabilidade</Text>.
-              {"\n"}Nunca substitua os serviços de emergência!
-              {"\n"}<Text style={{ fontWeight: "bold" }}>☎️ Ligue 190 (Polícia) ou 192 (Samu) em caso de risco ou emergência.</Text>
+              Toda declaração feita no aplicativo envolve sua{' '}
+              <Text style={{ fontWeight: 'bold' }}>boa fé</Text> e{' '}
+              <Text style={{ fontWeight: 'bold' }}>responsabilidade</Text>.{'\n'}Nunca substitua os
+              serviços de emergência!
+              {'\n'}
+              <Text style={{ fontWeight: 'bold' }}>
+                ☎️ Ligue 190 (Polícia) ou 192 (Samu) em caso de risco ou emergência.
+              </Text>
             </Text>
           </View>
         </View>
@@ -107,21 +118,18 @@ export default function PublicAlertScreen() {
           {categories.map(({ label, icon: Icon }) => (
             <TouchableOpacity
               key={label}
-              style={[
-                styles.categoriaBtn,
-                categorias.includes(label) && styles.categoriaBtnActive
-              ]}
+              style={[styles.categoriaBtn, categorias.includes(label) && styles.categoriaBtnActive]}
               onPress={() => toggleCategoria(label)}
             >
               <Icon
                 size={18}
-                color={categorias.includes(label) ? "#fff" : "#007AFF"}
+                color={categorias.includes(label) ? '#fff' : '#007AFF'}
                 style={{ marginRight: 6 }}
               />
               <Text
                 style={[
                   styles.categoriaText,
-                  categorias.includes(label) && styles.categoriaTextActive
+                  categorias.includes(label) && styles.categoriaTextActive,
                 ]}
               >
                 {label}
@@ -172,8 +180,8 @@ export default function PublicAlertScreen() {
 }
 
 const styles = StyleSheet.create({
-  flexContainer: { flex: 1, backgroundColor: "#fff" },
-  container: { padding: 24, paddingBottom: 100, backgroundColor: "#fff" },
+  flexContainer: { flex: 1, backgroundColor: '#fff' },
+  container: { padding: 24, paddingBottom: 100, backgroundColor: '#fff' },
   alertCard: {
     flexDirection: 'row',
     backgroundColor: '#f44336',
@@ -182,50 +190,66 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 18,
     elevation: 2,
-    shadowColor: '#000', shadowOpacity: 0.07, shadowRadius: 6
+    shadowColor: '#000',
+    shadowOpacity: 0.07,
+    shadowRadius: 6,
   },
-  alertTitle: { color: "#fff", fontSize: 16, fontWeight: 'bold', marginBottom: 2 },
-  alertMsg: { color: "#fff", fontSize: 14 },
-  title: { fontSize: 22, fontWeight: "bold", marginBottom: 10, flexDirection: "row", alignItems: "center" },
+  alertTitle: { color: '#fff', fontSize: 16, fontWeight: 'bold', marginBottom: 2 },
+  alertMsg: { color: '#fff', fontSize: 14 },
+  title: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   subtitle: { fontSize: 16, marginBottom: 10 },
-  categoriaGroup: { flexDirection: "row", flexWrap: "wrap", marginBottom: 16 },
+  categoriaGroup: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 16 },
   categoriaBtn: {
-    backgroundColor: "#f0f0f0",
+    backgroundColor: '#f0f0f0',
     padding: 10,
     borderRadius: 8,
     margin: 4,
-    flexDirection: "row",
-    alignItems: "center"
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  categoriaBtnActive: { backgroundColor: "#007AFF" },
-  categoriaText: { color: "#333", fontWeight: "500" },
-  categoriaTextActive: { color: "#fff" },
+  categoriaBtnActive: { backgroundColor: '#007AFF' },
+  categoriaText: { color: '#333', fontWeight: '500' },
+  categoriaTextActive: { color: '#fff' },
   locBtn: {
-    backgroundColor: "#e6f2ff",
+    backgroundColor: '#e6f2ff',
     borderRadius: 8,
     padding: 12,
     marginBottom: 8,
-    flexDirection: "row",
-    alignItems: "center"
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  locBtnText: { color: "#007AFF", fontWeight: "bold" },
-  input: { borderWidth: 1, borderColor: "#ccc", padding: 12, borderRadius: 6, marginBottom: 12 },
-  infoRayon: { fontSize: 14, color: "#555", marginBottom: 12, flexDirection: "row", alignItems: "center" },
+  locBtnText: { color: '#007AFF', fontWeight: 'bold' },
+  input: { borderWidth: 1, borderColor: '#ccc', padding: 12, borderRadius: 6, marginBottom: 12 },
+  infoRayon: {
+    fontSize: 14,
+    color: '#555',
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   sendBtn: {
-    backgroundColor: "#007AFF",
+    backgroundColor: '#007AFF',
     borderRadius: 10,
     padding: 16,
-    alignItems: "center",
+    alignItems: 'center',
     marginTop: 10,
-    flexDirection: "row",
-    justifyContent: "center"
+    flexDirection: 'row',
+    justifyContent: 'center',
   },
-  sendBtnText: { color: "#fff", fontWeight: "bold", fontSize: 18 },
+  sendBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 18 },
   footer: {
     padding: 18,
     backgroundColor: '#fff',
     borderTopWidth: 0,
-    shadowColor: "#000", shadowOpacity: 0.03, shadowRadius: 5
+    shadowColor: '#000',
+    shadowOpacity: 0.03,
+    shadowRadius: 5,
   },
   backBtn: {
     backgroundColor: '#ffecec',
@@ -235,7 +259,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#FF4444',
     flexDirection: 'row',
-    justifyContent: 'center'
+    justifyContent: 'center',
   },
   backText: { color: '#FF4444', fontWeight: 'bold', fontSize: 17 },
 });

@@ -12,4 +12,4 @@ export function isProfileIncomplete(user) {
   return false; // profil complet
 }
 // Utilise cette fonction pour vérifier si le profil est complet avant de naviguer vers certaines pages
-// Par exemple dans le useEffect de TabsLayout.jsx  
+// Par exemple dans le useEffect de TabsLayout.jsx

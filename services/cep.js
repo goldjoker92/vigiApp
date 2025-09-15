@@ -4,8 +4,7 @@ const TIMEOUT_MS = 8000;
 function fetchWithTimeout(url, ms = TIMEOUT_MS) {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), ms);
-  return fetch(url, { signal: ctl.signal })
-    .finally(() => clearTimeout(t));
+  return fetch(url, { signal: ctl.signal }).finally(() => clearTimeout(t));
 }
 
 export async function lookupCep(cepDigits) {
@@ -18,10 +17,10 @@ export async function lookupCep(cepDigits) {
     if (r.ok) {
       const j = await r.json();
       const result = {
-        uf: j.state || "",
-        cidade: j.city || "",
-        logradouro: j.street || "",
-        bairro: j.neighborhood || ""
+        uf: j.state || '',
+        cidade: j.city || '',
+        logradouro: j.street || '',
+        bairro: j.neighborhood || '',
       };
       cache.set(cep, result);
       return result;
@@ -35,10 +34,10 @@ export async function lookupCep(cepDigits) {
       const j2 = await r2.json();
       if (!j2.erro) {
         const result = {
-          uf: j2.uf || "",
-          cidade: j2.localidade || "",
-          logradouro: j2.logradouro || "",
-          bairro: j2.bairro || ""
+          uf: j2.uf || '',
+          cidade: j2.localidade || '',
+          logradouro: j2.logradouro || '',
+          bairro: j2.bairro || '',
         };
         cache.set(cep, result);
         return result;
@@ -46,5 +45,5 @@ export async function lookupCep(cepDigits) {
     }
   } catch {}
 
-  throw new Error("CEP não encontrado");
+  throw new Error('CEP não encontrado');
 }

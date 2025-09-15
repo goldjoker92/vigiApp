@@ -1,42 +1,51 @@
 // firebase.js
-import { initializeApp } from 'firebase/app';
-import {
-  initializeAuth,
-  getReactNativePersistence,
-} from 'firebase/auth';
+// -------------------------------------------------------------
+// Init Firebase pour React Native / Expo SDK 53+
+// - Lit la config depuis app.config.js -> extra.FIREBASE_*
+// - Auth persistante avec AsyncStorage (initializeAuth)
+// - Anti double-init (Fast Refresh) via getApps()/try-catch
+// - Exporte: app, auth, db
+// -------------------------------------------------------------
+import Constants from 'expo-constants';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { initializeAuth, getAuth, getReactNativePersistence } from 'firebase/auth';
 import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
 import { getFirestore } from 'firebase/firestore';
 
-// --- CONFIG ---
+// --- Config depuis app.config.js (extra.* déjà présents chez toi)
+const extra = Constants?.expoConfig?.extra || {};
 const firebaseConfig = {
-  apiKey: 'AIzaSyDTmdSitr7uLEcyWpIsx4b3ARGoxgSc96Q',
-  authDomain: 'vigiapp-c7108.firebaseapp.com',
-  projectId: 'vigiapp-c7108',
-  storageBucket: 'vigiapp-c7108.appspot.com',
-  messagingSenderId: '322173277588',
-  appId: '1:322173277588:web:0127a4d72de87ebd8b2b81',
+  apiKey: extra.FIREBASE_API_KEY,
+  authDomain: extra.FIREBASE_AUTH_DOMAIN,
+  projectId: extra.FIREBASE_PROJECT_ID,
+  storageBucket: extra.FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: extra.FIREBASE_MESSAGING_SENDER_ID,
+  appId: extra.FIREBASE_APP_ID,
 };
 
-// --- CACHE GLOBAL pour éviter tout re-init (hot reload, multi-import) ---
-const globalScope = global || globalThis;
+// --- App: init unique (réutilise si déjà créée)
+const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+console.log(
+  getApps().length ? '♻️ [firebase] app réutilisée' : '✅ [firebase] app initialisée',
+  firebaseConfig.projectId,
+);
 
-if (!globalScope.__firebase) {
-  // première initialisation
-  const app = initializeApp(firebaseConfig);
-  console.log('🔥 Firebase App initialisée pour la première fois');
-  const auth = initializeAuth(app, {
+// --- Auth: initializeAuth (persistence AsyncStorage) une seule fois
+let auth;
+try {
+  auth = initializeAuth(app, {
     persistence: getReactNativePersistence(ReactNativeAsyncStorage),
   });
-  const db = getFirestore(app);
-  globalScope.__firebase = { app, auth, db };
-} else {
-  console.log('♻️ Firebase réutilisée depuis le cache global');
+  console.log('✅ [firebase] auth initialisée (AsyncStorage)');
+} catch (e) {
+  // Si déjà initialisée (Fast Refresh), on récupère l’instance existante
+  auth = getAuth(app);
+  console.log('ℹ️ [firebase] auth réutilisée');
 }
 
-// Exporte l’unique instance
-const { auth, db } = globalScope.__firebase;
+// --- Firestore (client)
+const db = getFirestore(app);
+console.log('ℹ️ [firebase] firestore prêt');
 
-// Log d’assurance (optionnel, tu peux le commenter si trop verbeux)
-console.log('Instance Firebase Auth:', auth?.app?.name);
-
-export { auth, db };
+// --- Exports
+export { app, auth, db };

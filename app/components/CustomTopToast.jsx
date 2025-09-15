@@ -32,15 +32,14 @@ export default function CustomTopToast({
       useNativeDriver: false,
     }).start();
 
-    
     const hideTimeout = setTimeout(() => {
-     Animated.timing(slideAnim, {
-       toValue: -80,
-       duration: 350,
-       useNativeDriver: true,
+      Animated.timing(slideAnim, {
+        toValue: -80,
+        duration: 350,
+        useNativeDriver: true,
       }).start();
-      }, duration - 200);
-      return () => clearTimeout(hideTimeout);
+    }, duration - 200);
+    return () => clearTimeout(hideTimeout);
   }, [slideAnim, progress, duration]);
 
   const width = progress.interpolate({
@@ -55,12 +54,17 @@ export default function CustomTopToast({
         {
           transform: [{ translateY: slideAnim }],
           ...containerStyle,
-        }
+        },
       ]}
       pointerEvents="none"
     >
       <View style={styles.row}>
-        <FontAwesome name="exclamation-circle" size={25} color="#FFD700" style={{ marginRight: 10 }} />
+        <FontAwesome
+          name="exclamation-circle"
+          size={25}
+          color="#FFD700"
+          style={{ marginRight: 10 }}
+        />
         <Text style={[styles.toastText, { color: textColor }]}>{text1}</Text>
       </View>
       <Animated.View style={[styles.progressBar, { width }]} />

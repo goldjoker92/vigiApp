@@ -10,37 +10,25 @@ import {
   addDoc,
   serverTimestamp,
   arrayUnion,
-} from "firebase/firestore";
-import { db } from "../firebase";
+} from 'firebase/firestore';
+import { db } from '../firebase';
 
 /**
  * Crée un groupe (unique par name + cep)
  */
-export async function createGroup({
-  cep,
-  name,
-  description,
-  userId,
-  apelido,
-  nome,
-  cpf,
-}) {
-  console.log("[createGroup] Params:", { cep, name, userId, apelido, nome, cpf });
+export async function createGroup({ cep, name, description, userId, apelido, nome, cpf }) {
+  console.log('[createGroup] Params:', { cep, name, userId, apelido, nome, cpf });
 
   if (!cep || !name || !userId || !apelido || !nome || !cpf) {
-    console.error("[createGroup] Champs manquants !");
-    throw new Error("Champs obrigatórios faltando");
+    console.error('[createGroup] Champs manquants !');
+    throw new Error('Champs obrigatórios faltando');
   }
 
   // Unicité name+cep
-  const q = query(
-    collection(db, "groups"),
-    where("cep", "==", cep),
-    where("name", "==", name)
-  );
+  const q = query(collection(db, 'groups'), where('cep', '==', cep), where('name', '==', name));
   const snap = await getDocs(q);
-  console.log("[createGroup] Résultat doublon:", snap.empty ? "OK" : "EXISTANT");
-  if (!snap.empty) throw new Error("Nom de groupe déjà utilisé pour ce CEP.");
+  console.log('[createGroup] Résultat doublon:', snap.empty ? 'OK' : 'EXISTANT');
+  if (!snap.empty) throw new Error('Nom de groupe déjà utilisé pour ce CEP.');
 
   const creatorMember = {
     userId: String(userId),
@@ -53,7 +41,7 @@ export async function createGroup({
   const docToCreate = {
     cep: String(cep),
     name: String(name),
-    description: description || "",
+    description: description || '',
     creatorUserId: String(userId),
     creatorNome: String(nome),
     creatorApelido: String(apelido),
@@ -67,14 +55,14 @@ export async function createGroup({
     createdAt: serverTimestamp(),
   };
 
-  console.log("[createGroup] Document envoyé Firestore:", docToCreate);
+  console.log('[createGroup] Document envoyé Firestore:', docToCreate);
 
   try {
-    const docRef = await addDoc(collection(db, "groups"), docToCreate);
-    console.log("[createGroup] ✅ Groupe créé, ID:", docRef.id);
+    const docRef = await addDoc(collection(db, 'groups'), docToCreate);
+    console.log('[createGroup] ✅ Groupe créé, ID:', docRef.id);
     return docRef.id;
   } catch (error) {
-    console.error("[createGroup] ❌ Erreur Firestore:", error);
+    console.error('[createGroup] ❌ Erreur Firestore:', error);
     throw error;
   }
 }
@@ -83,11 +71,11 @@ export async function createGroup({
  * Quitter un groupe (mise à jour + suppression si vide)
  */
 export async function leaveGroup({ groupId, userId, apelido }) {
-  console.log("[leaveGroup] Début retrait du membre:", { groupId, userId, apelido });
+  console.log('[leaveGroup] Début retrait du membre:', { groupId, userId, apelido });
 
-  const groupRef = doc(db, "groups", groupId);
+  const groupRef = doc(db, 'groups', groupId);
   const snap = await getDoc(groupRef);
-  if (!snap.exists()) throw new Error("Groupe introuvable");
+  if (!snap.exists()) throw new Error('Groupe introuvable');
   const groupData = snap.data();
 
   const members = (groupData.members || []).filter((m) => m.userId !== userId);
@@ -95,11 +83,11 @@ export async function leaveGroup({ groupId, userId, apelido }) {
   const apelidos = (groupData.apelidos || []).filter((a) => a !== apelido);
 
   await updateDoc(groupRef, { members, membersIds, apelidos });
-  console.log("[leaveGroup] ✅ Membre retiré du groupe", groupId);
+  console.log('[leaveGroup] ✅ Membre retiré du groupe', groupId);
 
   if (members.length === 0) {
     await deleteDoc(groupRef);
-    console.log("[leaveGroup] 🚮 Groupe supprimé car vide:", groupId);
+    console.log('[leaveGroup] 🚮 Groupe supprimé car vide:', groupId);
   }
 }
 
@@ -107,15 +95,16 @@ export async function leaveGroup({ groupId, userId, apelido }) {
  * Rejoindre un groupe (ajout Firestore en arrayUnion)
  */
 export async function joinGroup({ groupId, user }) {
-  console.log("[joinGroup] Ajout user", user.id, "dans groupe", groupId);
+  console.log('[joinGroup] Ajout user', user.id, 'dans groupe', groupId);
 
-  const groupRef = doc(db, "groups", groupId);
+  const groupRef = doc(db, 'groups', groupId);
   const snap = await getDoc(groupRef);
-  if (!snap.exists()) throw new Error("Groupe introuvable");
+  if (!snap.exists()) throw new Error('Groupe introuvable');
 
   const data = snap.data();
-  if ((data.membersIds || []).includes(user.id)) throw new Error("Déjà membre du groupe.");
-  if ((data.members?.length || 0) >= (data.maxMembers || 30)) throw new Error("Le groupe est plein.");
+  if ((data.membersIds || []).includes(user.id)) throw new Error('Déjà membre du groupe.');
+  if ((data.members?.length || 0) >= (data.maxMembers || 30))
+    throw new Error('Le groupe est plein.');
 
   await updateDoc(groupRef, {
     members: arrayUnion({
@@ -128,5 +117,5 @@ export async function joinGroup({ groupId, user }) {
     membersIds: arrayUnion(user.id),
     apelidos: arrayUnion(user.apelido),
   });
-  console.log("[joinGroup] ✅ Ajouté dans Firestore");
+  console.log('[joinGroup] ✅ Ajouté dans Firestore');
 }

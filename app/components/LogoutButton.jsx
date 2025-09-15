@@ -1,10 +1,10 @@
-import React, { useState } from "react";
-import { TouchableOpacity, Text, StyleSheet, Vibration, Modal, View } from "react-native";
-import { Feather } from "@expo/vector-icons";
-import { logoutUser } from "../../services/authService";
-import { useUserStore } from "../../store/users";
-import { useRouter } from "expo-router";
-import Toast from "react-native-toast-message";
+import React, { useState } from 'react';
+import { TouchableOpacity, Text, StyleSheet, Vibration, Modal, View } from 'react-native';
+import { Feather } from '@expo/vector-icons';
+import { logoutUser } from '../../services/authService';
+import { useUserStore } from '../../store/users';
+import { useRouter } from 'expo-router';
+import Toast from 'react-native-toast-message';
 
 export default function LogoutButton({ style, disabled }) {
   const [modalVisible, setModalVisible] = useState(false);
@@ -16,9 +16,9 @@ export default function LogoutButton({ style, disabled }) {
       useUserStore.getState().reset && useUserStore.getState().reset();
       Vibration.vibrate([0, 80]);
       setModalVisible(false);
-      router.replace("/"); // Redirige vers index.jsx (login)
+      router.replace('/'); // Redirige vers index.jsx (login)
     } catch (err) {
-      Toast.show({ type: "error", text1: "Erro ao desconectar", text2: err.message });
+      Toast.show({ type: 'error', text1: 'Erro ao desconectar', text2: err.message });
       setModalVisible(false);
     }
   };
@@ -26,11 +26,7 @@ export default function LogoutButton({ style, disabled }) {
   return (
     <>
       <TouchableOpacity
-        style={[
-          styles.logoutBtn,
-          style,
-          disabled ? { opacity: 0.6 } : null,
-        ]}
+        style={[styles.logoutBtn, style, disabled ? { opacity: 0.6 } : null]}
         onPress={() => setModalVisible(true)}
         activeOpacity={0.88}
         disabled={disabled}
@@ -69,88 +65,88 @@ export default function LogoutButton({ style, disabled }) {
 
 const styles = StyleSheet.create({
   logoutBtn: {
-    backgroundColor: "#23262F",
+    backgroundColor: '#23262F',
     borderRadius: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-start",
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
     paddingVertical: 13,
     paddingHorizontal: 21,
     minWidth: 140,
     maxWidth: 330,
     marginVertical: 10,
     borderWidth: 1.3,
-    borderColor: "#252A34",
-    alignSelf: "center",
+    borderColor: '#252A34',
+    alignSelf: 'center',
   },
   logoutBtnText: {
-    color: "#fff",
-    fontWeight: "bold",
+    color: '#fff',
+    fontWeight: 'bold',
     fontSize: 16.2,
     letterSpacing: 0.18,
   },
   // Modal
   modalBg: {
     flex: 1,
-    backgroundColor: "rgba(8,8,14,0.85)",
-    justifyContent: "center",
-    alignItems: "center",
+    backgroundColor: 'rgba(8,8,14,0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   modalContent: {
-    backgroundColor: "#23262F",
+    backgroundColor: '#23262F',
     borderRadius: 22,
     padding: 30,
-    alignItems: "center",
+    alignItems: 'center',
     width: 320,
-    shadowColor: "#000",
+    shadowColor: '#000',
     shadowOpacity: 0.16,
     shadowRadius: 8,
     elevation: 12,
   },
   modalTitle: {
-    color: "#FFD600",
-    fontWeight: "bold",
+    color: '#FFD600',
+    fontWeight: 'bold',
     fontSize: 19.5,
     marginBottom: 12,
-    textAlign: "center",
+    textAlign: 'center',
   },
   modalMsg: {
-    color: "#eee",
+    color: '#eee',
     fontSize: 15.2,
-    textAlign: "center",
+    textAlign: 'center',
     marginBottom: 18,
     lineHeight: 20,
   },
   modalActions: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    width: "100%",
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
   },
   cancelBtn: {
     flex: 1,
-    backgroundColor: "#181A20",
+    backgroundColor: '#181A20',
     borderRadius: 12,
     paddingVertical: 10,
     marginRight: 9,
-    alignItems: "center",
+    alignItems: 'center',
     borderWidth: 1,
-    borderColor: "#252A34",
+    borderColor: '#252A34',
   },
   cancelBtnText: {
-    color: "#FFD600",
-    fontWeight: "bold",
+    color: '#FFD600',
+    fontWeight: 'bold',
     fontSize: 15,
   },
   confirmBtn: {
     flex: 1,
-    backgroundColor: "#FF4D4F",
+    backgroundColor: '#FF4D4F',
     borderRadius: 12,
     paddingVertical: 10,
-    alignItems: "center",
+    alignItems: 'center',
   },
   confirmBtnText: {
-    color: "#fff",
-    fontWeight: "bold",
+    color: '#fff',
+    fontWeight: 'bold',
     fontSize: 15,
   },
 });
