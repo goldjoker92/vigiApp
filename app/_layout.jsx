@@ -29,8 +29,8 @@ import CustomTopToast from './components/CustomTopToast';
 // 🔔 Push libs (conservent les signatures existantes)
 import {
   registerForPushNotificationsAsync, // -> Expo push token
-  attachNotificationListeners,       // -> listeners receive/response
-  getFcmDeviceTokenAsync,            // -> FCM device token (sauvé côté lib)
+  attachNotificationListeners, // -> listeners receive/response
+  getFcmDeviceTokenAsync, // -> FCM device token (sauvé côté lib)
 } from '../libs/notifications';
 
 // Upsert device côté backend (conserve ton implémentation)
@@ -52,21 +52,31 @@ const APP_TAG = 'VigiApp';
 const LAYOUT_TAG = 'PushBootstrap';
 
 function ts() {
-  try { return new Date().toISOString(); } catch { return String(Date.now()); }
+  try {
+    return new Date().toISOString();
+  } catch {
+    return String(Date.now());
+  }
 }
 function log(...args) {
   if (__DEV__ || !SILENCE_RELEASE) {
-    try { console.log(`[${APP_TAG}][${LAYOUT_TAG}][${ts()}]`, ...args); } catch {}
+    try {
+      console.log(`[${APP_TAG}][${LAYOUT_TAG}][${ts()}]`, ...args);
+    } catch {}
   }
 }
 function warn(...args) {
   if (__DEV__ || !SILENCE_RELEASE) {
-    try { console.warn(`[${APP_TAG}][${LAYOUT_TAG}][${ts()}]`, ...args); } catch {}
+    try {
+      console.warn(`[${APP_TAG}][${LAYOUT_TAG}][${ts()}]`, ...args);
+    } catch {}
   }
 }
 function err(...args) {
   if (__DEV__ || !SILENCE_RELEASE) {
-    try { console.error(`[${APP_TAG}][${LAYOUT_TAG}][${ts()}]`, ...args); } catch {}
+    try {
+      console.error(`[${APP_TAG}][${LAYOUT_TAG}][${ts()}]`, ...args);
+    } catch {}
   }
 }
 
@@ -81,9 +91,9 @@ if (typeof global.structuredClone !== 'function') {
 if (!__DEV__ && SILENCE_RELEASE) {
   // eslint-disable-next-line no-console
   console.log = () => {};
-  // eslint-disable-next-line no-console
+   
   console.warn = () => {};
-  // eslint-disable-next-line no-console
+   
   console.error = () => {};
 }
 
@@ -91,8 +101,17 @@ if (!__DEV__ && SILENCE_RELEASE) {
 function MyFallback({ error }) {
   err('ErrorBoundary caught:', error?.message, error?.stack);
   return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#181A20' }}>
-      <Text style={{ color: '#FFD600', fontWeight: 'bold', fontSize: 20, marginBottom: 16 }}>Oops !</Text>
+    <View
+      style={{
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: '#181A20',
+      }}
+    >
+      <Text style={{ color: '#FFD600', fontWeight: 'bold', fontSize: 20, marginBottom: 16 }}>
+        Oops !
+      </Text>
       <Text style={{ color: '#fff', textAlign: 'center', fontSize: 16, marginBottom: 10 }}>
         {error?.message || 'Une erreur est survenue.'}
       </Text>
@@ -141,8 +160,8 @@ function PushBootstrap() {
   const { user } = useUserStore();
 
   useEffect(() => {
-    let detachListeners;     // pour nettoyer les listeners notifs
-    let unsubscribeAuth;     // pour détacher l'observateur auth
+    let detachListeners; // pour nettoyer les listeners notifs
+    let unsubscribeAuth; // pour détacher l'observateur auth
     let triedFallbackForUid = ''; // évite multiples fetch Firestore pour le même UID
 
     (async () => {
@@ -158,19 +177,28 @@ function PushBootstrap() {
             // 👉 Foreground: affiche un Toast custom (CustomTopToast)
             const content = n?.request?.content || {};
             const title = content?.title || 'VigiApp';
-            const body  = content?.body  || '';
-            const sev   = content?.data?.severidade || content?.data?.severity;
-            const type  = mapSeverityToToastType(sev);
+            const body = content?.body || '';
+            const sev = content?.data?.severidade || content?.data?.severity;
+            const type = mapSeverityToToastType(sev);
 
             // Ton CustomTopToast accepte text1 → on combine title + body
             const line = body ? `${title} — ${body}` : title;
 
+            // Essayer plusieurs emplacements possibles :
+            const imageUrl =
+              content?.data?.image ||
+              content?.image ||
+              content?.data?.imageUrl ||
+              content?.imageUrl ||
+              null;
+
             Toast.show({
-              type,              // 'success' | 'info' | 'error' (même rendu via CustomTopToast)
+              type, // 'success' | 'info' | 'error' (même rendu via CustomTopToast)
               text1: line,
               position: 'top',
               visibilityTime: 8000,
               autoHide: true,
+              props: { imageUrl },
             });
           },
           onResponse: (r) => {
@@ -270,8 +298,18 @@ function PushBootstrap() {
     // Cleanup à l’unmount
     return () => {
       log('unmount → cleanup…');
-      try { detachListeners?.(); log('listeners detached'); } catch (e) { err('detach listeners error:', e?.message || e); }
-      try { unsubscribeAuth?.(); log('auth listener detached'); } catch (e) { err('detach auth error:', e?.message || e); }
+      try {
+        detachListeners?.();
+        log('listeners detached');
+      } catch (e) {
+        err('detach listeners error:', e?.message || e);
+      }
+      try {
+        unsubscribeAuth?.();
+        log('auth listener detached');
+      } catch (e) {
+        err('detach auth error:', e?.message || e);
+      }
     };
     // 🔁 Re-run si le CEP en store change (ex: profil mis à jour)
   }, [user?.cep]);
@@ -281,7 +319,11 @@ function PushBootstrap() {
 
 // Utils d’affichage log-safe (évite les crashes sur gros objets)
 function safeJson(obj) {
-  try { return JSON.stringify(obj, null, 2)?.slice(0, 1000); } catch { return '[unserializable]'; }
+  try {
+    return JSON.stringify(obj, null, 2)?.slice(0, 1000);
+  } catch {
+    return '[unserializable]';
+  }
 }
 function maskToken(tok) {
   if (!tok) {
@@ -321,12 +363,12 @@ export default function Layout() {
               <Toast
                 config={{
                   success: (props) => <CustomTopToast {...props} />,
-                  info:    (props) => <CustomTopToast {...props} />,
-                  error:   (props) => <CustomTopToast {...props} />,
+                  info: (props) => <CustomTopToast {...props} />,
+                  error: (props) => <CustomTopToast {...props} />,
                   default: (props) => <CustomTopToast {...props} />,
                 }}
                 position="top"
-                topOffset={0}       // on gère la position dans CustomTopToast
+                topOffset={0} // on gère la position dans CustomTopToast
               />
             </ErrorBoundary>
           </StripeProvider>
