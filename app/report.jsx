@@ -193,10 +193,15 @@ export default function ReportScreen() {
     // Validations strictes (pas de régression)
     if (!categoria) return Alert.alert('Selecione uma categoria.');
     if (!ruaNumero.trim()) return Alert.alert('Preencha o campo Rua e número.');
-    if (!cidade.trim() || !estado.trim()) return Alert.alert('Preencha cidade e estado.');
-    if (!descricao.trim()) return Alert.alert('Descreva o ocorrido.');
-    if (!local?.latitude || !local?.longitude)
+    if (!cidade.trim() || !estado.trim()) {
+      return Alert.alert('Preencha cidade e estado.');
+    }
+    if (!descricao.trim()) {
+      return Alert.alert('Descreva o ocorrido.');
+    }
+    if (!local?.latitude || !local?.longitude) {
       return Alert.alert('Use sua localização para posicionar o alerta.');
+    }
 
     try {
       // TTL Firestore

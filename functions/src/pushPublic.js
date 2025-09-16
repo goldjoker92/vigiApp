@@ -174,6 +174,7 @@ module.exports.sendPublicAlertByAddress = onRequest(
 
       // Smoke test (debug)
       const testToken = b.testToken ? b.testToken.toString().trim() : null;
+      const registerDoc = String(b.registerDoc || 'false') === 'true'; // optionnel, utile pour aperçus Home
 
       console.log('[PUBLIC ALERT] req =', {
         alertId,
@@ -189,6 +190,7 @@ module.exports.sendPublicAlertByAddress = onRequest(
         formColor,
         hasImage: !!image,
         testToken: testToken ? testToken.slice(0, 12) + '…' : null,
+        registerDoc,
       });
       if (!cep) {
         console.log('[PUBLIC ALERT] INFO: CEP non fourni → aucun impact (optionnel en public). Ciblage par rayon uniquement pour les users sans géoloc.');
@@ -208,11 +210,15 @@ module.exports.sendPublicAlertByAddress = onRequest(
       // Présentation / couleur / deep-link
       const accent = resolveAccentColor({ severity, formColor });
       const local = localLabel({ endereco, bairro, cidade, uf });
+      const openTarget = (severity === 'grave' || severity === 'high') ? 'detail' : 'home';
+
+      // 🔗 IMPORTANT: deep link conforme à ta route Expo Router
+      const buildDeepLink = (id) => `vigiapp://public-alerts/${id}`;
 
       // --- Mode smoke test: envoi à 1 token fourni (ne diffuse pas)
       if (testToken) {
         const { title, body } = textsBySeverity(severity, local, '');
-        const deepLink = `vigiapp://alert/public/${alertId}`;
+        const deepLink = buildDeepLink(alertId);
 
         try {
           const id = await sendToToken({
@@ -225,6 +231,7 @@ module.exports.sendPublicAlertByAddress = onRequest(
               type: 'alert_public',
               alertId,
               deepLink,
+              openTarget,                 // pour routing conditionnel côté app
               endereco: local,
               bairro,
               cidade,
@@ -239,6 +246,29 @@ module.exports.sendPublicAlertByAddress = onRequest(
             },
           });
           console.log('[PUBLIC ALERT] Smoke test sent =>', id);
+
+          // (Optionnel) Enregistrer un doc pour que ça apparaisse dans Home (preview 24h)
+          if (registerDoc) {
+            try {
+              await db.collection('publicAlerts').doc(alertId).set({
+                categoria: 'Teste',
+                descricao: 'Smoke-test gerado via Function',
+                gravidade: severity || 'medium',
+                color: accent,
+                ruaNumero: endereco,
+                cidade,
+                estado: uf,
+                cep,
+                location: { latitude: lat, longitude: lng },
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                radius_m: Number(radius_m) || 1000,
+              }, { merge: true });
+              console.log('[PUBLIC ALERT] registered test doc in publicAlerts:', alertId);
+            } catch (e) {
+              console.warn('[PUBLIC ALERT] failed to register test doc:', e?.message || e);
+            }
+          }
+
           return res.status(200).json({ ok: true, mode: 'testToken', messageId: id });
         } catch (e) {
           console.error('[PUBLIC ALERT] Smoke test error', e);
@@ -258,12 +288,12 @@ module.exports.sendPublicAlertByAddress = onRequest(
 
       let sent = 0;
       const errors = [];
+      const deepLink = buildDeepLink(alertId);
 
       for (const r of recipients) {
         // Distances personnalisées si géoloc connue
         const distText = Number.isFinite(r._distance_m) ? fmtDist(r._distance_m) : '';
         const { title, body } = textsBySeverity(severity, local, distText);
-        const deepLink = `vigiapp://alert/public/${alertId}`;
 
         for (const token of r.tokens) {
           const shortTok = token.slice(0, 16) + '…';
@@ -278,6 +308,7 @@ module.exports.sendPublicAlertByAddress = onRequest(
                 type: 'alert_public',
                 alertId,
                 deepLink,
+                openTarget,               // pour routing conditionnel côté app
                 endereco: local,
                 bairro,
                 cidade,

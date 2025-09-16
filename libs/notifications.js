@@ -3,6 +3,7 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform, PermissionsAndroid } from 'react-native';
 import Constants from 'expo-constants';
+import { router } from 'expo-router';
 
 // ⚠️ Firebase Web SDK (tu as déjà ../firebase dans ton app)
 import { auth } from '../firebase';
@@ -11,16 +12,57 @@ import { getFirestore, doc, setDoc, arrayUnion } from 'firebase/firestore';
 // Afficher les notifs même en foreground (utile en dev)
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
+    // Expo SDK 53+: shouldShowBanner (iOS) / Android ignore → OK
     shouldShowBanner: true,
     shouldPlaySound: false,
     shouldSetBadge: false,
   }),
 });
 
+// ============== Navigation depuis data.openTarget ==============
+let __lastHandled = { id: undefined, ts: 0 };
+
+function goToFromData(data = {}) {
+  const alertId = data?.alertId;
+  if (!alertId) {
+    return;
+  }
+
+  const now = Date.now();
+  if (__lastHandled.id === alertId && now - (__lastHandled.ts || 0) < 1500) {
+    return;
+  }
+  __lastHandled = { id: alertId, ts: now };
+
+  const openTarget = String(data?.openTarget || 'detail');
+  if (openTarget === 'home') {
+    router.push(`/(tabs)/home?fromNotif=1&alertId=${encodeURIComponent(alertId)}`);
+  } else {
+    router.push(`/public-alerts/${String(alertId)}`);
+  }
+}
+
 // ============== Listeners ==============
 export function attachNotificationListeners({ onReceive, onResponse } = {}) {
   const sub1 = Notifications.addNotificationReceivedListener((n) => onReceive?.(n));
-  const sub2 = Notifications.addNotificationResponseReceivedListener((r) => onResponse?.(r));
+  const sub2 = Notifications.addNotificationResponseReceivedListener((r) => {
+    onResponse?.(r);
+    const data = r?.notification?.request?.content?.data;
+    if (data?.alertId) {
+      goToFromData(data);
+    }
+  });
+
+  // Cold start (app lancée depuis une notif)
+  Notifications.getLastNotificationResponseAsync()
+    .then((resp) => {
+      const data = resp?.notification?.request?.content?.data;
+      if (data?.alertId) {
+        goToFromData(data);
+      }
+    })
+    .catch(() => {});
+
   return () => {
     try { sub1?.remove?.(); } catch {}
     try { sub2?.remove?.(); } catch {}
