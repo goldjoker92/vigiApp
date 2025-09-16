@@ -22,13 +22,16 @@ import Constants from 'expo-constants';
 // ⚠️ init monétisation hors de /app
 import '../src/_bootstrap/monetization-init';
 
+// UI toast custom
 import CustomTopToast from './components/CustomTopToast';
 
-// 🔔 Push libs (ton fichier notifications.js + registerDevice.js)
+// 🔔 Push libs (conservent les signatures existantes)
 import {
-  registerForPushNotificationsAsync,
-  attachNotificationListeners,
+  registerForPushNotificationsAsync, // -> Expo push token
+  attachNotificationListeners,       // -> listeners receive/response
 } from '../libs/notifications';
+
+// Upsert device côté backend (conserve ton implémentation)
 import { upsertDevice } from '../libs/registerDevice';
 
 // Firebase auth
@@ -37,58 +40,38 @@ import { onAuthStateChanged } from 'firebase/auth';
 
 // ========== Logging util (timestamp + filtrage release) ==========
 const extra = Constants?.expoConfig?.extra || {};
-const SILENCE_RELEASE = !!extra?.SILENCE_CONSOLE_IN_RELEASE; // mets 1 dans extra pour couper en release
+const SILENCE_RELEASE = !!extra?.SILENCE_CONSOLE_IN_RELEASE; // mets true pour couper en release
 const APP_TAG = 'VigiApp';
 const LAYOUT_TAG = 'PushBootstrap';
 
 function ts() {
-  try {
-    return new Date().toISOString();
-  } catch {
-    return String(Date.now());
-  }
+  try { return new Date().toISOString(); } catch { return String(Date.now()); }
 }
-
 function log(...args) {
-  // En dev: toujours log. En release: log seulement si pas silencé.
   if (__DEV__ || !SILENCE_RELEASE) {
-    // Evite de faire planter si console est patchée
-    try {
-      // @ts-ignore
-      console.log(`[${APP_TAG}][${LAYOUT_TAG}][${ts()}]`, ...args);
-    } catch {}
+    try { console.log(`[${APP_TAG}][${LAYOUT_TAG}][${ts()}]`, ...args); } catch {}
   }
 }
-
 function warn(...args) {
   if (__DEV__ || !SILENCE_RELEASE) {
-    try {
-      // @ts-ignore
-      console.warn(`[${APP_TAG}][${LAYOUT_TAG}][${ts()}]`, ...args);
-    } catch {}
+    try { console.warn(`[${APP_TAG}][${LAYOUT_TAG}][${ts()}]`, ...args); } catch {}
   }
 }
-
 function err(...args) {
   if (__DEV__ || !SILENCE_RELEASE) {
-    try {
-      // @ts-ignore
-      console.error(`[${APP_TAG}][${LAYOUT_TAG}][${ts()}]`, ...args);
-    } catch {}
+    try { console.error(`[${APP_TAG}][${LAYOUT_TAG}][${ts()}]`, ...args); } catch {}
   }
 }
 
-// === Polyfill structuredClone pour Hermes (si besoin) ===
+// === Polyfill structuredClone pour Hermes (sécurisé pour objets simples) ===
 if (typeof global.structuredClone !== 'function') {
-  // NB: OK ici, mais évite sur des objets avec fonctions/cycles
   // @ts-ignore
   global.structuredClone = (obj) => JSON.parse(JSON.stringify(obj));
   log('structuredClone polyfilled');
 }
 
 // === Suppression optionnelle des logs en production ===
-// On NE coupe pas par défaut pour garder les traces en preview.
-// Active `extra.SILENCE_CONSOLE_IN_RELEASE = true` pour muter.
+// Par défaut on conserve les logs (utile en preview).
 if (!__DEV__ && SILENCE_RELEASE) {
   // eslint-disable-next-line no-console
   console.log = () => {};
@@ -96,25 +79,15 @@ if (!__DEV__ && SILENCE_RELEASE) {
   console.warn = () => {};
   // eslint-disable-next-line no-console
   console.error = () => {};
-  // On ne log pas ce message… puisqu’on coupe les logs 😅
+  // volontairement aucun log ici (silence total)
 }
 
 // === Fallback UI en cas de bug JS (Error Boundary) ===
 function MyFallback({ error }) {
-  // On log l’erreur pour la piste
   err('ErrorBoundary caught:', error?.message, error?.stack);
   return (
-    <View
-      style={{
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: '#181A20',
-      }}
-    >
-      <Text style={{ color: '#FFD600', fontWeight: 'bold', fontSize: 20, marginBottom: 16 }}>
-        Oops !
-      </Text>
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#181A20' }}>
+      <Text style={{ color: '#FFD600', fontWeight: 'bold', fontSize: 20, marginBottom: 16 }}>Oops !</Text>
       <Text style={{ color: '#fff', textAlign: 'center', fontSize: 16, marginBottom: 10 }}>
         {error?.message || 'Une erreur est survenue.'}
       </Text>
@@ -123,27 +96,32 @@ function MyFallback({ error }) {
   );
 }
 
-// --- Bootstrap Push (une seule fois au démarrage)
+// ---------------------------
+// Bootstrap Push (one-shot)
+// ---------------------------
 function PushBootstrap() {
-  // Mémoire locale pour éviter upsert répétés
+  // Mémoire locale pour limiter les upserts répétitifs
   const expoTokenRef = useRef(null);
-  const lastUpsertKeyRef = useRef(''); // `${uid}:${tokenPrefix}`
+  const lastUpsertKeyRef = useRef(''); // `${uid}:${tokenPrefix}` pour dédup
 
   useEffect(() => {
-    let detachListeners;
-    let unsubscribeAuth;
+    let detachListeners;     // pour nettoyer les listeners notifs
+    let unsubscribeAuth;     // pour détacher l'observateur auth
 
     (async () => {
+      const t0 = Date.now();
       log('mount → start bootstrap');
 
-      // 1) Listeners + permissions + channel + Expo token
+      // 1) Listeners + permissions + Expo token
       try {
+        // a) brancher les listeners (réception + tap réponse)
         detachListeners = attachNotificationListeners({
           onReceive: (n) => log('listener:onReceive', safeJson(n)),
           onResponse: (r) => log('listener:onResponse', safeJson(r)),
         });
         log('listeners attached');
 
+        // b) permission + channel + Expo push token
         const token = await registerForPushNotificationsAsync();
         expoTokenRef.current = token;
         log('expo token obtained:', maskToken(token));
@@ -151,7 +129,7 @@ function PushBootstrap() {
         err('bootstrap register/listeners failed:', e?.message || e);
       }
 
-      // 2) Dès qu’on a un user, on upsert le token (idempotent + anti-doublons)
+      // 2) Dès qu’on a un user, on upsert le device (idempotent)
       try {
         unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
           if (!user) {
@@ -159,10 +137,12 @@ function PushBootstrap() {
             return;
           }
           if (!expoTokenRef.current) {
+            // Cas rare: token pas encore dispo → on upsertera au prochain passage
             warn('auth: user present but no expo token yet (will upsert later)');
             return;
           }
 
+          // Anti-doublon: évite spam d'upsert si uid/token inchangés
           const key = `${user.uid}:${String(expoTokenRef.current).slice(0, 12)}`;
           if (lastUpsertKeyRef.current === key) {
             log('auth: upsert skipped (same uid+token prefix)', key);
@@ -171,14 +151,15 @@ function PushBootstrap() {
 
           log('auth: signed in → upsert device…', { uid: user.uid, key });
           try {
+            // ⚠️ Ajuste les champs selon ce que ton upsertDevice attend
             const res = await upsertDevice({
               userId: user.uid,
               expoPushToken: expoTokenRef.current,
-              // Ajuste si tu veux cibler par CEP côté Functions
-              cep: '62595-000',
+              // Optionnel: CEP par défaut si tu veux tester les fallback CEP côté Function
+              // cep: '62595-000',
             });
             if (res?.ok) {
-              log('upsert success:', res?.id);
+              log('upsert success:', res?.id || '(no id)');
               lastUpsertKeyRef.current = key;
             } else {
               warn('upsert returned not ok:', res?.error || 'unknown');
@@ -191,44 +172,39 @@ function PushBootstrap() {
       } catch (e) {
         err('attach onAuthStateChanged failed:', e?.message || e);
       }
+
+      const dt = Date.now() - t0;
+      log('bootstrap completed in', `${dt}ms`);
     })();
 
+    // Cleanup à l’unmount
     return () => {
       log('unmount → cleanup…');
-      try {
-        detachListeners?.();
-        log('listeners detached');
-      } catch (e) {
-        err('detach listeners error:', e?.message || e);
-      }
-      try {
-        unsubscribeAuth?.();
-        log('auth listener detached');
-      } catch (e) {
-        err('detach auth error:', e?.message || e);
-      }
+      try { detachListeners?.(); log('listeners detached'); } catch (e) { err('detach listeners error:', e?.message || e); }
+      try { unsubscribeAuth?.(); log('auth listener detached'); } catch (e) { err('detach auth error:', e?.message || e); }
     };
   }, []);
 
-  return null;
+  return null; // pas d'UI ici
 }
 
-// Utils d’affichage log-safe
+// Utils d’affichage log-safe (évite les crashes sur gros objets)
 function safeJson(obj) {
-  try {
-    return JSON.stringify(obj, null, 2)?.slice(0, 1000); // limite la taille
-  } catch {
-    return '[unserializable]';
-  }
+  try { return JSON.stringify(obj, null, 2)?.slice(0, 1000); } catch { return '[unserializable]'; }
 }
 function maskToken(tok) {
-  if (!tok) return tok;
+  if (!tok) {
+    return tok;
+  }
   const s = String(tok);
-  if (s.length <= 12) return s;
+  if (s.length <= 12) {
+    return s;
+  }
   return `${s.slice(0, 12)}…(${s.length})`;
 }
 
 export default function Layout() {
+  // Stripe publishable key (log masqué)
   const publishableKey = Constants.expoConfig?.extra?.STRIPE_PUBLISHABLE_KEY || '';
   if (!publishableKey) {
     warn('Stripe publishableKey is empty in extra.STRIPE_PUBLISHABLE_KEY');
@@ -244,13 +220,13 @@ export default function Layout() {
         <PaperProvider>
           <StripeProvider publishableKey={publishableKey}>
             <ErrorBoundary FallbackComponent={MyFallback}>
-              {/* Boot push + upsert device */}
+              {/* Boot push + upsert device (no UI) */}
               <PushBootstrap />
 
-              {/* Navigation */}
+              {/* Navigation app */}
               <Stack screenOptions={{ headerShown: false }} />
 
-              {/* Toasts */}
+              {/* Toasts globaux */}
               <Toast
                 config={{ success: (props) => <CustomTopToast {...props} /> }}
                 position="top"
