@@ -3,8 +3,10 @@
 // Rôle : création d’un signalement PUBLIC dans /publicAlerts
 // - Localisation (GPS) -> adresse + CEP (Google-first via utils/cep)
 // - Sauvegarde Firestore avec createdAt + expiresAt = now + 90j (TTL)
-// - Logs [REPORT] pour tout suivre
+// - Logs [REPORT] pour tout suivre (diagnostic production-friendly)
+// - Déclenchement non-bloquant de la Cloud Function d’alerte publique
 // -------------------------------------------------------------
+
 import React, { useState } from 'react';
 import {
   Text,
@@ -38,8 +40,16 @@ import { useAuthGuard } from '../hooks/useAuthGuard';
 import { resolveExactCepFromCoords } from '@/utils/cep';
 import { GOOGLE_MAPS_KEY } from '@/utils/env';
 
+// -------------------------------------------------------------
+// Constantes & utilitaires
+// -------------------------------------------------------------
+
 const DB_RETENTION_DAYS = 90; // TTL base (analytics), indépendant de la carte
 
+// Catégories affichées (UI)
+// NOTE: on garde la couleur UI pour cohérence visuelle du bouton,
+// mais la couleur "formulaire" envoyée et le rayon sont re-mappés
+// proprement via la "gravidade" (minor/medium/grave) plus bas.
 const categories = [
   { label: 'Roubo/Furto', icon: ShieldAlert, severity: 'medium', color: '#FFA500' },
   { label: 'Agressão', icon: UserX, severity: 'medium', color: '#FFA500' },
@@ -49,6 +59,34 @@ const categories = [
   { label: 'Mal súbito (problema de saúde)', icon: HandHeart, severity: 'grave', color: '#FF3B30' },
   { label: 'Outros', icon: FileQuestion, severity: 'minor', color: '#007AFF' },
 ];
+
+// Normalisation CEP -> "99999-999" (affichage) / digits only (backend)
+const onlyDigits = (v = '') => String(v).replace(/\D/g, '');
+const formatCepDisplay = (digits) => (digits ? digits.replace(/(\d{5})(\d{3})/, '$1-$2') : '');
+
+// Mapping gravité -> (couleur, portée en mètres)
+// - on utilise CE MAPPING pour:
+//   1) payload.color (couleur formulaire)
+//   2) payload.radius_m (clé standard pour le backend / FCM)
+const severityToColorAndRadius = (sev) => {
+  switch (sev) {
+    case 'minor':
+      return { color: '#FFE600', radius_m: 500 }; // jaune
+    case 'grave':
+      return { color: '#FF3B30', radius_m: 2000 }; // rouge
+    case 'medium':
+    default:
+      return { color: '#FFA500', radius_m: 1000 }; // orange
+  }
+};
+
+// Adresse lisible pour la notif (ex: "Rua X, 123 — Fortaleza/CE")
+const buildEnderecoLabel = (ruaNumero, cidade, estado) =>
+  [ruaNumero, cidade && `${cidade}/${estado}`].filter(Boolean).join(' — ');
+
+// -------------------------------------------------------------
+// Composant
+// -------------------------------------------------------------
 
 export default function ReportScreen() {
   const router = useRouter();
@@ -76,21 +114,19 @@ export default function ReportScreen() {
   const timeBR = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
   const selectedCategory = categories.find((c) => c.label === categoria);
-  const severityColor = selectedCategory?.color || '#007AFF';
+  // Couleur UI du bouton = couleur de la catégorie (pas la mapping gravité, pour ne pas casser l’habitude visuelle)
+  const severityColorUI = selectedCategory?.color || '#007AFF';
 
-  const formatCep = (val) =>
-    String(val || '')
-      .replace(/[^0-9]/g, '')
-      .trim();
-
+  // -----------------------------------------------------------
+  // Localisation -> CEP via Google + fallback UI
+  // -----------------------------------------------------------
   const handleLocation = async () => {
     console.log('[REPORT] handleLocation START');
     setLoadingLoc(true);
     try {
-      let { status } = await Location.requestForegroundPermissionsAsync();
+      const { status } = await Location.requestForegroundPermissionsAsync();
       console.log('[REPORT] Location perm =', status);
       if (status !== 'granted') {
-        setLoadingLoc(false);
         Alert.alert('Permissão negada para acessar a localização.');
         return;
       }
@@ -101,6 +137,7 @@ export default function ReportScreen() {
       console.log('[REPORT] coords =', coords);
       setLocal(coords);
 
+      // Reverse geocoding -> CEP (Google-first)
       console.log('[REPORT] resolveExactCepFromCoords…');
       const res = await resolveExactCepFromCoords(coords.latitude, coords.longitude, {
         googleApiKey: GOOGLE_MAPS_KEY,
@@ -114,15 +151,12 @@ export default function ReportScreen() {
       const rua = res.address?.logradouro || '';
       const numero = res.address?.numero || '';
       let ruaNumeroVal = '';
-      if (rua && numero) {
-        ruaNumeroVal = `${rua}, ${numero}`;
-      } else {
-        ruaNumeroVal = rua || numero || '';
-      }
-
+      if (rua && numero) ruaNumeroVal = `${rua}, ${numero}`;
+      else ruaNumeroVal = rua || numero || '';
       setRuaNumero(ruaNumeroVal.trim());
       setCidade(res.address?.cidade || '');
       setEstado(res.address?.uf || '');
+
       if (res.cep) {
         setCep(res.cep);
         setCepPrecision('exact');
@@ -131,53 +165,61 @@ export default function ReportScreen() {
         setCepPrecision('needs-confirmation');
         Alert.alert(
           'Confirme o CEP',
-          'Não foi possível determinar um único CEP. Verifique o endereço ou insira o CEP se souber.',
+          'Não foi possível determinar um único CEP. Verifique o endereço ou insira o CEP se souber.'
         );
       } else {
         setCep('');
         setCepPrecision('general');
         Alert.alert(
           'Localização imprecisa',
-          'Não encontramos o CEP exato para esta rua. Você pode inserir manualmente o CEP (opcional).',
+          'Não encontramos o CEP exato para esta rua. Você pode inserir manualmente o CEP (opcional).'
         );
       }
     } catch (e) {
       console.log('[REPORT] ERREUR =', e?.message || e);
       Alert.alert('Erro', 'Não foi possível obter sua localização.');
+    } finally {
+      setLoadingLoc(false);
+      console.log('[REPORT] handleLocation END');
     }
-    setLoadingLoc(false);
-    console.log('[REPORT] handleLocation END');
   };
 
+  // -----------------------------------------------------------
+  // Envoi du report
+  // -----------------------------------------------------------
   const handleSend = async () => {
     console.log('[REPORT] handleSend START');
-    if (!categoria) {
-      return Alert.alert('Selecione uma categoria.');
-    }
-    if (!ruaNumero.trim()) {
-      return Alert.alert('Preencha o campo Rua e número.');
-    }
-    if (!cidade.trim() || !estado.trim()) {
-      return Alert.alert('Preencha cidade e estado.');
-    }
-    if (!descricao.trim()) {
-      return Alert.alert('Descreva o ocorrido.');
-    }
-    if (!local?.latitude || !local?.longitude) {
+
+    // Validations strictes (pas de régression)
+    if (!categoria) return Alert.alert('Selecione uma categoria.');
+    if (!ruaNumero.trim()) return Alert.alert('Preencha o campo Rua e número.');
+    if (!cidade.trim() || !estado.trim()) return Alert.alert('Preencha cidade e estado.');
+    if (!descricao.trim()) return Alert.alert('Descreva o ocorrido.');
+    if (!local?.latitude || !local?.longitude)
       return Alert.alert('Use sua localização para posicionar o alerta.');
-    }
 
     try {
-      // expiresAt = now + 90 jours (pour TTL Firestore)
+      // TTL Firestore
       const expires = new Date(Date.now() + DB_RETENTION_DAYS * 24 * 3600 * 1000);
+
+      // 1) Mapping gravité -> (couleur + portée)
+      const sev = selectedCategory?.severity; // 'minor' | 'medium' | 'grave'
+      const { color: mappedColor, radius_m } = severityToColorAndRadius(sev);
+      // On garde la couleur UI pour le bouton, mais on envoie "mappedColor" côté back
+      // pour assurer la cohérence des niveaux de gravité dans la notif.
+
+      // 2) Adresse lisible pour la notif
+      const enderecoLabel = buildEnderecoLabel(ruaNumero, cidade, estado);
+
+      // 3) Payload Firestore (AUCUNE régression)
       const payload = {
         userId: auth.currentUser?.uid,
         apelido: user?.apelido || '',
         username: user?.username || '',
         categoria,
         descricao,
-        gravidade: selectedCategory?.severity || '',
-        color: severityColor,
+        gravidade: sev || 'medium', // cohérence back
+        color: mappedColor, // couleur formulaire normalisée (pas forcément la couleur UI)
         ruaNumero,
         cidade,
         estado,
@@ -196,20 +238,70 @@ export default function ReportScreen() {
         time: timeBR,
         createdAt: serverTimestamp(),
         expiresAt: Timestamp.fromDate(expires),
+        // Compat + standard
+        radius: radius_m, // compat ancien champ
+        radius_m, // clé standard
       };
+
       console.log('[REPORT] Firestore payload =', payload);
 
-      await addDoc(collection(db, 'publicAlerts'), payload);
-      console.log('[REPORT] addDoc OK');
+      // 4) Sauvegarde Firestore
+      const docRef = await addDoc(collection(db, 'publicAlerts'), payload);
+      console.log('[REPORT] addDoc OK => id:', docRef.id);
+
+      // 5) Appel Cloud Function (non-bloquant) — on trace mais on ne bloque pas l’UX
+      (async () => {
+        try {
+          const body = {
+            alertId: docRef.id,
+            endereco: enderecoLabel,
+            bairro: '', // si tu ajoutes un champ quartier plus tard
+            cidade,
+            uf: estado,
+            cep: onlyDigits(cep), // backend préfère digits only
+            lat: local.latitude,
+            lng: local.longitude,
+            radius_m,
+            severidade: sev || 'medium',
+            color: mappedColor,
+            // image: 'https://firebasestorage.googleapis.com/v0/b/<bucket>/o/banner_alerta.jpg?alt=media' // optionnel
+          };
+          console.log('[REPORT] Calling sendPublicAlertByAddress with:', body);
+
+          const resp = await fetch(
+            'https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/sendPublicAlertByAddress',
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body),
+            }
+          );
+
+          const json = await resp.json().catch(() => null);
+          console.log('[REPORT] sendPublicAlertByAddress response:', {
+            status: resp.status,
+            ok: resp.ok,
+            json,
+          });
+        } catch (err) {
+          console.log('[REPORT] sendPublicAlertByAddress ERROR:', err?.message || String(err));
+        }
+      })();
+
+      // 6) UX : confirmation immédiate + retour Home
       Alert.alert('Alerta enviado!', 'Seu alerta foi registrado.');
       router.replace('/(tabs)/home');
     } catch (e) {
       console.log('[REPORT] Firestore ERREUR =', e?.message || e);
       Alert.alert('Erro', e.message);
+    } finally {
+      console.log('[REPORT] handleSend END');
     }
-    console.log('[REPORT] handleSend END');
   };
 
+  // -----------------------------------------------------------
+  // State d’activation du bouton
+  // -----------------------------------------------------------
   const isBtnActive = !!(
     categoria &&
     descricao.trim().length > 0 &&
@@ -220,6 +312,9 @@ export default function ReportScreen() {
     local?.longitude
   );
 
+  // -----------------------------------------------------------
+  // Render
+  // -----------------------------------------------------------
   return (
     <ScrollView contentContainerStyle={styles.scrollContainer}>
       <View style={styles.container}>
@@ -255,11 +350,7 @@ export default function ReportScreen() {
               ]}
               onPress={() => setCategoria(label)}
             >
-              <Icon
-                size={18}
-                color={categoria === label ? '#fff' : color}
-                style={{ marginRight: 7 }}
-              />
+              <Icon size={18} color={categoria === label ? '#fff' : color} style={{ marginRight: 7 }} />
               <Text
                 style={[
                   styles.categoriaText,
@@ -318,8 +409,8 @@ export default function ReportScreen() {
           onChangeText={setCep}
           onBlur={() =>
             setCep((v) => {
-              const digits = formatCep(v);
-              return digits ? digits.replace(/(\d{5})(\d{3})/, '$1-$2') : '';
+              const digits = onlyDigits(v);
+              return formatCepDisplay(digits);
             })
           }
           keyboardType="numeric"
@@ -329,8 +420,8 @@ export default function ReportScreen() {
             {cepPrecision === 'exact'
               ? 'CEP exato detectado.'
               : cepPrecision === 'needs-confirmation'
-                ? 'Vários CEPs possíveis — confirme o endereço/CEP.'
-                : 'CEP não foi identificado — você pode inserir manualmente.'}
+              ? 'Vários CEPs possíveis — confirme o endereço/CEP.'
+              : 'CEP não foi identificado — você pode inserir manualmente.'}
           </Text>
         )}
 
@@ -359,7 +450,7 @@ export default function ReportScreen() {
           style={[
             styles.sendBtn,
             {
-              backgroundColor: isBtnActive ? severityColor : '#aaa',
+              backgroundColor: isBtnActive ? severityColorUI : '#aaa',
               opacity: isBtnActive ? 1 : 0.6,
             },
           ]}
@@ -374,6 +465,9 @@ export default function ReportScreen() {
   );
 }
 
+// -------------------------------------------------------------
+// Styles
+// -------------------------------------------------------------
 const styles = StyleSheet.create({
   scrollContainer: { paddingBottom: 36, backgroundColor: '#181A20' },
   container: { padding: 22, flex: 1, backgroundColor: '#181A20' },

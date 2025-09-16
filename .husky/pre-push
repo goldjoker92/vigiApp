@@ -1,13 +1,22 @@
-#!/usr/bin/env sh
-. "$(dirname -- "$0")/_/husky.sh"
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
 
-echo "[husky] pre-push — cohérence des dépendances (non-bloquant)…"
+echo ""
+echo "🔍 [husky] pre-push (non-bloquant) ..."
 
-TMP_DIR="$(node -e "console.log(require('os').tmpdir())")"
-OUT_RAW="$TMP_DIR/husky_deps_check.txt"
+# Check Expo deps (jamais bloquant)
+CI=1 npx expo install --check >/dev/null 2>&1 \
+  && echo "📦 Expo deps OK" \
+  || echo "⚠️ Expo deps check a échoué (ignoré)"
 
-npx --yes expo install --check --non-interactive >"$OUT_RAW" 2>&1 || true
+# Lint (non-bloquant)
+npm run lint --silent >/dev/null 2>&1 \
+  && echo "🧹 Lint OK" \
+  || echo "⚠️ Lint en erreur (ignoré)"
 
-node scripts/expo-check-to-advice.js < "$OUT_RAW" \
-  | node scripts/husky-report-single.js --hook pre-push \
-  || echo "[husky] rapport deps partiel (non bloquant)"
+# Tests (non-bloquant)
+npm test -- --watchAll=false >/dev/null 2>&1 \
+  && echo "🧪 Tests OK" \
+  || echo "⚠️ Tests en erreur (ignoré)"
+
+echo "✅ [husky] tout est non-bloquant. Push autorisé."

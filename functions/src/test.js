@@ -1,8 +1,13 @@
 // functions/src/test.js
+// =============================================================
+// Test FCM — 1 device (token)
+// - Force l’usage du canal Android 'alerts-high'
+// - Heads-up + son + visibilité publique
+// - Données data pour navigation in-app
+// =============================================================
 const { onRequest } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
 
-// Envoi 1 token (notif "display") – simple et suffisant pour tester
 exports.testFCM = onRequest(async (req, res) => {
   try {
     const token = req.query.token || req.body?.token;
@@ -16,9 +21,26 @@ exports.testFCM = onRequest(async (req, res) => {
     const message = {
       token,
       notification: { title, body },
-      // Tu peux ajouter des données pour ta navigation in-app:
+
+      // Données (inoffensif) pour ton routing in-app
       data: { screen: 'home', reason: 'test' },
-      android: { priority: 'high' },
+
+      // ✅ Android: rattache à 'alerts-high' + heads-up
+      android: {
+        priority: 'high',
+        notification: {
+          channelId: 'alerts-high',              // DOIT exister côté app
+          sound: 'default',
+          color: '#FF3B30',
+          visibility: 'PUBLIC',
+          notificationPriority: 'PRIORITY_MAX',
+          defaultVibrateTimings: true,
+          defaultLightSettings: true,
+          // imageUrl: 'https://picsum.photos/800/400', // option: bannière étendue
+        },
+      },
+
+      // iOS (sans effet sur Android mais OK à garder)
       apns: { headers: { 'apns-priority': '10' } },
     };
 
