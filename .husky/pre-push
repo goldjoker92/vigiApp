@@ -1,13 +1,31 @@
-#!/usr/bin/env sh
-. "$(dirname -- "$0")/_/husky.sh"
+#!/bin/sh
+echo ""
+echo "🔎 [husky] Vérification (non-bloquante) des dépendances Expo/Yarn..."
 
-echo "[husky] pre-push — cohérence des dépendances (non-bloquant)…"
+# 1) Check alignement Expo (info only)
+CI=1 yarn expo install --check >/dev/null 2>&1
+if [ $? -eq 0 ]; then
+  echo "📦 Expo deps OK"
+else
+  echo "⚠️ Expo deps possiblement désalignées."
+  echo "   👉 Conseils Yarn :"
+  echo "      - Aligner Expo :  yarn expo install"
+  echo "      - Inspecter pkg : yarn why <package>"
+fi
 
-TMP_DIR="$(node -e "console.log(require('os').tmpdir())")"
-OUT_RAW="$TMP_DIR/husky_deps_check.txt"
+# 2) Dedupe (selon Yarn major)
+YARN_VERSION=$(yarn -v 2>/dev/null)
+YARN_MAJOR=$(echo "$YARN_VERSION" | cut -d. -f1)
 
-npx --yes expo install --check --non-interactive >"$OUT_RAW" 2>&1 || true
+if [ "$YARN_MAJOR" -ge 2 ]; then
+  yarn dedupe >/dev/null 2>&1 \
+    && echo "🧹 yarn dedupe (Berry) OK" \
+    || echo "ℹ️ Tips Berry: yarn dedupe && yarn install"
+else
+  npx --yes yarn-deduplicate yarn.lock >/dev/null 2>&1 \
+    && echo "🧹 yarn-deduplicate (v1) OK" \
+    || echo "ℹ️ Tips v1: npm i -D yarn-deduplicate && npx yarn-deduplicate yarn.lock && yarn install"
+fi
 
-node scripts/expo-check-to-advice.js < "$OUT_RAW" \
-  | node scripts/husky-report-single.js --hook pre-push \
-  || echo "[husky] rapport deps partiel (non bloquant)"
+echo "✅ [husky] Non-bloquant. Push autorisé."
+exit 0

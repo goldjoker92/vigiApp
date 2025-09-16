@@ -1,17 +1,16 @@
-// jest.setup.jsx
 
 import '@testing-library/jest-native/extend-expect';
 
-/* global jest */ // Add this line to declare jest as a global variable
-
-// Mock Reanimated pour éviter les crashs en test
+// Mocks stables pour tests RN/Expo
 jest.mock('react-native-reanimated', () => require('react-native-reanimated/mock'));
 
-// Coupe les warnings Animated bruyants
-jest.mock('react-native/Libraries/Animated/NativeAnimatedHelper');
+// Silence quelques warnings bruyants
+const originalError = global.console.error;
+global.console.error = (...args) => {
+  const msg = String(args[0] || '');
+  if (msg.includes('useNativeDriver') || msg.includes('React state update on an unmounted component')) {
+    return;
+  }
+  originalError(...args);
+};
 
-// Mock léger d'expo-router (pas de vraie navigation en test)
-jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: jest.fn(), replace: jest.fn(), back: jest.fn() }),
-  usePathname: () => '/',
-}));

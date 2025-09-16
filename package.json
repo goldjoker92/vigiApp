@@ -23,10 +23,11 @@
     "android:bare:assemble": "cd android && ./gradlew :app:assemblePlayDebug",
     "android:bare:install": "cd android && ./gradlew :app:installPlayDebug",
     "test": "jest",
-    "format": "prettier --write .",
-    "test:quick": "jest -u -w 1 --silent --findRelatedTests --passWithNoTests",
+    "test:quick": "jest --watchAll=false --silent --passWithNoTests",
+    "test:related": "jest --bail --findRelatedTests",
     "husky:report": "node scripts/husky-report-single.js",
-    "deps:check": "expo install --check"
+    "deps:check": "expo install --check",
+    "format": "prettier --write ."
   },
   "engines": {
     "node": ">=18 <21"
@@ -40,14 +41,23 @@
   "jest": {
     "preset": "jest-expo",
     "setupFilesAfterEnv": [
-      "@testing-library/jest-native/extend-expect",
       "<rootDir>/jest.setup.jsx"
+    ],
+    "transformIgnorePatterns": [
+      "node_modules/(?!(react-native|@react-native|react-native-.*|@react-navigation|expo(nent)?|@expo|expo-modules-core|@expo/vector-icons|@unimodules|unimodules-.*|sentry-expo)/)"
     ],
     "testPathIgnorePatterns": [
       "/node_modules/",
-      "/e2e/"
-    ],
-    "verbose": false
+      "/android/",
+      "/ios/",
+      "/functions/"
+    ]
+  },
+  "prettier": {
+    "singleQuote": true,
+    "semi": true,
+    "printWidth": 100,
+    "trailingComma": "es5"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.1.2",
