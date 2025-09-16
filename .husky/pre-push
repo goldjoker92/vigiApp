@@ -1,22 +1,31 @@
 #!/bin/sh
-. "$(dirname "$0")/_/husky.sh"
-
 echo ""
-echo "🔍 [husky] pre-push (non-bloquant) ..."
+echo "🔎 [husky] Vérification (non-bloquante) des dépendances Expo/Yarn..."
 
-# Check Expo deps (jamais bloquant)
-CI=1 npx expo install --check >/dev/null 2>&1 \
-  && echo "📦 Expo deps OK" \
-  || echo "⚠️ Expo deps check a échoué (ignoré)"
+# 1) Check alignement Expo (info only)
+CI=1 yarn expo install --check >/dev/null 2>&1
+if [ $? -eq 0 ]; then
+  echo "📦 Expo deps OK"
+else
+  echo "⚠️ Expo deps possiblement désalignées."
+  echo "   👉 Conseils Yarn :"
+  echo "      - Aligner Expo :  yarn expo install"
+  echo "      - Inspecter pkg : yarn why <package>"
+fi
 
-# Lint (non-bloquant)
-npm run lint --silent >/dev/null 2>&1 \
-  && echo "🧹 Lint OK" \
-  || echo "⚠️ Lint en erreur (ignoré)"
+# 2) Dedupe (selon Yarn major)
+YARN_VERSION=$(yarn -v 2>/dev/null)
+YARN_MAJOR=$(echo "$YARN_VERSION" | cut -d. -f1)
 
-# Tests (non-bloquant)
-npm test -- --watchAll=false >/dev/null 2>&1 \
-  && echo "🧪 Tests OK" \
-  || echo "⚠️ Tests en erreur (ignoré)"
+if [ "$YARN_MAJOR" -ge 2 ]; then
+  yarn dedupe >/dev/null 2>&1 \
+    && echo "🧹 yarn dedupe (Berry) OK" \
+    || echo "ℹ️ Tips Berry: yarn dedupe && yarn install"
+else
+  npx --yes yarn-deduplicate yarn.lock >/dev/null 2>&1 \
+    && echo "🧹 yarn-deduplicate (v1) OK" \
+    || echo "ℹ️ Tips v1: npm i -D yarn-deduplicate && npx yarn-deduplicate yarn.lock && yarn install"
+fi
 
-echo "✅ [husky] tout est non-bloquant. Push autorisé."
+echo "✅ [husky] Non-bloquant. Push autorisé."
+exit 0

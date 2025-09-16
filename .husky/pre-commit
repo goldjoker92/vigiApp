@@ -1,3 +1,9 @@
 #!/bin/sh
-echo "[husky] pre-commit (noop, non-bloquant)"
+echo "✨ [husky] Prettier+ESLint (non-bloquants) sur fichiers modifiés..."
+
+# Prettier + ESLint via lint-staged — JAMAIS bloquant
+yarn lint-staged >/dev/null 2>&1 \
+  && echo "✅ Prettier/ESLint OK" \
+  || echo "⚠️ Prettier/ESLint a échoué (commit non bloqué)"
+
 exit 0
