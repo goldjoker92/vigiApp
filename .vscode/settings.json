@@ -11,5 +11,10 @@
     "ANDROID_SDK_ROOT": "C:\\Users\\Oscar\\AppData\\Local\\Android\\Sdk",
     "ANDROID_HOME": "C:\\Users\\Oscar\\AppData\\Local\\Android\\Sdk",
     "PATH": "${env:PATH};C:\\Users\\Oscar\\AppData\\Local\\Android\\Sdk\\platform-tools;C:\\Users\\Oscar\\AppData\\Local\\Android\\Sdk\\emulator"
-  }
+  },
+  "eslint.useFlatConfig": true,
+  "eslint.workingDirectories": [
+    { "mode": "auto" },
+    { "directory": "./functions", "changeProcessCWD": true }
+  ]
 }

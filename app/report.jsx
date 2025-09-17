@@ -151,8 +151,11 @@ export default function ReportScreen() {
       const rua = res.address?.logradouro || '';
       const numero = res.address?.numero || '';
       let ruaNumeroVal = '';
-      if (rua && numero) ruaNumeroVal = `${rua}, ${numero}`;
-      else ruaNumeroVal = rua || numero || '';
+      if (rua && numero) {
+        ruaNumeroVal = `${rua}, ${numero}`;
+      } else {
+        ruaNumeroVal = rua || numero || '';
+      }
       setRuaNumero(ruaNumeroVal.trim());
       setCidade(res.address?.cidade || '');
       setEstado(res.address?.uf || '');
@@ -191,8 +194,12 @@ export default function ReportScreen() {
     console.log('[REPORT] handleSend START');
 
     // Validations strictes (pas de régression)
-    if (!categoria) return Alert.alert('Selecione uma categoria.');
-    if (!ruaNumero.trim()) return Alert.alert('Preencha o campo Rua e número.');
+    if (!categoria) {
+      return Alert.alert('Selecione uma categoria.');
+    }
+    if (!ruaNumero.trim()) {
+      return Alert.alert('Preencha o campo Rua e número.');
+    }
     if (!cidade.trim() || !estado.trim()) {
       return Alert.alert('Preencha cidade e estado.');
     }

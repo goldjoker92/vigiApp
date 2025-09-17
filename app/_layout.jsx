@@ -1,24 +1,23 @@
 // app/_layout.js
 // =============================================================
-// VigiApp — Root layout avec bootstrap PUSH ultra-verbosé
-// - Logs horodatés (préfixés) pour suivre chaque étape
-// - Init listeners + permission + Expo token + FCM device token
-// - Upsert device sur changement d'auth (idempotent, anti-doublons) + CEP du profil
-// - Toast en foreground pour les push reçus in-app (mappage severidade)
-// - Cleanup propre à l’unmount
-// - Silence console en release optionnel via extra.SILENCE_CONSOLE_IN_RELEASE
+// VigiApp — Root layout avec bootstrap PUSH robuste & verbosé
+// - Crée le canal Android "alerts-high" (importance MAX) + vérif perms
+// - Attache les listeners (foreground & taps) + deep-link
+// - Récupère Expo Push Token & FCM Device Token (et upsert device)
+// - Compatible app ouverte / arrière-plan / app fermée
 // =============================================================
 
-import React, { useEffect, useRef } from 'react';
-import { Stack, router } from 'expo-router';
-import Toast from 'react-native-toast-message';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { ErrorBoundary } from 'react-error-boundary';
-import { View, Text } from 'react-native';
-import { Provider as PaperProvider } from 'react-native-paper';
 import { StripeProvider } from '@stripe/stripe-react-native';
 import Constants from 'expo-constants';
+import * as Notifications from 'expo-notifications';
+import { Stack, router } from 'expo-router';
+import { useEffect, useRef } from 'react';
+import { ErrorBoundary } from 'react-error-boundary';
+import { Platform, Text, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { Provider as PaperProvider } from 'react-native-paper';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import Toast from 'react-native-toast-message';
 
 // ⚠️ init monétisation hors de /app
 import '../src/_bootstrap/monetization-init';
@@ -26,92 +25,71 @@ import '../src/_bootstrap/monetization-init';
 // UI toast custom
 import CustomTopToast from './components/CustomTopToast';
 
-// 🔔 Push libs (conservent les signatures existantes)
+// 🔔 Push libs (signatures conservées)
 import {
-  registerForPushNotificationsAsync, // -> Expo push token
-  attachNotificationListeners, // -> listeners receive/response
-  getFcmDeviceTokenAsync, // -> FCM device token (sauvé côté lib)
+  attachNotificationListeners,
+  getFcmDeviceTokenAsync,
+  registerForPushNotificationsAsync,
+  ensureAndroidChannels, // ✅ nouveau: “default” + “alerts-high”
 } from '../libs/notifications';
 
-// Upsert device côté backend (conserve ton implémentation)
+// Upsert device côté backend
 import { upsertDevice } from '../libs/registerDevice';
 
 // Firebase
-import { auth } from '../firebase';
 import { onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, getFirestore } from 'firebase/firestore';
+import { auth } from '../firebase';
 
-// ✅ Zustand store (CEP prioritaire depuis ici)
-// Ajuste le chemin selon l'emplacement réel du store
+// ✅ Zustand store
 import { useUserStore } from '../store/users';
 
-// ========== Logging util (timestamp + filtrage release) ==========
+// ========== Logging util ==========
 const extra = Constants?.expoConfig?.extra || {};
-const SILENCE_RELEASE = !!extra?.SILENCE_CONSOLE_IN_RELEASE; // mets true pour couper en release
+const SILENCE_RELEASE = !!extra?.SILENCE_CONSOLE_IN_RELEASE;
 const APP_TAG = 'VigiApp';
 const LAYOUT_TAG = 'PushBootstrap';
 
 function ts() {
-  try {
-    return new Date().toISOString();
-  } catch {
-    return String(Date.now());
-  }
+  try { return new Date().toISOString(); } catch { return String(Date.now()); }
 }
 function log(...args) {
   if (__DEV__ || !SILENCE_RELEASE) {
-    try {
-      console.log(`[${APP_TAG}][${LAYOUT_TAG}][${ts()}]`, ...args);
-    } catch {}
+    try { console.log(`[${APP_TAG}][${LAYOUT_TAG}][${ts()}]`, ...args); } catch {}
   }
 }
 function warn(...args) {
   if (__DEV__ || !SILENCE_RELEASE) {
-    try {
-      console.warn(`[${APP_TAG}][${LAYOUT_TAG}][${ts()}]`, ...args);
-    } catch {}
+    try { console.warn(`[${APP_TAG}][${LAYOUT_TAG}][${ts()}]`, ...args); } catch {}
   }
 }
 function err(...args) {
   if (__DEV__ || !SILENCE_RELEASE) {
-    try {
-      console.error(`[${APP_TAG}][${LAYOUT_TAG}][${ts()}]`, ...args);
-    } catch {}
+    try { console.error(`[${APP_TAG}][${LAYOUT_TAG}][${ts()}]`, ...args); } catch {}
   }
 }
 
-// === Polyfill structuredClone pour Hermes (sécurisé pour objets simples) ===
+// === Polyfill structuredClone (Hermes) ===
 if (typeof global.structuredClone !== 'function') {
   // @ts-ignore
   global.structuredClone = (obj) => JSON.parse(JSON.stringify(obj));
   log('structuredClone polyfilled');
 }
 
-// === Suppression optionnelle des logs en production ===
+// === Mute logs en prod (optionnel) ===
 if (!__DEV__ && SILENCE_RELEASE) {
   // eslint-disable-next-line no-console
   console.log = () => {};
-   
   console.warn = () => {};
-   
   console.error = () => {};
 }
 
-// === Fallback UI en cas de bug JS (Error Boundary) ===
+// === Error Boundary UI ===
 function MyFallback({ error }) {
   err('ErrorBoundary caught:', error?.message, error?.stack);
   return (
-    <View
-      style={{
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: '#181A20',
-      }}
-    >
-      <Text style={{ color: '#FFD600', fontWeight: 'bold', fontSize: 20, marginBottom: 16 }}>
-        Oops !
-      </Text>
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#181A20' }}>
+      <Text style={{ color: '#FFD600', fontWeight: 'bold', fontSize: 20, marginBottom: 16 }}>Oops !</Text>
       <Text style={{ color: '#fff', textAlign: 'center', fontSize: 16, marginBottom: 10 }}>
         {error?.message || 'Une erreur est survenue.'}
       </Text>
@@ -120,15 +98,11 @@ function MyFallback({ error }) {
   );
 }
 
-// --- map severidade -> toast type (pour CustomTopToast)
+// --- map severidade -> toast type
 function mapSeverityToToastType(sev) {
   const s = String(sev || '').toLowerCase();
-  if (s === 'high' || s === 'grave') {
-    return 'error';
-  }
-  if (s === 'low' || s === 'minor') {
-    return 'success';
-  }
+  if (s === 'high' || s === 'grave') return 'error';
+  if (s === 'low' || s === 'minor') return 'success';
   return 'info'; // medium / défaut
 }
 
@@ -147,44 +121,53 @@ async function fetchUserCepFromFirestore(uid) {
   }
 }
 
+// === Handler foreground moderne (SDK 53+) ===
+// (Android: l’affichage heads-up dépend surtout de l’importance du canal)
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
+
 // ---------------------------
 // Bootstrap Push (one-shot)
 // ---------------------------
 function PushBootstrap() {
-  // Mémoire locale pour limiter les upserts répétitifs
   const expoTokenRef = useRef(null);
   const fcmTokenRef = useRef(null);
-  const lastUpsertKeyRef = useRef(''); // `${uid}:${expoPref}:${fcmPref}` pour dédup
-
-  // ✅ CEP depuis Zustand prioritaire (profil chargé ailleurs dans l’app)
+  const lastUpsertKeyRef = useRef(''); // `${uid}:${expoPrefix}:${fcmPrefix}`
   const { user } = useUserStore();
 
   useEffect(() => {
-    let detachListeners; // pour nettoyer les listeners notifs
-    let unsubscribeAuth; // pour détacher l'observateur auth
-    let triedFallbackForUid = ''; // évite multiples fetch Firestore pour le même UID
+    let detachListeners;
+    let unsubscribeAuth;
+    let triedFallbackForUid = '';
 
     (async () => {
       const t0 = Date.now();
       log('mount → start bootstrap');
 
-      // 1) Listeners + permissions + Expo token + FCM token
+      // ✅ 0) Crée/MAJ les canaux Android AVANT toute notif (clé du fix)
       try {
-        // a) brancher les listeners (réception + tap réponse)
+        await ensureAndroidChannels();
+      } catch (e) {
+        warn('ensureAndroidChannels error:', e?.message || e);
+      }
+
+      // 1) Listeners + tokens
+      try {
+        // a) Listeners
         detachListeners = attachNotificationListeners({
           onReceive: (n) => {
-            log('listener:onReceive', safeJson(n));
-            // 👉 Foreground: affiche un Toast custom (CustomTopToast)
             const content = n?.request?.content || {};
             const title = content?.title || 'VigiApp';
             const body = content?.body || '';
             const sev = content?.data?.severidade || content?.data?.severity;
             const type = mapSeverityToToastType(sev);
-
-            // Ton CustomTopToast accepte text1 → on combine title + body
             const line = body ? `${title} — ${body}` : title;
-
-            // Essayer plusieurs emplacements possibles :
             const imageUrl =
               content?.data?.image ||
               content?.image ||
@@ -192,8 +175,9 @@ function PushBootstrap() {
               content?.imageUrl ||
               null;
 
+            log('listener:onReceive', safeJson({ title, data: content?.data }));
             Toast.show({
-              type, // 'success' | 'info' | 'error' (même rendu via CustomTopToast)
+              type,
               text1: line,
               position: 'top',
               visibilityTime: 8000,
@@ -202,29 +186,26 @@ function PushBootstrap() {
             });
           },
           onResponse: (r) => {
-            log('listener:onResponse', safeJson(r));
-            // Deep link éventuel
+            log('listener:onResponse', safeJson({
+              data: r?.notification?.request?.content?.data,
+            }));
             const dl =
               r?.notification?.request?.content?.data?.deepLink ||
               r?.notification?.request?.content?.data?.deeplink;
             if (dl && typeof dl === 'string') {
-              try {
-                // expo-router: navigation impérative
-                router.push(dl.replace('vigiapp://', '/'));
-              } catch (e) {
-                warn('router.push deepLink failed:', e?.message || e);
-              }
+              try { router.push(dl.replace('vigiapp://', '/')); }
+              catch (e) { warn('router.push deepLink failed:', e?.message || e); }
             }
           },
         });
         log('listeners attached');
 
-        // b) permission + channel + Expo push token
+        // b) Permissions + Expo push token
         const expoTok = await registerForPushNotificationsAsync();
         expoTokenRef.current = expoTok;
         log('expo token obtained:', maskToken(expoTok));
 
-        // c) FCM device token (et sauvegarde Firestore dans la lib si user connecté)
+        // c) FCM device token (sauvé côté Firestore si user connecté)
         const fcmTok = await getFcmDeviceTokenAsync();
         fcmTokenRef.current = fcmTok;
         log('fcm token obtained:', maskToken(fcmTok));
@@ -232,7 +213,7 @@ function PushBootstrap() {
         err('bootstrap register/listeners failed:', e?.message || e);
       }
 
-      // 2) Dès qu’on a un user, on upsert le device (idempotent)
+      // 2) Upsert device dès qu’on a un user + tokens
       try {
         unsubscribeAuth = onAuthStateChanged(auth, async (fbUser) => {
           if (!fbUser) {
@@ -240,28 +221,22 @@ function PushBootstrap() {
             return;
           }
           if (!expoTokenRef.current && !fcmTokenRef.current) {
-            // Cas rare: aucun token dispo → on upsertera au prochain passage
             warn('auth: user present but no tokens yet (will upsert later)');
             return;
           }
 
-          // ✅ 1) CEP via store d’abord
           let cep = user?.cep ? String(user.cep) : null;
           log('auth: CEP from store =', cep || '(none)');
 
-          // ✅ 2) Fallback Firestore (une fois par UID si store vide)
           if (!cep && triedFallbackForUid !== fbUser.uid) {
             triedFallbackForUid = fbUser.uid;
             cep = await fetchUserCepFromFirestore(fbUser.uid);
           }
-
-          // ✅ 3) Si toujours pas de CEP → SKIP proprement (évite l’erreur "CEP requis")
           if (!cep) {
-            warn('auth: CEP missing (store+fallback) → skip device upsert');
+            warn('auth: CEP missing → skip device upsert');
             return;
           }
 
-          // Anti-doublon: évite spam d'upsert si uid/tokens inchangés
           const key = `${fbUser.uid}:${String(expoTokenRef.current || '').slice(0, 12)}:${String(fcmTokenRef.current || '').slice(0, 12)}`;
           if (lastUpsertKeyRef.current === key) {
             log('auth: upsert skipped (same uid+tokens prefix)', key);
@@ -273,8 +248,8 @@ function PushBootstrap() {
             const res = await upsertDevice({
               userId: fbUser.uid,
               expoPushToken: expoTokenRef.current,
-              fcmDeviceToken: fcmTokenRef.current, // optionnel, utile côté back/diag
-              cep, // ✅ requis par upsertDevice → garanti ici
+              fcmDeviceToken: fcmTokenRef.current,
+              cep,
             });
             if (res?.ok) {
               log('upsert success:', res?.id || '(no id)');
@@ -295,49 +270,29 @@ function PushBootstrap() {
       log('bootstrap completed in', `${dt}ms`);
     })();
 
-    // Cleanup à l’unmount
+    // Cleanup
     return () => {
       log('unmount → cleanup…');
-      try {
-        detachListeners?.();
-        log('listeners detached');
-      } catch (e) {
-        err('detach listeners error:', e?.message || e);
-      }
-      try {
-        unsubscribeAuth?.();
-        log('auth listener detached');
-      } catch (e) {
-        err('detach auth error:', e?.message || e);
-      }
+      try { detachListeners?.(); log('listeners detached'); } catch (e) { err('detach listeners error:', e?.message || e); }
+      try { unsubscribeAuth?.(); log('auth listener detached'); } catch (e) { err('detach auth error:', e?.message || e); }
     };
-    // 🔁 Re-run si le CEP en store change (ex: profil mis à jour)
   }, [user?.cep]);
 
   return null; // pas d'UI ici
 }
 
-// Utils d’affichage log-safe (évite les crashes sur gros objets)
+// Utils d’affichage log-safe
 function safeJson(obj) {
-  try {
-    return JSON.stringify(obj, null, 2)?.slice(0, 1000);
-  } catch {
-    return '[unserializable]';
-  }
+  try { return JSON.stringify(obj, null, 2)?.slice(0, 1000); }
+  catch { return '[unserializable]'; }
 }
 function maskToken(tok) {
-  if (!tok) {
-    return tok;
-  }
+  if (!tok) return tok;
   const s = String(tok);
-  if (s.length <= 12) {
-    return s;
-  }
-  return `${s.slice(0, 12)}…(${s.length})`;
+  return s.length <= 12 ? s : `${s.slice(0, 12)}…(${s.length})`;
 }
 
 export default function Layout() {
-  // Stripe publishable key (log masqué)
   const publishableKey = Constants.expoConfig?.extra?.STRIPE_PUBLISHABLE_KEY || '';
   if (!publishableKey) {
     warn('Stripe publishableKey is empty in extra.STRIPE_PUBLISHABLE_KEY');
@@ -368,7 +323,7 @@ export default function Layout() {
                   default: (props) => <CustomTopToast {...props} />,
                 }}
                 position="top"
-                topOffset={0} // on gère la position dans CustomTopToast
+                topOffset={0}
               />
             </ErrorBoundary>
           </StripeProvider>
@@ -377,5 +332,5 @@ export default function Layout() {
     </SafeAreaProvider>
   );
 }
-// Fin Layout.jsx
 // =============================================================
+// Fin app/_layout.js
