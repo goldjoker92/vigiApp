@@ -1,23 +1,20 @@
-// -------------------------------------------------------------
-// VigiApp — Public Alert (par CEP)
-// - INPUT minimal: alertId, cep
-// - Optionnels: bairro, cidade, uf, endereco?, lat?, lng?, radius_m?,
-//               severidade?, color?, image?, titulo?, descricao?,
-//               testToken?, registerDoc?, expiresInMinutes?
-// - Ciblage: tous les users dont le CEP (normalisé) === cep.
-// - registerDoc: écrit/merge publicAlerts/{alertId} (même schéma standard
-//                que l’endpoint “adresse”).
-// - Deep-link: vigiapp://public-alerts/{alertId}
-// - Sans régression: répond 200 même si aucun destinataire;
-//                    nettoyage des tokens invalides.
-// -------------------------------------------------------------
 /* eslint-env node */
 'use strict';
+
+/**
+ * VigiApp — Public Alerts (CEP & Adresse)
+ * - Envoi FCM “heads-up” via canal Android `alerts-high`
+ * - Données `data` stringifiées (exigence FCM)
+ * - Titre/corps présents => bannière quand l’app est fermée
+ * - Upsert optionnel du doc Firestore publicAlerts/{alertId}
+ * - Nettoyage des tokens invalides côté users/{uid}.fcmTokens
+ * - Logs détaillés, sans casser les exports existants
+ */
 
 const { onRequest } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
 
-// Helpers centralisés (utils.js)
+// Helpers centralisés
 const {
   db,
   toDigits,
@@ -29,101 +26,190 @@ const {
   upsertPublicAlertDoc,
 } = require('./utils');
 
-// Canal Android attendu côté app
+// Canal Android attendu par l’app
 const ANDROID_CHANNEL_ID = 'alerts-high';
 
-module.exports.sendPublicAlertByCEP = onRequest(
-  { timeoutSeconds: 60, cors: true },
-  async (req, res) => {
-    console.log('[PUBLIC ALERT/CEP] START');
+// ======================================================================
+// Helpers internes
+// ======================================================================
+function ok(res, body)  { return res.status(200).json({ ok: true,  ...body }); }
+function ko(res, code, msg) { return res.status(code).json({ ok: false, error: msg }); }
+const num = (v, d = null) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : d;
+};
 
-    try {
-      const b = req.method === 'POST' ? req.body : req.query;
+// ======================================================================
+// Envoi par CEP (HTTP v2)
+// ======================================================================
+module.exports.sendPublicAlertByCEP = onRequest({ timeoutSeconds: 60, cors: true }, async (req, res) => {
+  console.log('[PUBLIC ALERT/CEP] START');
 
-      // Requis
-      const alertId = (b.alertId || '').toString().trim();
-      const cepRaw  = (b.cep || '').toString().trim();
-      const cep     = toDigits(cepRaw); // on normalise toujours
+  try {
+    const b = req.method === 'POST' ? (req.body || {}) : (req.query || {});
 
-      // Contexte optionnel (affichage / doc)
-      const bairro = (b.bairro || '').toString().trim();
-      const cidade = (b.cidade || '').toString().trim();
-      const uf     = (b.uf || '').toString().trim();
-      const endereco = (b.endereco || '').toString().trim();
+    // Requis
+    const alertId = String(b.alertId || '').trim();
+    const cepRaw  = String(b.cep || '').trim();
+    const cep     = toDigits(cepRaw);
 
-      // Coords/rayon facultatifs (affichage)
-      const lat = Number.isFinite(parseFloat(b.lat)) ? parseFloat(b.lat) : null;
-      const lng = Number.isFinite(parseFloat(b.lng)) ? parseFloat(b.lng) : null;
-      const radius_m = Number(b.radius_m ?? b.radius) || 1000;
+    // Contexte optionnel (affichage / doc)
+    const bairro   = String(b.bairro || '').trim();
+    const cidade   = String(b.cidade || '').trim();
+    const uf       = String(b.uf || '').trim();
+    const endereco = String(b.endereco || '').trim();
 
-      // Contenu et style
-      const titulo = b.titulo ? b.titulo.toString().trim() : '';
-      const descricao = b.descricao ? b.descricao.toString().trim() : '';
-      const severity = (b.severidade || 'medium').toString();
-      const formColor = b.color ? b.color.toString().trim() : null;
-      const image = b.image ? b.image.toString().trim() : null;
+    // Localisation/rayon (affichage)
+    const lat       = num(b.lat, null);
+    const lng       = num(b.lng, null);
+    const radius_m  = num(b.radius_m ?? b.radius, 1000);
 
-      // Flags/temps
-      const testToken = b.testToken ? b.testToken.toString().trim() : null;
-      const registerDoc = coerceBool(b.registerDoc);
-      const expiresInMinutes = Number(b.expiresInMinutes) > 0 ? Number(b.expiresInMinutes) : 60;
-      const expiresAt = admin.firestore.Timestamp.fromDate(
-        new Date(Date.now() + expiresInMinutes * 60 * 1000)
-      );
+    // Contenu & style
+    const titulo    = b.titulo ? String(b.titulo).trim() : '';
+    const descricao = b.descricao ? String(b.descricao).trim() : '';
+    const severity  = (b.severidade || 'medium').toString();
+    const formColor = b.color ? String(b.color).trim() : null;
+    const image     = b.image ? String(b.image).trim() : null;
 
-      console.log('[PUBLIC ALERT/CEP] req =', {
-        alertId, cep, cepRaw, bairro, cidade, uf, endereco,
-        lat, lng, radius_m,
-        severity, formColor, hasImage: !!image,
-        testToken: testToken ? testToken.slice(0, 12) + '…' : null,
-        registerDoc, expiresInMinutes
+    // Flags / Durée
+    const testToken       = b.testToken ? String(b.testToken).trim() : null;
+    const registerDoc     = coerceBool(b.registerDoc);
+    const expiresInMin    = num(b.expiresInMinutes, 60);
+    const expiresAt       = admin.firestore.Timestamp.fromDate(new Date(Date.now() + (expiresInMin * 60 * 1000)));
+
+    console.log('[PUBLIC ALERT/CEP] req =', {
+      alertId, cep, cepRaw, bairro, cidade, uf, endereco,
+      lat, lng, radius_m, severity, formColor, hasImage: !!image,
+      testToken: testToken ? testToken.slice(0, 12) + '…' : null,
+      registerDoc, expiresInMin
+    });
+
+    // Validation
+    if (!alertId || !cep) {
+      console.warn('[PUBLIC ALERT/CEP] Missing params (alertId/cep)');
+      return ko(res, 400, 'Params requis: alertId, cep');
+    }
+
+    const accent     = resolveAccentColor({ severity, formColor });
+    const local      = localLabel({ endereco, bairro, cidade, uf });
+    const openTarget = (severity === 'grave' || severity === 'high') ? 'detail' : 'home';
+    const deepLink   = `vigiapp://public-alerts/${alertId}`;
+    const { title, body } = textsBySeverity(severity, local, '');
+
+    // Upsert doc Firestore (optionnel)
+    if (registerDoc) {
+      await upsertPublicAlertDoc({
+        alertId,
+        titulo,
+        descricao,
+        endereco: endereco || (bairro ? `${bairro}, ${cidade || ''} ${uf || ''}`.trim() : null),
+        cidade,
+        uf,
+        cep,
+        lat,
+        lng,
+        radius_m,
+        severity,
+        accent,
+        image,
+        expiresAt,
       });
+      console.log('[PUBLIC ALERT/CEP] publicAlerts/%s upsert OK', alertId);
+    } else {
+      console.log('[PUBLIC ALERT/CEP] registerDoc=false → aucun write Firestore');
+    }
 
-      // Validation stricte
-      if (!alertId || !cep) {
-        console.warn('[PUBLIC ALERT/CEP] Missing params (alertId/cep)');
-        return res.status(400).json({ ok: false, error: 'Params requis: alertId, cep' });
-      }
-
-      const accent = resolveAccentColor({ severity, formColor });
-      const local = localLabel({ endereco, bairro, cidade, uf });
-      const openTarget = (severity === 'grave' || severity === 'high') ? 'detail' : 'home';
-      const buildDeepLink = (id) => `vigiapp://public-alerts/${id}`;
-
-      // ✅ Upsert du doc si demandé
-      if (registerDoc) {
-        await upsertPublicAlertDoc({
-          alertId,
-          titulo,
-          descricao,
-          endereco: endereco || (bairro ? `${bairro}, ${cidade || ''} ${uf || ''}`.trim() : null),
-          cidade,
-          uf,
-          cep,
-          lat,
-          lng,
-          radius_m,
-          severity,
-          accent,
+    // -------------------------
+    // Mode test: un seul token
+    // -------------------------
+    if (testToken) {
+      try {
+        const id = await sendToToken({
+          token: testToken,
+          title,
+          body,
           image,
-          expiresAt,
+          androidColor: accent,
+          data: {
+            type: 'alert_public',
+            alertId,
+            deepLink,
+            openTarget,
+            endereco: local,
+            bairro,
+            cidade,
+            uf,
+            cep,
+            distancia: '',
+            severidade: severity,
+            color: accent,
+            radius_m: String(radius_m),
+            lat: lat != null ? String(lat) : '',
+            lng: lng != null ? String(lng) : '',
+            channelId: ANDROID_CHANNEL_ID, // debug côté app
+          },
         });
-      } else {
-        console.log('[PUBLIC ALERT/CEP] registerDoc=false → aucun write Firestore');
+
+        console.log('[PUBLIC ALERT/CEP] Smoke test sent =>', id);
+        return ok(res, {
+          mode: 'testToken',
+          messageId: id,
+          wroteDoc: registerDoc,
+          route: `/public-alerts/${alertId}`,
+          expiresInMinutes: expiresInMin,
+        });
+      } catch (e) {
+        console.error('[PUBLIC ALERT/CEP] Smoke test error', e);
+        return ko(res, 500, e?.message || String(e));
       }
+    }
 
-      // ---------------------------
-      // Mode smoke test: un seul token (plus verbeux)
-      // ---------------------------
-      if (testToken) {
-        const { title, body } = textsBySeverity(severity, local, '');
-        const deepLink = buildDeepLink(alertId);
+    // -------------------------
+    // Diffusion réelle par CEP
+    // -------------------------
+    console.log('[PUBLIC ALERT/CEP] Selecting recipients by CEP…');
+    const recipients = [];
+    const snap = await db.collection('users').limit(3000).get();
 
+    snap.forEach((doc) => {
+      const u = doc.data() || {};
+      const tokens = Array.isArray(u.fcmTokens) ? u.fcmTokens.filter(Boolean) : [];
+      if (tokens.length === 0) return;
+
+      const userCep = toDigits(u.cep || '');
+      if (userCep && userCep === cep) {
+        recipients.push({
+          uid: doc.id,
+          tokens,
+          bairro: u.bairro || '',
+          cidade: u.cidade || '',
+          uf: u.uf || '',
+        });
+      }
+    });
+
+    console.log('[PUBLIC ALERT/CEP] recipients =', recipients.length);
+
+    if (recipients.length === 0) {
+      console.warn('[PUBLIC ALERT/CEP] No recipients for CEP', cep);
+      return ok(res, {
+        sent: 0,
+        note: 'Aucun destinataire pour ce CEP',
+        wroteDoc: registerDoc,
+        route: `/public-alerts/${alertId}`,
+        expiresInMinutes: expiresInMin,
+      });
+    }
+
+    let sent = 0;
+    const errors = [];
+
+    for (const r of recipients) {
+      for (const token of r.tokens) {
+        const shortTok = token.slice(0, 16) + '…';
         try {
-          // NB: utils.sendToToken met déjà android.notification.channelId = alerts-high.
-          // On double l’info dans data.channelId pour debug côté app.
-          const id = await sendToToken({
-            token: testToken,
+          await sendToToken({
+            token,
             title,
             body,
             image,
@@ -134,143 +220,52 @@ module.exports.sendPublicAlertByCEP = onRequest(
               deepLink,
               openTarget,
               endereco: local,
-              bairro,
-              cidade,
-              uf,
+              bairro: r.bairro || bairro,
+              cidade: r.cidade || cidade,
+              uf: r.uf || uf,
               cep,
               distancia: '',
               severidade: severity,
               color: accent,
               radius_m: String(radius_m),
-              lat: lat !== null ? String(lat) : '',
-              lng: lng !== null ? String(lng) : '',
-              channelId: ANDROID_CHANNEL_ID, // <— pour logs côté app
+              lat: lat != null ? String(lat) : '',
+              lng: lng != null ? String(lng) : '',
+              channelId: ANDROID_CHANNEL_ID,
             },
           });
-
-          console.log('[PUBLIC ALERT/CEP] Smoke test sent =>', id);
-          return res.status(200).json({
-            ok: true,
-            mode: 'testToken',
-            messageId: id,
-            wroteDoc: registerDoc,
-            route: `/public-alerts/${alertId}`,
-            expiresInMinutes
-          });
+          sent++;
         } catch (e) {
-          console.error('[PUBLIC ALERT/CEP] Smoke test error', e);
-          return res.status(500).json({ ok: false, error: e.message || String(e) });
-        }
-      }
+          const code = e.code || '';
+          const msg  = e.message || String(e);
+          console.warn('[PUBLIC ALERT/CEP] send error', { token: shortTok, code, msg });
 
-      // ---------------------------
-      // Diffusion réelle: sélection par CEP
-      // ---------------------------
-      console.log('[PUBLIC ALERT/CEP] Selecting recipients by CEP…');
-      const recipients = [];
-      const snap = await db.collection('users').limit(3000).get();
-
-      snap.forEach((doc) => {
-        const u = doc.data();
-        const tokens = Array.isArray(u.fcmTokens) ? u.fcmTokens.filter(Boolean) : [];
-        if (tokens.length === 0) {
-          return;
-        }
-
-        const userCep = toDigits(u.cep || '');
-        if (userCep && userCep === cep) {
-          recipients.push({
-            uid: doc.id,
-            tokens,
-            bairro: u.bairro || '',
-            cidade: u.cidade || '',
-            uf: u.uf || '',
-          });
-        }
-      });
-
-      console.log('[PUBLIC ALERT/CEP] recipients =', recipients.length);
-
-      if (recipients.length === 0) {
-        console.warn('[PUBLIC ALERT/CEP] No recipients for CEP', cep);
-        return res.status(200).json({
-          ok: true,
-          sent: 0,
-          note: 'Aucun destinataire pour ce CEP',
-          wroteDoc: registerDoc,
-          route: `/public-alerts/${alertId}`,
-          expiresInMinutes
-        });
-      }
-
-      let sent = 0;
-      const errors = [];
-      const deepLink = buildDeepLink(alertId);
-      const { title, body } = textsBySeverity(severity, local, '');
-
-      for (const r of recipients) {
-        for (const token of r.tokens) {
-          const shortTok = token.slice(0, 16) + '…';
-          try {
-            await sendToToken({
-              token,
-              title,
-              body,
-              image,
-              androidColor: accent,
-              data: {
-                type: 'alert_public',
-                alertId,
-                deepLink,
-                openTarget,
-                endereco: local,
-                bairro: r.bairro || bairro,
-                cidade: r.cidade || cidade,
-                uf: r.uf || uf,
-                cep,
-                distancia: '',
-                severidade: severity,
-                color: accent,
-                radius_m: String(radius_m),
-                lat: lat !== null ? String(lat) : '',
-                lng: lng !== null ? String(lng) : '',
-                channelId: ANDROID_CHANNEL_ID, // <— pour logs côté app
-              },
+          // Nettoyage des tokens invalides
+          if (
+            code === 'messaging/registration-token-not-registered' ||
+            code === 'messaging/invalid-argument'
+          ) {
+            await db.collection('users').doc(r.uid).update({
+              fcmTokens: admin.firestore.FieldValue.arrayRemove(token),
             });
-            sent++;
-          } catch (e) {
-            const code = e.code || '';
-            const msg = e.message || String(e);
-            console.warn('[PUBLIC ALERT/CEP] send error', { token: shortTok, code, msg });
-
-            // 🔥 Nettoyage des tokens invalides
-            if (
-              code === 'messaging/registration-token-not-registered' ||
-              code === 'messaging/invalid-argument'
-            ) {
-              await db.collection('users').doc(r.uid).update({
-                fcmTokens: admin.firestore.FieldValue.arrayRemove(token),
-              });
-              console.log('[PUBLIC ALERT/CEP] removed invalid token from user', r.uid, shortTok);
-            }
-
-            errors.push({ token: shortTok, code, msg });
+            console.log('[PUBLIC ALERT/CEP] removed invalid token from user', r.uid, shortTok);
           }
+          errors.push({ token: shortTok, code, msg });
         }
       }
-
-      console.log('[PUBLIC ALERT/CEP] END', { sent, errors: errors.length });
-      return res.status(200).json({
-        ok: true,
-        sent,
-        errors,
-        wroteDoc: registerDoc,
-        route: `/public-alerts/${alertId}`,
-        expiresInMinutes
-      });
-    } catch (e) {
-      console.error('[PUBLIC ALERT/CEP] ERROR', e);
-      return res.status(500).json({ ok: false, error: String(e?.message || e) });
     }
+
+    console.log('[PUBLIC ALERT/CEP] END', { sent, errors: errors.length });
+    return ok(res, {
+      sent,
+      errors,
+      wroteDoc: registerDoc,
+      route: `/public-alerts/${alertId}`,
+      expiresInMinutes: expiresInMin,
+    });
+  } catch (e) {
+    console.error('[PUBLIC ALERT/CEP] ERROR', e);
+    return ko(res, 500, e?.message || String(e));
   }
-);
+});
+
+// (si tu as déjà d’autres exports (sendPublicAlertByAddress, etc.), garde-les ici)
