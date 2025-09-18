@@ -13,7 +13,9 @@ export default function GroupJoinScreen() {
 
   useEffect(() => {
     async function join() {
-      if (!user || !groupId) {return;}
+      if (!user || !groupId) {
+        return;
+      }
       try {
         await joinGroup({ groupId, userId: user.id, apelido: user.apelido });
         setGroupId(groupId);

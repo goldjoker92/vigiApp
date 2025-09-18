@@ -24,7 +24,9 @@ Notifications.setNotificationHandler({
 
 // Crée/MAJ le canal “default”
 async function ensureDefaultChannel() {
-  if (Platform.OS !== 'android') {return;}
+  if (Platform.OS !== 'android') {
+    return;
+  }
   await Notifications.setNotificationChannelAsync(DEFAULT_CHANNEL_ID, {
     name: 'Par défaut',
     description: 'Notifications générales',
@@ -35,7 +37,9 @@ async function ensureDefaultChannel() {
 
 // Crée/MAJ le canal “alerts-high” (prioritaire)
 async function ensureAlertsHighChannel() {
-  if (Platform.OS !== 'android') {return;}
+  if (Platform.OS !== 'android') {
+    return;
+  }
   await Notifications.setNotificationChannelAsync(ALERTS_HIGH_CHANNEL_ID, {
     name: 'Alertes publiques (élevé)',
     description: 'Alertes importantes et critiques',
@@ -49,7 +53,9 @@ async function ensureAlertsHighChannel() {
 
 // Public: crée tous les canaux nécessaires
 export async function ensureAndroidChannels() {
-  if (Platform.OS !== 'android') {return;}
+  if (Platform.OS !== 'android') {
+    return;
+  }
   await ensureDefaultChannel();
   await ensureAlertsHighChannel();
   // Log utile pour diagnostiquer l’importance réelle
@@ -65,7 +71,9 @@ export async function ensureAndroidChannels() {
 // ⚠️ Legacy: ancien nom utilisé dans ton code — on garde pour éviter la régression.
 // Redirige vers ensureAndroidChannels(), et crée aussi “general” (alias de default).
 export async function ensureAndroidChannel() {
-  if (Platform.OS !== 'android') {return;}
+  if (Platform.OS !== 'android') {
+    return;
+  }
   await ensureAndroidChannels();
   await Notifications.setNotificationChannelAsync('general', {
     name: 'General (alias)',

@@ -9,7 +9,9 @@ export default function Coachmark({ onClose }) {
 
   useEffect(() => {
     AsyncStorage.getItem(COACHMARK_KEY).then((val) => {
-      if (!val) {setVisible(true);}
+      if (!val) {
+        setVisible(true);
+      }
     });
   }, []);
 
@@ -19,7 +21,9 @@ export default function Coachmark({ onClose }) {
     onClose && onClose();
   };
 
-  if (!visible) {return null;}
+  if (!visible) {
+    return null;
+  }
 
   return (
     <View style={styles.overlay}>

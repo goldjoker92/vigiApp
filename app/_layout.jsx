@@ -54,22 +54,25 @@ function ts() {
   }
 }
 function log(...a) {
-  if (__DEV__ || !SILENCE_RELEASE)
-    {try {
+  if (__DEV__ || !SILENCE_RELEASE) {
+    try {
       console.log(`[${APP_TAG}][${LAYOUT_TAG}][${ts()}]`, ...a);
-    } catch {}}
+    } catch {}
+  }
 }
 function warn(...a) {
-  if (__DEV__ || !SILENCE_RELEASE)
-    {try {
+  if (__DEV__ || !SILENCE_RELEASE) {
+    try {
       console.warn(`[${APP_TAG}][${LAYOUT_TAG}][${ts()}]`, ...a);
-    } catch {}}
+    } catch {}
+  }
 }
 function err(...a) {
-  if (__DEV__ || !SILENCE_RELEASE)
-    {try {
+  if (__DEV__ || !SILENCE_RELEASE) {
+    try {
       console.error(`[${APP_TAG}][${LAYOUT_TAG}][${ts()}]`, ...a);
-    } catch {}}
+    } catch {}
+  }
 }
 
 // Polyfill Hermes
@@ -110,8 +113,12 @@ function MyFallback({ error }) {
 
 function mapSeverityToToastType(sev) {
   const s = String(sev || '').toLowerCase();
-  if (s === 'high' || s === 'grave') {return 'error';}
-  if (s === 'low' || s === 'minor') {return 'success';}
+  if (s === 'high' || s === 'grave') {
+    return 'error';
+  }
+  if (s === 'low' || s === 'minor') {
+    return 'success';
+  }
   return 'info';
 }
 
@@ -137,7 +144,9 @@ function safeJson(obj) {
   }
 }
 function maskToken(tok) {
-  if (!tok) {return tok;}
+  if (!tok) {
+    return tok;
+  }
   const s = String(tok);
   return s.length <= 12 ? s : `${s.slice(0, 12)}…(${s.length})`;
 }

@@ -8,7 +8,9 @@ import { collection, doc, setDoc, addDoc, serverTimestamp } from 'firebase/fires
  * @returns {Promise<string>} - L'ID du chat créé.
  */
 export async function createChatOnAccept(demanda, currentUser) {
-  if (!demanda || !currentUser) {throw new Error('demanda and currentUser required');}
+  if (!demanda || !currentUser) {
+    throw new Error('demanda and currentUser required');
+  }
   const requesterId = demanda.userId;
   const helperId = currentUser.uid;
 

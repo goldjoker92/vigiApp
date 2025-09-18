@@ -22,7 +22,9 @@ export function prepareInterstitial(): Promise<void> {
 
 export async function showInterstitial() {
   try {
-    if (!loaded) {await prepareInterstitial();}
+    if (!loaded) {
+      await prepareInterstitial();
+    }
     interstitial.show();
   } catch (e: any) {
     console.warn('[Ad] show interstitial', e?.message || e);

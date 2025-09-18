@@ -20,7 +20,9 @@ export default function SideDrawer({ visible, onClose }) {
   const [loading, setLoading] = useState(false);
 
   // Anti crash : pas d’user → Drawer ne s’affiche pas
-  if (!user) {return null;}
+  if (!user) {
+    return null;
+  }
 
   const confirmLogout = () => {
     Alert.alert(
@@ -38,7 +40,9 @@ export default function SideDrawer({ visible, onClose }) {
   };
 
   const handleLogout = async () => {
-    if (loading) {return;}
+    if (loading) {
+      return;
+    }
     setLoading(true);
     try {
       const { logoutUser } = await import('../../services/authService');

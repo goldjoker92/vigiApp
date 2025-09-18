@@ -9,7 +9,9 @@ let _done = false;
 async function initAdMob() {
   try {
     await mobileAds().initialize();
-    if (__DEV__) {console.log('[AdMob] initialized');}
+    if (__DEV__) {
+      console.log('[AdMob] initialized');
+    }
   } catch (e: any) {
     console.warn('[AdMob init]', e?.message || e);
   }
@@ -24,7 +26,9 @@ async function initRevenueCat() {
       return;
     }
 
-    if (__DEV__) {Purchases.setLogLevel(LOG_LEVEL.DEBUG);}
+    if (__DEV__) {
+      Purchases.setLogLevel(LOG_LEVEL.DEBUG);
+    }
     await Purchases.configure({ apiKey, observerMode: false });
 
     const [offerings, info] = await Promise.all([
@@ -39,14 +43,18 @@ async function initRevenueCat() {
       useMonetizationStore.getState().applyCustomerInfo(ci as any, ENTITLEMENT_ID);
     });
 
-    if (__DEV__) {console.log('[RC] configured');}
+    if (__DEV__) {
+      console.log('[RC] configured');
+    }
   } catch (e: any) {
     console.warn('[RC init]', e?.message || e);
   }
 }
 
 (async () => {
-  if (_done) {return;}
+  if (_done) {
+    return;
+  }
   _done = true;
   await initAdMob();
   await initRevenueCat();

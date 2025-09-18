@@ -20,7 +20,9 @@ import { db } from '../firebase';
  * @returns {Promise<string>} - ID du chat créé.
  */
 export async function createChatOnAccept(demanda, currentUser) {
-  if (!demanda || !currentUser) {throw new Error('demanda and currentUser required');}
+  if (!demanda || !currentUser) {
+    throw new Error('demanda and currentUser required');
+  }
 
   const requesterId = demanda.userId;
   const helperId = currentUser.uid;
@@ -65,7 +67,9 @@ export async function createChatOnAccept(demanda, currentUser) {
  * @returns {function} unsubscribe
  */
 export function listenMessages(chatId, callback) {
-  if (!chatId) {throw new Error('chatId required');}
+  if (!chatId) {
+    throw new Error('chatId required');
+  }
   const q = query(collection(db, 'chats', chatId, 'messages'), orderBy('createdAt', 'asc'));
   return onSnapshot(q, (snapshot) => {
     const messages = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
@@ -80,7 +84,9 @@ export function listenMessages(chatId, callback) {
  * @returns {Promise<void>}
  */
 export async function sendMessage(chatId, { text, senderId, senderApelido }) {
-  if (!chatId || !text || !senderId) {throw new Error('chatId, text, senderId required');}
+  if (!chatId || !text || !senderId) {
+    throw new Error('chatId, text, senderId required');
+  }
 
   const messagesColRef = collection(db, 'chats', chatId, 'messages');
   await addDoc(messagesColRef, {
@@ -98,9 +104,13 @@ export async function sendMessage(chatId, { text, senderId, senderApelido }) {
  * @returns {Promise<Object|null>} données chat ou null si inexistant
  */
 export async function getChatInfo(chatId) {
-  if (!chatId) {throw new Error('chatId required');}
+  if (!chatId) {
+    throw new Error('chatId required');
+  }
   const docSnap = await getDoc(doc(db, 'chats', chatId));
-  if (!docSnap.exists()) {return null;}
+  if (!docSnap.exists()) {
+    return null;
+  }
   return { id: docSnap.id, ...docSnap.data() };
 }
 
@@ -111,7 +121,9 @@ export async function getChatInfo(chatId) {
  * @returns {Promise<void>}
  */
 export async function updateChatStatus(chatId, newStatus) {
-  if (!chatId || !newStatus) {throw new Error('chatId and newStatus required');}
+  if (!chatId || !newStatus) {
+    throw new Error('chatId and newStatus required');
+  }
   await updateDoc(doc(db, 'chats', chatId), {
     status: newStatus,
     lastUpdateAt: serverTimestamp(),

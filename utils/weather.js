@@ -49,7 +49,9 @@ const UF_CAPITALS = {
 };
 
 export function normalizeUf(ufRaw) {
-  if (!ufRaw) {return '';}
+  if (!ufRaw) {
+    return '';
+  }
   return String(ufRaw).trim().slice(0, 2).toUpperCase();
 }
 
@@ -57,9 +59,15 @@ function extractCityUfFromAddressComponents(components = []) {
   let city = '',
     uf = '';
   for (const c of components) {
-    if (c.types.includes('administrative_area_level_2') && !city) {city = c.long_name;} // município
-    if (c.types.includes('administrative_area_level_1') && !uf) {uf = c.short_name;} // UF
-    if (c.types.includes('locality') && !city) {city = c.long_name;}
+    if (c.types.includes('administrative_area_level_2') && !city) {
+      city = c.long_name;
+    } // município
+    if (c.types.includes('administrative_area_level_1') && !uf) {
+      uf = c.short_name;
+    } // UF
+    if (c.types.includes('locality') && !city) {
+      city = c.long_name;
+    }
   }
   return { city, uf };
 }
@@ -67,8 +75,12 @@ function extractCityUfFromAddressComponents(components = []) {
 // ---------- Normalisation sûre de la description météo ----------
 export function normalizeConditionText(desc, code) {
   const v = desc ?? code ?? '';
-  if (typeof v === 'string') {return v;}
-  if (Array.isArray(v)) {return v.filter(Boolean).join(', ');}
+  if (typeof v === 'string') {
+    return v;
+  }
+  if (Array.isArray(v)) {
+    return v.filter(Boolean).join(', ');
+  }
   if (v && typeof v === 'object') {
     return v.description || v.text || v.summary || v.main || String(v.code ?? '');
   }
@@ -78,13 +90,24 @@ export function normalizeConditionText(desc, code) {
 export function mapConditionToEmojiLabel(code, desc) {
   const norm = normalizeConditionText(desc, code);
   const t = norm.toLowerCase();
-  if (t.includes('trovoada') || t.includes('thunder') || t.includes('tempest'))
-    {return '⛈️ Trovoada';}
-  if (t.includes('chuva') || t.includes('rain') || t.includes('shower')) {return '🌧️ Chuva';}
-  if (t.includes('garoa') || t.includes('drizzle')) {return '🌦️ Garoa';}
-  if (t.includes('nublado') || t.includes('cloud')) {return '☁️ Nublado';}
-  if (t.includes('neblina') || t.includes('fog') || t.includes('mist')) {return '🌫️ Neblina';}
-  if (t.includes('limpo') || t.includes('clear') || t.includes('sun')) {return '☀️ Limpo';}
+  if (t.includes('trovoada') || t.includes('thunder') || t.includes('tempest')) {
+    return '⛈️ Trovoada';
+  }
+  if (t.includes('chuva') || t.includes('rain') || t.includes('shower')) {
+    return '🌧️ Chuva';
+  }
+  if (t.includes('garoa') || t.includes('drizzle')) {
+    return '🌦️ Garoa';
+  }
+  if (t.includes('nublado') || t.includes('cloud')) {
+    return '☁️ Nublado';
+  }
+  if (t.includes('neblina') || t.includes('fog') || t.includes('mist')) {
+    return '🌫️ Neblina';
+  }
+  if (t.includes('limpo') || t.includes('clear') || t.includes('sun')) {
+    return '☀️ Limpo';
+  }
   return '🌤️ Tempo';
 }
 
@@ -93,7 +116,9 @@ export async function reverseGeocodeCityUf({ latitude, longitude }) {
   const url = `${GEOCODE_BASE}?latlng=${latitude},${longitude}&key=${GOOGLE_WEATHER_KEY}&language=pt-BR`;
   const t0 = Date.now();
   const resp = await fetch(url);
-  if (!resp.ok) {throw new Error(`Geocode reverse HTTP ${resp.status}`);}
+  if (!resp.ok) {
+    throw new Error(`Geocode reverse HTTP ${resp.status}`);
+  }
   const json = await resp.json();
   const best = json.results?.[0];
   const { city, uf } = best
@@ -106,15 +131,21 @@ export async function reverseGeocodeCityUf({ latitude, longitude }) {
 
 export async function geocodeCepToCoords(cep) {
   const digits = String(cep || '').replace(/\D/g, '');
-  if (!digits) {return null;}
+  if (!digits) {
+    return null;
+  }
   const query = `${digits}, Brazil`;
   const url = `${GEOCODE_BASE}?address=${encodeURIComponent(query)}&key=${GOOGLE_WEATHER_KEY}&language=pt-BR`;
   const t0 = Date.now();
   const resp = await fetch(url);
-  if (!resp.ok) {throw new Error(`Geocode CEP HTTP ${resp.status}`);}
+  if (!resp.ok) {
+    throw new Error(`Geocode CEP HTTP ${resp.status}`);
+  }
   const json = await resp.json();
   const best = json.results?.[0];
-  if (!best) {return null;}
+  if (!best) {
+    return null;
+  }
   const { lat, lng } = best.geometry?.location || {};
   const { city, uf } = extractCityUfFromAddressComponents(best.address_components || []);
   const ms = Date.now() - t0;
@@ -147,11 +178,15 @@ async function googleCurrent({ latitude, longitude }) {
 
 // ---------------- Weather (OpenWeather fallback) ----------------
 async function openWeatherCurrent({ latitude, longitude }) {
-  if (!OPENWEATHER_KEY) {throw new Error('OPENWEATHER_API_KEY ausente');}
+  if (!OPENWEATHER_KEY) {
+    throw new Error('OPENWEATHER_API_KEY ausente');
+  }
   const url = `https://api.openweathermap.org/data/2.5/weather?lat=${latitude}&lon=${longitude}&appid=${OPENWEATHER_KEY}&units=metric&lang=pt_br`;
   const t0 = Date.now();
   const resp = await fetch(url);
-  if (!resp.ok) {throw new Error(`OpenWeather HTTP ${resp.status}`);}
+  if (!resp.ok) {
+    throw new Error(`OpenWeather HTTP ${resp.status}`);
+  }
   const j = await resp.json();
   const w0 = Array.isArray(j?.weather) ? j.weather[0] : j?.weather || {};
   const out = {
@@ -202,7 +237,9 @@ export async function resolveCoordsAndLabel({ cep }) {
 // Si ville manquante mais UF connue → capitale
 export function ensureCityFromCapitalIfMissing({ city, uf, coords }) {
   const U = normalizeUf(uf);
-  if (city && U) {return { city, uf: U, coords, used: 'as-is' };}
+  if (city && U) {
+    return { city, uf: U, coords, used: 'as-is' };
+  }
   if (U && UF_CAPITALS[U]) {
     console.log('[WEATHER] city missing → using state capital', {
       uf: U,

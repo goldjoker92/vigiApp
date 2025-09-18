@@ -8,7 +8,9 @@ import { db } from '../firebase';
  */
 export async function getUserGroupId(userId) {
   console.log('[getUserGroupId] Recherche groupe pour userId:', userId);
-  if (!userId) {return null;}
+  if (!userId) {
+    return null;
+  }
 
   // ✅ Requête correcte : on cherche dans le champ membersIds (array de strings)
   const q = query(collection(db, 'groups'), where('membersIds', 'array-contains', userId));

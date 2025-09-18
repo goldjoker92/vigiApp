@@ -59,7 +59,9 @@ export default function VizinhosScreen() {
 
   // --- Logique : modale qui s'ouvre SEULEMENT chez le demandeur SI volunteerId renseigné & status pending
   useEffect(() => {
-    if (confirmModalVisible) {return;}
+    if (confirmModalVisible) {
+      return;
+    }
     const demandeEnAttente = minhasDemandas.find(
       (d) =>
         d.status === 'pending' &&
@@ -127,7 +129,9 @@ export default function VizinhosScreen() {
 
   // --- QUAND le DEMANDEUR accepte/refuse l'aide (modale confirm)
   async function handleConfirmAccept() {
-    if (!selectedDemanda) {return;}
+    if (!selectedDemanda) {
+      return;
+    }
     setConfirmLoading(true);
     try {
       await acceptHelpDemand(
@@ -145,7 +149,9 @@ export default function VizinhosScreen() {
     setConfirmLoading(false);
   }
   async function handleCancelAccept() {
-    if (!selectedDemanda) {return;}
+    if (!selectedDemanda) {
+      return;
+    }
     setConfirmLoading(true);
     try {
       await refuseHelpDemand(selectedDemanda.id);
@@ -159,19 +165,23 @@ export default function VizinhosScreen() {
   }
 
   // --- Guards
-  if (user === undefined) {return <ActivityIndicator style={{ flex: 1 }} color="#22C55E" />;}
-  if (!user)
-    {return (
+  if (user === undefined) {
+    return <ActivityIndicator style={{ flex: 1 }} color="#22C55E" />;
+  }
+  if (!user) {
+    return (
       <View style={styles.centered}>
         <ActivityIndicator color="#22C55E" size="large" />
       </View>
-    );}
-  if (loading || !grupo)
-    {return (
+    );
+  }
+  if (loading || !grupo) {
+    return (
       <View style={styles.centered}>
         <ActivityIndicator color="#22C55E" size="large" />
       </View>
-    );}
+    );
+  }
 
   // --- Mapping demandes du groupe (helpers)
   function mapDemandasGrupo() {

@@ -185,7 +185,9 @@ export default function GrupoSinalizarScreen() {
   const sameZone = useCallback(
     (currentCep8, userCep8, addrCidade, addrUF, userCidade, userUF) => {
       // 1) strict si on a deux CEPs exacts
-      if (currentCep8 && userCep8 && currentCep8 === userCep8) {return true;}
+      if (currentCep8 && userCep8 && currentCep8 === userCep8) {
+        return true;
+      }
       // 2) sinon, si CEP manquant/sectoriel, on accepte Ville+UF (évite faux négatifs)
       const villeOk = normalize(addrCidade) === normalize(userCidade);
       const ufOk = toUF(addrUF) === toUF(userUF);
@@ -306,7 +308,9 @@ export default function GrupoSinalizarScreen() {
   }, [router, user, getBestCoordsRetry, toUF, sameZone]);
 
   useEffect(() => {
-    if (user) {checkLocationAndDispatch();}
+    if (user) {
+      checkLocationAndDispatch();
+    }
   }, [user, checkLocationAndDispatch]);
 
   return (

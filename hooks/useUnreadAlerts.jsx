@@ -8,13 +8,17 @@ export function useUnreadAlerts(user, groupId) {
   const { lastSeenAlert } = useUserStore();
 
   useEffect(() => {
-    if (!groupId) {return setUnread(0);}
+    if (!groupId) {
+      return setUnread(0);
+    }
     const q = query(collection(db, 'alerts'), where('groupId', '==', groupId));
     const unsub = onSnapshot(q, (snap) => {
       let count = 0;
       snap.forEach((doc) => {
         const data = doc.data();
-        if (!lastSeenAlert || data.createdAt?.toMillis?.() > lastSeenAlert) {count++;}
+        if (!lastSeenAlert || data.createdAt?.toMillis?.() > lastSeenAlert) {
+          count++;
+        }
       });
       setUnread(count);
     });

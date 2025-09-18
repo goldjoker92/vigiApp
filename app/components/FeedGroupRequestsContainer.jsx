@@ -101,7 +101,9 @@ export default function FeedGroupRequests({ groupId }) {
 
   // Confirmation de l'aide par le créateur
   const handleConfirmHelp = async () => {
-    if (!pendingVolunteer) {return;}
+    if (!pendingVolunteer) {
+      return;
+    }
     setLoadingConfirm(true);
     try {
       await acceptHelp({

@@ -50,7 +50,9 @@ export default function PublicAlertScreen() {
   // Géolocalisation
   const handleLocation = async () => {
     let { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') {return Alert.alert('Permissão negada para acessar a localização.');}
+    if (status !== 'granted') {
+      return Alert.alert('Permissão negada para acessar a localização.');
+    }
     let loc = await Location.getCurrentPositionAsync({});
     setLocal(loc.coords);
     let [addr] = await Location.reverseGeocodeAsync(loc.coords);
@@ -64,9 +66,15 @@ export default function PublicAlertScreen() {
 
   // Envoi Firestore + notif friendly
   const handleSend = async () => {
-    if (categorias.length === 0) {return Alert.alert('Selecione pelo menos uma categoria.');}
-    if (!local) {return Alert.alert('Por favor, informe sua localização.');}
-    if (!descricao.trim()) {return Alert.alert('Descreva o ocorrido (obrigatório).');}
+    if (categorias.length === 0) {
+      return Alert.alert('Selecione pelo menos uma categoria.');
+    }
+    if (!local) {
+      return Alert.alert('Por favor, informe sua localização.');
+    }
+    if (!descricao.trim()) {
+      return Alert.alert('Descreva o ocorrido (obrigatório).');
+    }
     try {
       await addDoc(collection(db, 'publicAlerts'), {
         userId: auth.currentUser.uid,

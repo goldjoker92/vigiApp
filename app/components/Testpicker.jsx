@@ -28,7 +28,9 @@ export default function TestPickerScreen() {
               setDate(new Date(d));
               console.log('[Picker] Selected:', new Date(d).toISOString());
             }
-            if (Platform.OS !== 'ios') {setShow(false);} // Sur iOS c'est inline, sur Android ça ferme
+            if (Platform.OS !== 'ios') {
+              setShow(false);
+            } // Sur iOS c'est inline, sur Android ça ferme
           }}
         />
       )}

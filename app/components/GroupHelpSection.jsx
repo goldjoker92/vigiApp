@@ -40,16 +40,24 @@ export default function GroupHelpSection({ groupId: groupIdProp }) {
     if (Platform.OS === 'android') {
       if (event.type === 'set' && date) {
         let finalDate = dayjs(date);
-        if (finalDate.isAfter(maxDate)) {finalDate = dayjs(maxDate);}
-        if (finalDate.isBefore(minDate)) {finalDate = dayjs(minDate);}
+        if (finalDate.isAfter(maxDate)) {
+          finalDate = dayjs(maxDate);
+        }
+        if (finalDate.isBefore(minDate)) {
+          finalDate = dayjs(minDate);
+        }
         setSelectedDate(finalDate.toDate());
       }
       setShowPicker(false);
     } else if (Platform.OS === 'ios') {
       if (event.type === 'set' && date) {
         let finalDate = dayjs(date);
-        if (finalDate.isAfter(maxDate)) {finalDate = dayjs(maxDate);}
-        if (finalDate.isBefore(minDate)) {finalDate = dayjs(minDate);}
+        if (finalDate.isAfter(maxDate)) {
+          finalDate = dayjs(maxDate);
+        }
+        if (finalDate.isBefore(minDate)) {
+          finalDate = dayjs(minDate);
+        }
         setSelectedDate(finalDate.toDate());
       }
     }

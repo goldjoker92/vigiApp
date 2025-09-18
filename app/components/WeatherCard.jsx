@@ -34,7 +34,9 @@ async function getUfFlagUrl(uf) {
     return (__UF_FLAGS_CACHE[uf.toUpperCase()] || {}).circle || null;
   }
   const resp = await fetch(UF_FLAGS_API);
-  if (!resp.ok) {return null;}
+  if (!resp.ok) {
+    return null;
+  }
   const list = await resp.json();
   const map = {};
   for (const item of list || []) {
@@ -75,11 +77,18 @@ export default function WeatherCard({ cep }) {
 
   const animKind = useMemo(() => {
     const t = normalizeConditionText(conditionText, conditionCode).toLowerCase();
-    if (t.includes('thunder') || t.includes('trovoada') || t.includes('tempest')) {return 'storm';}
-    if (t.includes('rain') || t.includes('chuva') || t.includes('shower') || t.includes('garoa'))
-      {return 'rain';}
-    if (t.includes('cloud') || t.includes('nublado')) {return 'cloud';}
-    if (t.includes('clear') || t.includes('limpo') || t.includes('sun')) {return 'sun';}
+    if (t.includes('thunder') || t.includes('trovoada') || t.includes('tempest')) {
+      return 'storm';
+    }
+    if (t.includes('rain') || t.includes('chuva') || t.includes('shower') || t.includes('garoa')) {
+      return 'rain';
+    }
+    if (t.includes('cloud') || t.includes('nublado')) {
+      return 'cloud';
+    }
+    if (t.includes('clear') || t.includes('limpo') || t.includes('sun')) {
+      return 'sun';
+    }
     return 'default';
   }, [conditionText, conditionCode]);
 
@@ -93,16 +102,22 @@ export default function WeatherCard({ cep }) {
         setErr(null);
 
         const base = await resolveCoordsAndLabel({ cep }); // -> {coords, city, uf, source}
-        if (!mounted) {return;}
+        if (!mounted) {
+          return;
+        }
 
         const fixed = ensureCityFromCapitalIfMissing(base);
-        if (!mounted) {return;}
+        if (!mounted) {
+          return;
+        }
         setCity(fixed.city);
         setUf(normalizeUf(fixed.uf));
         console.log('[WeatherCard] coords source =', base.source);
 
         const now = await getWeatherNowWithFallback(fixed.coords);
-        if (!mounted) {return;}
+        if (!mounted) {
+          return;
+        }
         setTemp(now?.tempC ?? null);
         setConditionText(normalizeConditionText(now?.text, now?.code));
         setConditionCode(now?.code || '');
@@ -110,10 +125,14 @@ export default function WeatherCard({ cep }) {
         const ms = Date.now() - t0;
         console.log('[WeatherCard] loaded in', ms, 'ms', '| provider =', now?.provider || '—');
       } catch (e) {
-        if (!mounted) {return;}
+        if (!mounted) {
+          return;
+        }
         setErr(e?.message || String(e));
       } finally {
-        if (mounted) {setLoading(false);}
+        if (mounted) {
+          setLoading(false);
+        }
       }
     })();
     return () => {
@@ -126,11 +145,17 @@ export default function WeatherCard({ cep }) {
     let alive = true;
     (async () => {
       try {
-        if (!uf) {return setFlagUrl(null);}
+        if (!uf) {
+          return setFlagUrl(null);
+        }
         const url = await getUfFlagUrl(uf);
-        if (alive) {setFlagUrl(url || null);}
+        if (alive) {
+          setFlagUrl(url || null);
+        }
       } catch {
-        if (alive) {setFlagUrl(null);}
+        if (alive) {
+          setFlagUrl(null);
+        }
       }
     })();
     return () => {
@@ -199,10 +224,18 @@ export default function WeatherCard({ cep }) {
 
   // particules (emoji selon animKind)
   const particleChar = useMemo(() => {
-    if (animKind === 'storm') {return '⚡';}
-    if (animKind === 'rain') {return '💧';}
-    if (animKind === 'cloud') {return '•';}
-    if (animKind === 'sun') {return '✦';}
+    if (animKind === 'storm') {
+      return '⚡';
+    }
+    if (animKind === 'rain') {
+      return '💧';
+    }
+    if (animKind === 'cloud') {
+      return '•';
+    }
+    if (animKind === 'sun') {
+      return '✦';
+    }
     return '·';
   }, [animKind]);
 

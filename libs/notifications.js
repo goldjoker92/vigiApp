@@ -50,7 +50,9 @@ export function wireAuthGateForNotifications(authInstance = auth) {
 }
 
 function tryRoutePending() {
-  if (!__authReady || !__pendingNotifData) {return;}
+  if (!__authReady || !__pendingNotifData) {
+    return;
+  }
   const data = __pendingNotifData;
   __pendingNotifData = null;
   routeFromData(data);
@@ -59,10 +61,14 @@ function tryRoutePending() {
 // ===== Navigation à partir des data =====
 function routeFromData(data = {}) {
   const alertId = String(data?.alertId || '');
-  if (!alertId) {return;}
+  if (!alertId) {
+    return;
+  }
 
   const now = Date.now();
-  if (__lastHandled.id === alertId && now - (__lastHandled.ts || 0) < 1200) {return;}
+  if (__lastHandled.id === alertId && now - (__lastHandled.ts || 0) < 1200) {
+    return;
+  }
   __lastHandled = { id: alertId, ts: now };
 
   const openTarget = String(data?.openTarget || 'detail');
@@ -95,7 +101,9 @@ Notifications.setNotificationHandler({
 
 // ===== Canaux Android =====
 async function ensureDefaultChannel() {
-  if (!isAndroid) {return;}
+  if (!isAndroid) {
+    return;
+  }
   await Notifications.setNotificationChannelAsync(DEFAULT_CHANNEL_ID, {
     name: 'Par défaut',
     description: 'Notifications générales',
@@ -105,7 +113,9 @@ async function ensureDefaultChannel() {
 }
 
 async function ensureAlertsHighChannel() {
-  if (!isAndroid) {return;}
+  if (!isAndroid) {
+    return;
+  }
 
   // Info sur l’importance actuelle (si déjà créé)
   try {
@@ -137,7 +147,9 @@ async function ensureAlertsHighChannel() {
 }
 
 export async function ensureAndroidChannels() {
-  if (!isAndroid) {return;}
+  if (!isAndroid) {
+    return;
+  }
   await ensureDefaultChannel();
   await ensureAlertsHighChannel();
   log('Android channels ensured:', DEFAULT_CHANNEL_ID, '+', ALERTS_HIGH_CHANNEL_ID);
@@ -145,7 +157,9 @@ export async function ensureAndroidChannels() {
 
 // ===== Permissions =====
 async function ensureAndroid13Permission() {
-  if (!isAndroid13Plus) {return;}
+  if (!isAndroid13Plus) {
+    return;
+  }
   try {
     const r = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
     log('POST_NOTIFICATIONS:', r);
@@ -193,8 +207,11 @@ export async function initNotifications() {
     if (data?.alertId) {
       log('Cold start from notification → data=', data);
       // Si pas encore authentifié, on bufferise jusqu’à ce que l’auth soit prête
-      if (!__authReady) {__pendingNotifData = data;}
-      else {routeFromData(data);}
+      if (!__authReady) {
+        __pendingNotifData = data;
+      } else {
+        routeFromData(data);
+      }
     }
   } catch {}
 }
@@ -304,7 +321,9 @@ export async function getFcmDeviceTokenAsync() {
     await initNotifications(); // canaux + permissions + cold start
     const { data: token } = await Notifications.getDevicePushTokenAsync({ type: 'fcm' });
     log('FCM device token =', token);
-    if (token) {await saveFcmTokenForUser(token);}
+    if (token) {
+      await saveFcmTokenForUser(token);
+    }
     return token ?? null;
   } catch (e) {
     warn('getFcmDeviceTokenAsync error:', e?.message || e);

@@ -9,7 +9,9 @@ function fetchWithTimeout(url, ms = TIMEOUT_MS) {
 
 export async function lookupCep(cepDigits) {
   const cep = String(cepDigits);
-  if (cache.has(cep)) {return cache.get(cep);}
+  if (cache.has(cep)) {
+    return cache.get(cep);
+  }
 
   // 1) BrasilAPI
   try {

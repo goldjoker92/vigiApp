@@ -10,7 +10,8 @@ console.error = (...args) => {
   if (
     msg.includes('useNativeDriver') ||
     msg.includes('React state update on an unmounted component')
-  )
-    {return;}
+  ) {
+    return;
+  }
   return originalError(...args);
 };

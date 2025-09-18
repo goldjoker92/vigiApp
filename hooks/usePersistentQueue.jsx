@@ -10,7 +10,9 @@ export function usePersistentQueue({ isOnline, onFlush }) {
   // Charger la queue depuis AsyncStorage au démarrage
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY).then((data) => {
-      if (data) {queue.current = JSON.parse(data);}
+      if (data) {
+        queue.current = JSON.parse(data);
+      }
     });
   }, []);
 

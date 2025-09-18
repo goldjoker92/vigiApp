@@ -39,7 +39,9 @@ import {
 
 // logger silencieux en prod
 const log = (...args) => {
-  if (__DEV__) {console.log(...args);}
+  if (__DEV__) {
+    console.log(...args);
+  }
 };
 
 // Attend un user Auth (max 3s) si `auth.currentUser` est encore vide
@@ -119,17 +121,25 @@ export default function ProfileOnboardingScreen() {
     let cancelled = false;
     async function run() {
       if (!cepOk) {
-        if (cep) {log('[ONBOARD][CEP] inválido (skip lookup):', cep);}
+        if (cep) {
+          log('[ONBOARD][CEP] inválido (skip lookup):', cep);
+        }
         return;
       }
       setCepLoading(true);
       log('[ONBOARD][CEP] lookup start:', cep);
       try {
         const data = await lookupCep(cep); // ton vrai lookup
-        if (cancelled) {return;}
+        if (cancelled) {
+          return;
+        }
         log('[ONBOARD][CEP] lookup result:', data);
-        if (data.uf) {setEstado(data.uf);}
-        if (data.cidade) {setCidade(data.cidade);}
+        if (data.uf) {
+          setEstado(data.uf);
+        }
+        if (data.cidade) {
+          setCidade(data.cidade);
+        }
         if (!endereco && (data.logradouro || data.bairro)) {
           setEndereco(`${data.logradouro || ''}${data.bairro ? `, ${data.bairro}` : ''}`.trim());
         }
