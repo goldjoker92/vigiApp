@@ -32,7 +32,7 @@ export default function GrupoSinalizarScreen() {
         .replace(/\s+/g, ' ')
         .toLowerCase()
         .trim(),
-    [],
+    []
   );
   const toUF = useCallback((s) => {
     const up = String(s || '')
@@ -122,7 +122,7 @@ export default function GrupoSinalizarScreen() {
           reject(e);
         });
       }),
-    [],
+    []
   );
 
   const getBestCoordsRetry = useCallback(async () => {
@@ -133,7 +133,7 @@ export default function GrupoSinalizarScreen() {
           accuracy: Location.Accuracy.BestForNavigation,
           mayShowUserSettingsDialog: true,
         }),
-        9000,
+        9000
       );
       console.log('[SINALIZAR] T#1 OK coords =', g1.coords);
       return g1.coords;
@@ -171,7 +171,7 @@ export default function GrupoSinalizarScreen() {
           { accuracy: Location.Accuracy.BestForNavigation, timeInterval: 500, distanceInterval: 0 },
           (loc) => {
             best = loc?.coords || best;
-          },
+          }
         );
       } catch (e) {
         clearTimeout(timer);
@@ -185,14 +185,14 @@ export default function GrupoSinalizarScreen() {
   const sameZone = useCallback(
     (currentCep8, userCep8, addrCidade, addrUF, userCidade, userUF) => {
       // 1) strict si on a deux CEPs exacts
-      if (currentCep8 && userCep8 && currentCep8 === userCep8) return true;
+      if (currentCep8 && userCep8 && currentCep8 === userCep8) {return true;}
       // 2) sinon, si CEP manquant/sectoriel, on accepte Ville+UF (évite faux négatifs)
       const villeOk = normalize(addrCidade) === normalize(userCidade);
       const ufOk = toUF(addrUF) === toUF(userUF);
       const cepAmbigu = !currentCep8 || isGenericCep(currentCep8) || isGenericCep(userCep8);
       return villeOk && ufOk && cepAmbigu;
     },
-    [normalize, toUF],
+    [normalize, toUF]
   );
 
   const checkLocationAndDispatch = useCallback(async () => {
@@ -285,7 +285,7 @@ export default function GrupoSinalizarScreen() {
               },
             },
           ],
-          { cancelable: true },
+          { cancelable: true }
         );
       } else {
         console.log('[SINALIZAR] HORS ZONE → toast + /report');
@@ -306,7 +306,7 @@ export default function GrupoSinalizarScreen() {
   }, [router, user, getBestCoordsRetry, toUF, sameZone]);
 
   useEffect(() => {
-    if (user) checkLocationAndDispatch();
+    if (user) {checkLocationAndDispatch();}
   }, [user, checkLocationAndDispatch]);
 
   return (

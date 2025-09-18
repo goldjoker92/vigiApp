@@ -1,271 +1,220 @@
-/* eslint-env node */
-'use strict';
+// utils/weather.js
+// -------------------------------------------------------------
+// Google Weather + Geocoding (clé EXPO_PUBLIC_GOOGLE_WEATHER_KEY) avec
+// fallback OpenWeather. Fournit aussi une bascule ville→capitale d'État.
+// -------------------------------------------------------------
+import Constants from 'expo-constants';
+import * as Location from 'expo-location';
 
-/**
- * VigiApp — Public Alerts (CEP & Adresse)
- * - Envoi FCM “heads-up” via canal Android `alerts-high`
- * - Données `data` stringifiées (exigence FCM)
- * - Titre/corps présents => bannière quand l’app est fermée
- * - Upsert optionnel du doc Firestore publicAlerts/{alertId}
- * - Nettoyage des tokens invalides côté users/{uid}.fcmTokens
- * - Logs détaillés, sans casser les exports existants
- */
+const GOOGLE_WEATHER_KEY = Constants?.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_WEATHER_KEY || '';
+const OPENWEATHER_KEY = Constants?.expoConfig?.extra?.OPENWEATHER_API_KEY || '';
 
-const { onRequest } = require('firebase-functions/v2/https');
-const admin = require('firebase-admin');
+const WX_BASE = 'https://weather.googleapis.com/v1';
+const WX_COMMON = `languageCode=pt-BR&unitsSystem=METRIC&key=${GOOGLE_WEATHER_KEY}`;
+const GEOCODE_BASE = 'https://maps.googleapis.com/maps/api/geocode/json';
 
-// Helpers centralisés
-const {
-  db,
-  toDigits,
-  coerceBool,
-  resolveAccentColor,
-  localLabel,
-  textsBySeverity,
-  sendToToken,
-  upsertPublicAlertDoc,
-} = require('./utils');
-
-// Canal Android attendu par l’app
-const ANDROID_CHANNEL_ID = 'alerts-high';
-
-// ======================================================================
-// Helpers internes
-// ======================================================================
-function ok(res, body)  { return res.status(200).json({ ok: true,  ...body }); }
-function ko(res, code, msg) { return res.status(code).json({ ok: false, error: msg }); }
-const num = (v, d = null) => {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : d;
+// --- Capitals (UF -> {city, coords})
+// Coords approximatives de capitales brésiliennes (OK pour météo/city label).
+const UF_CAPITALS = {
+  AC: { city: 'Rio Branco', coords: { latitude: -9.97499, longitude: -67.8243 } },
+  AL: { city: 'Maceió', coords: { latitude: -9.64985, longitude: -35.70895 } },
+  AP: { city: 'Macapá', coords: { latitude: 0.034934, longitude: -51.0694 } },
+  AM: { city: 'Manaus', coords: { latitude: -3.11903, longitude: -60.02173 } },
+  BA: { city: 'Salvador', coords: { latitude: -12.97775, longitude: -38.50163 } },
+  CE: { city: 'Fortaleza', coords: { latitude: -3.71722, longitude: -38.54306 } },
+  DF: { city: 'Brasília', coords: { latitude: -15.7934, longitude: -47.8823 } },
+  ES: { city: 'Vitória', coords: { latitude: -20.3155, longitude: -40.3128 } },
+  GO: { city: 'Goiânia', coords: { latitude: -16.6864, longitude: -49.2643 } },
+  MA: { city: 'São Luís', coords: { latitude: -2.53911, longitude: -44.2825 } },
+  MT: { city: 'Cuiabá', coords: { latitude: -15.601, longitude: -56.0974 } },
+  MS: { city: 'Campo Grande', coords: { latitude: -20.4697, longitude: -54.6201 } },
+  MG: { city: 'Belo Horizonte', coords: { latitude: -19.9167, longitude: -43.9345 } },
+  PA: { city: 'Belém', coords: { latitude: -1.45583, longitude: -48.5044 } },
+  PB: { city: 'João Pessoa', coords: { latitude: -7.11509, longitude: -34.8641 } },
+  PR: { city: 'Curitiba', coords: { latitude: -25.4284, longitude: -49.2733 } },
+  PE: { city: 'Recife', coords: { latitude: -8.05428, longitude: -34.8813 } },
+  PI: { city: 'Teresina', coords: { latitude: -5.08921, longitude: -42.8016 } },
+  RJ: { city: 'Rio de Janeiro', coords: { latitude: -22.9068, longitude: -43.1729 } },
+  RN: { city: 'Natal', coords: { latitude: -5.79448, longitude: -35.211 } },
+  RS: { city: 'Porto Alegre', coords: { latitude: -30.033, longitude: -51.23 } },
+  RO: { city: 'Porto Velho', coords: { latitude: -8.76077, longitude: -63.8999 } },
+  RR: { city: 'Boa Vista', coords: { latitude: 2.82384, longitude: -60.6753 } },
+  SC: { city: 'Florianópolis', coords: { latitude: -27.5954, longitude: -48.548 } },
+  SP: { city: 'São Paulo', coords: { latitude: -23.5505, longitude: -46.6333 } },
+  SE: { city: 'Aracaju', coords: { latitude: -10.9111, longitude: -37.0717 } },
+  TO: { city: 'Palmas', coords: { latitude: -10.184, longitude: -48.3336 } },
 };
 
-// ======================================================================
-// Envoi par CEP (HTTP v2)
-// ======================================================================
-module.exports.sendPublicAlertByCEP = onRequest({ timeoutSeconds: 60, cors: true }, async (req, res) => {
-  console.log('[PUBLIC ALERT/CEP] START');
+export function normalizeUf(ufRaw) {
+  if (!ufRaw) return '';
+  return String(ufRaw).trim().slice(0, 2).toUpperCase();
+}
 
-  try {
-    const b = req.method === 'POST' ? (req.body || {}) : (req.query || {});
-
-    // Requis
-    const alertId = String(b.alertId || '').trim();
-    const cepRaw  = String(b.cep || '').trim();
-    const cep     = toDigits(cepRaw);
-
-    // Contexte optionnel (affichage / doc)
-    const bairro   = String(b.bairro || '').trim();
-    const cidade   = String(b.cidade || '').trim();
-    const uf       = String(b.uf || '').trim();
-    const endereco = String(b.endereco || '').trim();
-
-    // Localisation/rayon (affichage)
-    const lat       = num(b.lat, null);
-    const lng       = num(b.lng, null);
-    const radius_m  = num(b.radius_m ?? b.radius, 1000);
-
-    // Contenu & style
-    const titulo    = b.titulo ? String(b.titulo).trim() : '';
-    const descricao = b.descricao ? String(b.descricao).trim() : '';
-    const severity  = (b.severidade || 'medium').toString();
-    const formColor = b.color ? String(b.color).trim() : null;
-    const image     = b.image ? String(b.image).trim() : null;
-
-    // Flags / Durée
-    const testToken       = b.testToken ? String(b.testToken).trim() : null;
-    const registerDoc     = coerceBool(b.registerDoc);
-    const expiresInMin    = num(b.expiresInMinutes, 60);
-    const expiresAt       = admin.firestore.Timestamp.fromDate(new Date(Date.now() + (expiresInMin * 60 * 1000)));
-
-    console.log('[PUBLIC ALERT/CEP] req =', {
-      alertId, cep, cepRaw, bairro, cidade, uf, endereco,
-      lat, lng, radius_m, severity, formColor, hasImage: !!image,
-      testToken: testToken ? testToken.slice(0, 12) + '…' : null,
-      registerDoc, expiresInMin
-    });
-
-    // Validation
-    if (!alertId || !cep) {
-      console.warn('[PUBLIC ALERT/CEP] Missing params (alertId/cep)');
-      return ko(res, 400, 'Params requis: alertId, cep');
+function extractCityUfFromAddressComponents(components = []) {
+  let city = '',
+    uf = '';
+  for (const c of components) {
+    if (Array.isArray(c.types)) {
+      if (c.types.includes('administrative_area_level_2') && !city) city = c.long_name; // município
+      if (c.types.includes('administrative_area_level_1') && !uf) uf = c.short_name; // UF
+      if (c.types.includes('locality') && !city) city = c.long_name;
     }
-
-    const accent     = resolveAccentColor({ severity, formColor });
-    const local      = localLabel({ endereco, bairro, cidade, uf });
-    const openTarget = (severity === 'grave' || severity === 'high') ? 'detail' : 'home';
-    const deepLink   = `vigiapp://public-alerts/${alertId}`;
-    const { title, body } = textsBySeverity(severity, local, '');
-
-    // Upsert doc Firestore (optionnel)
-    if (registerDoc) {
-      await upsertPublicAlertDoc({
-        alertId,
-        titulo,
-        descricao,
-        endereco: endereco || (bairro ? `${bairro}, ${cidade || ''} ${uf || ''}`.trim() : null),
-        cidade,
-        uf,
-        cep,
-        lat,
-        lng,
-        radius_m,
-        severity,
-        accent,
-        image,
-        expiresAt,
-      });
-      console.log('[PUBLIC ALERT/CEP] publicAlerts/%s upsert OK', alertId);
-    } else {
-      console.log('[PUBLIC ALERT/CEP] registerDoc=false → aucun write Firestore');
-    }
-
-    // -------------------------
-    // Mode test: un seul token
-    // -------------------------
-    if (testToken) {
-      try {
-        const id = await sendToToken({
-          token: testToken,
-          title,
-          body,
-          image,
-          androidColor: accent,
-          data: {
-            type: 'alert_public',
-            alertId,
-            deepLink,
-            openTarget,
-            endereco: local,
-            bairro,
-            cidade,
-            uf,
-            cep,
-            distancia: '',
-            severidade: severity,
-            color: accent,
-            radius_m: String(radius_m),
-            lat: lat != null ? String(lat) : '',
-            lng: lng != null ? String(lng) : '',
-            channelId: ANDROID_CHANNEL_ID, // debug côté app
-          },
-        });
-
-        console.log('[PUBLIC ALERT/CEP] Smoke test sent =>', id);
-        return ok(res, {
-          mode: 'testToken',
-          messageId: id,
-          wroteDoc: registerDoc,
-          route: `/public-alerts/${alertId}`,
-          expiresInMinutes: expiresInMin,
-        });
-      } catch (e) {
-        console.error('[PUBLIC ALERT/CEP] Smoke test error', e);
-        return ko(res, 500, e?.message || String(e));
-      }
-    }
-
-    // -------------------------
-    // Diffusion réelle par CEP
-    // -------------------------
-    console.log('[PUBLIC ALERT/CEP] Selecting recipients by CEP…');
-    const recipients = [];
-    const snap = await db.collection('users').limit(3000).get();
-
-    snap.forEach((doc) => {
-      const u = doc.data() || {};
-      const tokens = Array.isArray(u.fcmTokens) ? u.fcmTokens.filter(Boolean) : [];
-      if (tokens.length === 0) return;
-
-      const userCep = toDigits(u.cep || '');
-      if (userCep && userCep === cep) {
-        recipients.push({
-          uid: doc.id,
-          tokens,
-          bairro: u.bairro || '',
-          cidade: u.cidade || '',
-          uf: u.uf || '',
-        });
-      }
-    });
-
-    console.log('[PUBLIC ALERT/CEP] recipients =', recipients.length);
-
-    if (recipients.length === 0) {
-      console.warn('[PUBLIC ALERT/CEP] No recipients for CEP', cep);
-      return ok(res, {
-        sent: 0,
-        note: 'Aucun destinataire pour ce CEP',
-        wroteDoc: registerDoc,
-        route: `/public-alerts/${alertId}`,
-        expiresInMinutes: expiresInMin,
-      });
-    }
-
-    let sent = 0;
-    const errors = [];
-
-    for (const r of recipients) {
-      for (const token of r.tokens) {
-        const shortTok = token.slice(0, 16) + '…';
-        try {
-          await sendToToken({
-            token,
-            title,
-            body,
-            image,
-            androidColor: accent,
-            data: {
-              type: 'alert_public',
-              alertId,
-              deepLink,
-              openTarget,
-              endereco: local,
-              bairro: r.bairro || bairro,
-              cidade: r.cidade || cidade,
-              uf: r.uf || uf,
-              cep,
-              distancia: '',
-              severidade: severity,
-              color: accent,
-              radius_m: String(radius_m),
-              lat: lat != null ? String(lat) : '',
-              lng: lng != null ? String(lng) : '',
-              channelId: ANDROID_CHANNEL_ID,
-            },
-          });
-          sent++;
-        } catch (e) {
-          const code = e.code || '';
-          const msg  = e.message || String(e);
-          console.warn('[PUBLIC ALERT/CEP] send error', { token: shortTok, code, msg });
-
-          // Nettoyage des tokens invalides
-          if (
-            code === 'messaging/registration-token-not-registered' ||
-            code === 'messaging/invalid-argument'
-          ) {
-            await db.collection('users').doc(r.uid).update({
-              fcmTokens: admin.firestore.FieldValue.arrayRemove(token),
-            });
-            console.log('[PUBLIC ALERT/CEP] removed invalid token from user', r.uid, shortTok);
-          }
-          errors.push({ token: shortTok, code, msg });
-        }
-      }
-    }
-
-    console.log('[PUBLIC ALERT/CEP] END', { sent, errors: errors.length });
-    return ok(res, {
-      sent,
-      errors,
-      wroteDoc: registerDoc,
-      route: `/public-alerts/${alertId}`,
-      expiresInMinutes: expiresInMin,
-    });
-  } catch (e) {
-    console.error('[PUBLIC ALERT/CEP] ERROR', e);
-    return ko(res, 500, e?.message || String(e));
   }
-});
+  return { city, uf };
+}
 
-// (si tu as déjà d’autres exports (sendPublicAlertByAddress, etc.), garde-les ici)
+/**
+ * Mapping météo robuste.
+ * Signature conservée: mapConditionToEmojiLabel(code, desc)
+ * - Accepte string ou objet { text: { text }, code } en paramètre.
+ */
+export function mapConditionToEmojiLabel(code, desc) {
+  const rawInput = typeof desc !== 'undefined' ? desc : code;
+  const raw =
+    typeof rawInput === 'string'
+      ? rawInput
+      : (rawInput?.text?.text ?? rawInput?.text ?? rawInput?.code ?? '');
+  const t = String(raw || '').toLowerCase();
+
+  if (t.includes('trovoada') || t.includes('thunder') || t.includes('tempest'))
+    return '⛈️ Trovoada';
+  if (t.includes('chuva') || t.includes('rain') || t.includes('shower')) return '🌧️ Chuva';
+  if (t.includes('garoa') || t.includes('drizzle')) return '🌦️ Garoa';
+  if (t.includes('nublado') || t.includes('cloud')) return '☁️ Nublado';
+  if (t.includes('neblina') || t.includes('fog') || t.includes('mist')) return '🌫️ Neblina';
+  if (t.includes('limpo') || t.includes('clear') || t.includes('sun')) return '☀️ Limpo';
+  return '🌤️ Tempo';
+}
+
+// ---------------- Geocoding ----------------
+export async function reverseGeocodeCityUf({ latitude, longitude }) {
+  const url = `${GEOCODE_BASE}?latlng=${latitude},${longitude}&key=${GOOGLE_WEATHER_KEY}&language=pt-BR`;
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`Geocode reverse HTTP ${resp.status}`);
+  const json = await resp.json();
+  const best = json.results?.[0];
+  if (!best) return { city: '', uf: '' };
+  const { city, uf } = extractCityUfFromAddressComponents(best.address_components || []);
+  return { city, uf: normalizeUf(uf) };
+}
+
+export async function geocodeCepToCoords(cep) {
+  const digits = String(cep || '').replace(/\D/g, '');
+  if (!digits) return null;
+  const query = `${digits}, Brazil`;
+  const url = `${GEOCODE_BASE}?address=${encodeURIComponent(query)}&key=${GOOGLE_WEATHER_KEY}&language=pt-BR`;
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`Geocode CEP HTTP ${resp.status}`);
+  const json = await resp.json();
+  const best = json.results?.[0];
+  if (!best) return null;
+  const { lat, lng } = best.geometry?.location || {};
+  const { city, uf } = extractCityUfFromAddressComponents(best.address_components || []);
+  return { coords: { latitude: lat, longitude: lng }, city, uf: normalizeUf(uf) };
+}
+
+// ---------------- Weather (Google) ----------------
+async function googleCurrent({ latitude, longitude }) {
+  const url = `${WX_BASE}/currentConditions:lookup?${WX_COMMON}&location.latitude=${latitude}&location.longitude=${longitude}`;
+  const resp = await fetch(url);
+  if (!resp.ok) {
+    const err = new Error(`Weather currentConditions HTTP ${resp.status}`);
+    err.status = resp.status;
+    throw err;
+  }
+  const json = await resp.json();
+
+  // Certaines réponses renvoient description comme objet { text }
+  const wc = json?.weatherCondition || {};
+  const text =
+    typeof wc.description === 'string' ? wc.description : (wc.description?.text ?? wc.text ?? '');
+
+  return {
+    tempC: json?.temperature?.value ?? null,
+    code: wc.code || '',
+    text,
+    provider: 'google',
+  };
+}
+
+// ---------------- Weather (OpenWeather fallback) ----------------
+async function openWeatherCurrent({ latitude, longitude }) {
+  if (!OPENWEATHER_KEY) throw new Error('OPENWEATHER_API_KEY ausente');
+  const url = `https://api.openweathermap.org/data/2.5/weather?lat=${latitude}&lon=${longitude}&appid=${OPENWEATHER_KEY}&units=metric&lang=pt_br`;
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`OpenWeather HTTP ${resp.status}`);
+  const j = await resp.json();
+  return {
+    tempC: j?.main?.temp ?? null,
+    code: j?.weather?.[0]?.main || '',
+    text: j?.weather?.[0]?.description || '',
+    provider: 'openweather',
+  };
+}
+
+// ---------------- Coord source: GPS > CEP > Capital UF > Brasília ----------------
+export async function resolveCoordsAndLabel({ cep }) {
+  try {
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status === 'granted') {
+      const { coords } = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      const label = await reverseGeocodeCityUf(coords);
+      console.log('[WEATHER] geoloc=GPS', { coords, label });
+      return { coords, ...label, source: 'gps' };
+    }
+  } catch (_) {
+    /* silent */
+  }
+
+  if (cep) {
+    const got = await geocodeCepToCoords(cep);
+    if (got?.coords) {
+      console.log('[WEATHER] geoloc=CEP', got);
+      return { ...got, source: 'cep' };
+    }
+  }
+
+  // Sans CEP ni GPS → Brasília (neutre)
+  console.log('[WEATHER] geoloc=FALLBACK', { city: 'Brasília', uf: 'DF' });
+  return { coords: UF_CAPITALS.DF.coords, city: 'Brasília', uf: 'DF', source: 'fallback' };
+}
+
+// Si ville manquante mais UF connue → on bascule sur la capitale de l’État
+export function ensureCityFromCapitalIfMissing({ city, uf, coords }) {
+  const U = normalizeUf(uf);
+  if (city && U) return { city, uf: U, coords, used: 'as-is' };
+  if (U && UF_CAPITALS[U]) {
+    console.log('[WEATHER] city missing → using state capital', {
+      uf: U,
+      capital: UF_CAPITALS[U].city,
+    });
+    return {
+      city: UF_CAPITALS[U].city,
+      uf: U,
+      coords: UF_CAPITALS[U].coords,
+      used: 'state-capital',
+    };
+  }
+  console.log('[WEATHER] city+uf missing → Brasília, DF');
+  return { city: 'Brasília', uf: 'DF', coords: UF_CAPITALS.DF.coords, used: 'federal-capital' };
+}
+
+// ---------------- API publique pour la Card ----------------
+export async function getWeatherNowWithFallback(coords) {
+  try {
+    const res = await googleCurrent(coords);
+    console.log('[WEATHER] provider=google ✔', res);
+    return res;
+  } catch (e) {
+    if (e?.status === 401 || e?.status === 403) {
+      console.log('[WEATHER] Google 401/403 → fallback OpenWeather');
+      const ow = await openWeatherCurrent(coords);
+      console.log('[WEATHER] provider=openweather ✔', ow);
+      return ow;
+    }
+    console.log('[WEATHER] google error', e?.message || e);
+    throw e;
+  }
+}

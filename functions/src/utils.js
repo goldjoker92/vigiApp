@@ -26,17 +26,20 @@ const db = admin.firestore();
 const APP_TAG = 'VigiApp';
 const LIB_TAG = 'FnsUtils';
 const nowIso = () => new Date().toISOString();
-const log  = (...a) => console.log(`[${APP_TAG}][${LIB_TAG}][${nowIso()}]`, ...a);
+const log = (...a) => console.log(`[${APP_TAG}][${LIB_TAG}][${nowIso()}]`, ...a);
 const warn = (...a) => console.warn(`[${APP_TAG}][${LIB_TAG}][${nowIso()}]`, ...a);
-const err  = (...a) => console.error(`[${APP_TAG}][${LIB_TAG}][${nowIso()}]`, ...a);
+const err = (...a) => console.error(`[${APP_TAG}][${LIB_TAG}][${nowIso()}]`, ...a);
 
 const safeJson = (obj, max = 800) => {
-  try { return JSON.stringify(obj).slice(0, max); }
-  catch { return '[unserializable]'; }
+  try {
+    return JSON.stringify(obj).slice(0, max);
+  } catch {
+    return '[unserializable]';
+  }
 };
 
 const maskToken = (t) => {
-  if (!t) return t;
+  if (!t) {return t;}
   const s = String(t);
   return s.length > 14 ? `${s.slice(0, 6)}…${s.slice(-6)}(${s.length})` : s;
 };
@@ -46,10 +49,12 @@ const maskToken = (t) => {
 // ======================================================================
 function chunk(arr, size) {
   const out = [];
-  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  for (let i = 0; i < arr.length; i += size) {out.push(arr.slice(i, i + size));}
   return out;
 }
-function dedupe(arr) { return Array.from(new Set(arr)); }
+function dedupe(arr) {
+  return Array.from(new Set(arr));
+}
 
 // ---- Auth guard (conserve le comportement)
 function assertRole(context, allowed = ['admin', 'moderator']) {
@@ -71,38 +76,40 @@ const isHexColor = (c) => /^#?[0-9A-Fa-f]{6}$/.test(String(c || ''));
 const normColor = (c) => (String(c || '').startsWith('#') ? String(c) : `#${c}`);
 
 const coerceBool = (v) => {
-  if (typeof v === 'boolean') return v;
+  if (typeof v === 'boolean') {return v;}
   return ['true', '1', 'yes', 'on'].includes(String(v).toLowerCase());
 };
 
 function resolveAccentColor({ severity, formColor }) {
-  if (formColor && isHexColor(formColor)) return normColor(formColor);
-  if (severity === 'high' || severity === 'grave') return '#FF3B30'; // rouge
-  if (severity === 'low'  || severity === 'minor') return '#FFE600'; // jaune
-  if (severity === 'medium') return '#FFA500';                       // orange
+  if (formColor && isHexColor(formColor)) {return normColor(formColor);}
+  if (severity === 'high' || severity === 'grave') {return '#FF3B30';} // rouge
+  if (severity === 'low' || severity === 'minor') {return '#FFE600';} // jaune
+  if (severity === 'medium') {return '#FFA500';} // orange
   return '#0A84FF'; // bleu par défaut
 }
 
 function localLabel({ endereco, bairro, cidade, uf }) {
-  if (endereco) return endereco;
-  if (bairro) return bairro;
-  if (cidade && uf) return `${cidade}/${uf}`;
-  if (cidade) return cidade;
+  if (endereco) {return endereco;}
+  if (bairro) {return bairro;}
+  if (cidade && uf) {return `${cidade}/${uf}`;}
+  if (cidade) {return cidade;}
   return 'sua região';
 }
 
 function textsBySeverity(sev, local, distText) {
-  const sfx = distText ? ` (a ${distText}). Abra para mais detalhes.` : `. Abra para mais detalhes.`;
+  const sfx = distText
+    ? ` (a ${distText}). Abra para mais detalhes.`
+    : `. Abra para mais detalhes.`;
   switch (sev) {
     case 'low':
     case 'minor':
-      return { title: 'VigiApp — Aviso',           body: `Aviso informativo em ${local}${sfx}` };
+      return { title: 'VigiApp — Aviso', body: `Aviso informativo em ${local}${sfx}` };
     case 'high':
     case 'grave':
-      return { title: 'VigiApp — URGENTE',         body: `URGENTE: risco em ${local}${sfx}` };
+      return { title: 'VigiApp — URGENTE', body: `URGENTE: risco em ${local}${sfx}` };
     case 'medium':
     default:
-      return { title: 'VigiApp — Alerta público',  body: `Alerta em ${local}${sfx}` };
+      return { title: 'VigiApp — Alerta público', body: `Alerta em ${local}${sfx}` };
   }
 }
 
@@ -112,8 +119,9 @@ function distanceMeters(lat1, lon1, lat2, lon2) {
   const toRad = (x) => (x * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
-  const a = Math.sin(dLat / 2) ** 2
-    + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 const fmtDist = (m) => (m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`);
@@ -123,16 +131,18 @@ const fmtDist = (m) => (m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(
 // ======================================================================
 async function expoPushSend(tokens, title, body, data = {}) {
   if (!Array.isArray(tokens) || tokens.length === 0) {
-    warn('[expoPushSend] no tokens'); return [];
+    warn('[expoPushSend] no tokens');
+    return [];
   }
   const unique = dedupe(tokens);
   const dupes = tokens.length - unique.length;
-  if (dupes > 0) warn(`[expoPushSend] removed duplicates: ${dupes}`);
+  if (dupes > 0) {warn(`[expoPushSend] removed duplicates: ${dupes}`);}
 
   log('[expoPushSend] start', {
     count: unique.length,
     sample: unique.slice(0, 3).map(maskToken),
-    title, body,
+    title,
+    body,
   });
 
   const results = [];
@@ -142,11 +152,17 @@ async function expoPushSend(tokens, title, body, data = {}) {
   for (const batch of batches) {
     batchIndex += 1;
     const payload = batch.map((to) => ({
-      to, sound: 'default', title, body, data, channelId: 'default',
+      to,
+      sound: 'default',
+      title,
+      body,
+      data,
+      channelId: 'default',
     }));
 
     log(`[expoPushSend] POST batch ${batchIndex}/${batches.length}`, {
-      size: batch.length, first: maskToken(batch[0]),
+      size: batch.length,
+      first: maskToken(batch[0]),
     });
 
     let res, text;
@@ -157,7 +173,10 @@ async function expoPushSend(tokens, title, body, data = {}) {
         body: JSON.stringify(payload),
       });
       text = await res.text();
-      log(`[expoPushSend] http ${res.status} ${res.statusText} (batch ${batchIndex}) body=`, (text || '').slice(0, 700));
+      log(
+        `[expoPushSend] http ${res.status} ${res.statusText} (batch ${batchIndex}) body=`,
+        (text || '').slice(0, 700)
+      );
     } catch (e) {
       err(`[expoPushSend] fetch failed (batch ${batchIndex})`, e?.message || e);
       results.push({ error: 'fetch_failed', message: e?.message });
@@ -199,12 +218,13 @@ async function expoPushSendWithMap(tokens, title, body, data = {}) {
   }
   const unique = dedupe(tokens);
   const dupes = tokens.length - unique.length;
-  if (dupes > 0) warn(`[expoPushSendWithMap] removed duplicates: ${dupes}`);
+  if (dupes > 0) {warn(`[expoPushSendWithMap] removed duplicates: ${dupes}`);}
 
   log('[expoPushSendWithMap] start', {
     count: unique.length,
     sample: unique.slice(0, 3).map(maskToken),
-    title, body,
+    title,
+    body,
   });
 
   const results = [];
@@ -220,7 +240,8 @@ async function expoPushSendWithMap(tokens, title, body, data = {}) {
     });
 
     log(`[expoPushSendWithMap] POST batch ${batchIndex}/${batches.length}`, {
-      size: batch.length, first: maskToken(batch[0]),
+      size: batch.length,
+      first: maskToken(batch[0]),
     });
 
     let res, text;
@@ -231,7 +252,10 @@ async function expoPushSendWithMap(tokens, title, body, data = {}) {
         body: JSON.stringify(payload),
       });
       text = await res.text();
-      log(`[expoPushSendWithMap] http ${res.status} ${res.statusText} (batch ${batchIndex}) body=`, (text || '').slice(0, 700));
+      log(
+        `[expoPushSendWithMap] http ${res.status} ${res.statusText} (batch ${batchIndex}) body=`,
+        (text || '').slice(0, 700)
+      );
     } catch (e) {
       err(`[expoPushSendWithMap] fetch failed (batch ${batchIndex})`, e?.message || e);
       results.push({ error: 'fetch_failed', message: e?.message });
@@ -242,7 +266,10 @@ async function expoPushSendWithMap(tokens, title, body, data = {}) {
       const json = JSON.parse(text);
       results.push(json);
     } catch {
-      warn(`[expoPushSendWithMap] non-JSON response (batch ${batchIndex})`, (text || '').slice(0, 256));
+      warn(
+        `[expoPushSendWithMap] non-JSON response (batch ${batchIndex})`,
+        (text || '').slice(0, 256)
+      );
       results.push({ raw: text });
     }
   }
@@ -253,11 +280,11 @@ async function expoPushSendWithMap(tokens, title, body, data = {}) {
 
 function summarizeExpoResults(results) {
   const summary = { ok: 0, error: 0, errorsByCode: {} };
-  if (!Array.isArray(results)) return summary;
+  if (!Array.isArray(results)) {return summary;}
   for (const r of results) {
     const arr = Array.isArray(r?.data) ? r.data : [];
     for (const t of arr) {
-      if (t?.status === 'ok') summary.ok += 1;
+      if (t?.status === 'ok') {summary.ok += 1;}
       else if (t?.status === 'error') {
         summary.error += 1;
         const code = t?.details?.error || 'unknown';
@@ -294,13 +321,17 @@ async function cleanInvalidTokens(expoResults, tokenMap) {
     return { removed: 0, matchedDocs: 0, tokens: [] };
   }
 
-  log('[cleanInvalidTokens] candidates:', invalidTokens.length, invalidTokens.slice(0, 5).map(maskToken));
+  log(
+    '[cleanInvalidTokens] candidates:',
+    invalidTokens.length,
+    invalidTokens.slice(0, 5).map(maskToken)
+  );
   const delField = admin.firestore.FieldValue.delete();
   let matchedDocs = 0;
 
   for (const grp of chunk(invalidTokens, 10)) {
     const snap = await db.collection('devices').where('expoPushToken', 'in', grp).get();
-    if (snap.empty) continue;
+    if (snap.empty) {continue;}
 
     const batch = db.batch();
     snap.forEach((doc) => {
@@ -344,9 +375,9 @@ async function sendToToken({ token, title, body, image, androidColor, data = {} 
       priority: 'high', // delivery prioritaire
       collapseKey: 'vigiapp-public-alert', // facultatif: regroupe
       notification: {
-        channelId: 'alerts-high',            // ✅ BON CANAL (heads-up)
+        channelId: 'alerts-high', // ✅ BON CANAL (heads-up)
         color: androidColor || '#FFA500',
-        sound: 'default',                    // ✅ CORRECT (pas defaultSound)
+        sound: 'default', // ✅ CORRECT (pas defaultSound)
         visibility: 'PUBLIC',
         tag: 'vigiapp-public-alert',
         // Certains OEM lisent encore ces champs:
@@ -370,36 +401,48 @@ async function sendToToken({ token, title, body, image, androidColor, data = {} 
 // Firestore — upsert publicAlerts/{alertId} (merge idempotent)
 // ======================================================================
 async function upsertPublicAlertDoc({
-  alertId, titulo, descricao, endereco, cidade, uf, cep, lat, lng,
-  radius_m, severity, accent, image, expiresAt,
+  alertId,
+  titulo,
+  descricao,
+  endereco,
+  cidade,
+  uf,
+  cep,
+  lat,
+  lng,
+  radius_m,
+  severity,
+  accent,
+  image,
+  expiresAt,
 }) {
   const ref = db.collection('publicAlerts').doc(alertId);
 
   const payload = {
     // --- Schéma standard pour le front ---
-    titulo:     titulo || descricao || 'Alerta público',
-    descricao:  descricao || 'Alerta público',
-    endereco:   endereco || null,
-    cidade:     cidade || null,
-    uf:         uf || null,
-    cep:        cep || null,
-    lat:        Number.isFinite(lat) ? lat : null,
-    lng:        Number.isFinite(lng) ? lng : null,
-    radius_m:   Number(radius_m) || 1000,
-    status:     'active',
-    createdAt:  admin.firestore.FieldValue.serverTimestamp(),
+    titulo: titulo || descricao || 'Alerta público',
+    descricao: descricao || 'Alerta público',
+    endereco: endereco || null,
+    cidade: cidade || null,
+    uf: uf || null,
+    cep: cep || null,
+    lat: Number.isFinite(lat) ? lat : null,
+    lng: Number.isFinite(lng) ? lng : null,
+    radius_m: Number(radius_m) || 1000,
+    status: 'active',
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
     expiresAt, // clé pour gérer l’expiration côté app
 
     // --- Meta UI ---
     gravidade: severity || 'medium',
-    color:     accent || null,
-    image:     image || null,
+    color: accent || null,
+    image: image || null,
 
     // --- Compat legacy (ne rien casser)
     ruaNumero: endereco || null,
-    estado:    uf || null,
+    estado: uf || null,
     location: {
-      latitude:  Number.isFinite(lat) ? lat : null,
+      latitude: Number.isFinite(lat) ? lat : null,
       longitude: Number.isFinite(lng) ? lng : null,
     },
   };
@@ -428,7 +471,7 @@ async function getTokensByCEP(cep) {
   const tokens = [];
   snap.forEach((doc) => {
     const t = doc.get('expoPushToken');
-    if (t) tokens.push(t);
+    if (t) {tokens.push(t);}
   });
   log('[getTokensByCEP] found=', tokens.length, 'sample=', tokens.slice(0, 3).map(maskToken));
   return tokens;
@@ -436,16 +479,21 @@ async function getTokensByCEP(cep) {
 
 async function getTokensByUserIds(userIds) {
   log('[getTokensByUserIds] input length=', userIds?.length || 0);
-  if (!Array.isArray(userIds) || userIds.length === 0) return [];
+  if (!Array.isArray(userIds) || userIds.length === 0) {return [];}
   const tokens = [];
   for (const ids of chunk(userIds, 10)) {
     const snap = await db.collection('devices').where('userId', 'in', ids).get();
     snap.forEach((doc) => {
       const t = doc.get('expoPushToken');
-      if (t) tokens.push(t);
+      if (t) {tokens.push(t);}
     });
   }
-  log('[getTokensByUserIds] total tokens=', tokens.length, 'sample=', tokens.slice(0, 3).map(maskToken));
+  log(
+    '[getTokensByUserIds] total tokens=',
+    tokens.length,
+    'sample=',
+    tokens.slice(0, 3).map(maskToken)
+  );
   return tokens;
 }
 

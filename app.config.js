@@ -8,10 +8,7 @@ export default ({ config }) => ({
     config: {
       ...(config.android?.config || {}),
       googleMaps: {
-        apiKey:
-          process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY
-          || process.env.ANDROID_MAPS_API_KEY
-          || '',
+        apiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY || process.env.ANDROID_MAPS_API_KEY || '',
       },
     },
     permissions: [
@@ -27,7 +24,6 @@ export default ({ config }) => ({
   extra: {
     ...config.extra,
 
-    
     EXPO_PUBLIC_GOOGLE_WEATHER_KEY: process.env.EXPO_PUBLIC_GOOGLE_WEATHER_KEY,
     EXPO_PUBLIC_GOOGLE_MAPS_KEY: process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY,
     OPENWEATHER_API_KEY: process.env.OPENWEATHER_API_KEY,

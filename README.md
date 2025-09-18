@@ -129,7 +129,6 @@ vigiApp/
 
 ---
 
-
 ### 🛠️ Handy Scripts
 
 Add to your `package.json` if desired:
@@ -145,6 +144,7 @@ Add to your `package.json` if desired:
   }
 }
 ```
+
 # 🔥 VigiApp — Backend (Firebase Functions)
 
 Backend **Cloud Functions** for VigiApp.  
@@ -153,8 +153,6 @@ Stack: **Node 20**, **CommonJS**, **Firebase Admin/Functions**, **Firestore**, *
 ---
 
 ## 📁 Structure
-
-
 
 functions/
 ├─ package.json
@@ -165,16 +163,13 @@ functions/
 ├─ pushPrivate.js # Callable: sendPrivateAlertByGroup
 └─ purge.js # Cron: purgeAndArchiveOldRequestsAndChats
 
-
 ---
 
 ## 🧠 Architecture
 
-
                      (Firebase)
                 ┌──────────────────┐
                 │  index.js        │   ⇦ AGGREGATOR
-
 
 Mobile app ──call──▶│ exports = { │
 (callable) │ sendPublic..., │
@@ -204,18 +199,17 @@ Mobile app ──call──▶│ exports = { │
 │ - logs │
 └───────────────┘
 
-
 ---
 
 ## ⚙️ Requirements
 
-- **Node**: `20.x` (pinned)  
-- **Firebase CLI**: latest  
+- **Node**: `20.x` (pinned)
+- **Firebase CLI**: latest
 - Firebase project selected (`firebase use <projectId>`)
 
 👉 Root `firebase.json` should contain:
 
-```json
+````json
 {
   "functions": {
     "source": "functions",
@@ -367,7 +361,7 @@ This functions/ folder is the backend of the mobile app (Firebase/GCP).
 
 ---
 
-Want me to also add **badges** at the top (Node.js version, Firebase deploy, license) so the 
+Want me to also add **badges** at the top (Node.js version, Firebase deploy, license) so the
 
 ---
 
@@ -375,9 +369,9 @@ Want me to also add **badges** at the top (Node.js version, Firebase deploy, lic
 
 #### 1. `:app:checkDebugAarMetadata` / compileSdk mismatch
 
-- Error:  
+- Error:
   `Dependency '...core-splashscreen:1.2.0-...' requires compileSdk 35`
-- Solution:  
+- Solution:
   Set `compileSdkVersion = 35`, `targetSdkVersion = 35`, `minSdkVersion = 24` and `buildToolsVersion = "35.0.0"` (usually in `android/build.gradle` or shared versions file).
 
 ```bash
@@ -385,7 +379,7 @@ Want me to also add **badges** at the top (Node.js version, Firebase deploy, lic
 cd android; .\gradlew.bat --stop; .\gradlew.bat clean --refresh-dependencies; cd ..
 # macOS/Linux
 cd android && ./gradlew --stop && ./gradlew clean --refresh-dependencies && cd ..
-```
+````
 
 #### 2. Corrupted Gradle cache (`metadata.bin`)
 

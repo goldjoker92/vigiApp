@@ -143,7 +143,7 @@ const modalStyles = StyleSheet.create({
 
 // Formatage heure messages
 function formatTime(ts) {
-  if (!ts) return '';
+  if (!ts) {return '';}
   const date = ts.toDate ? ts.toDate() : new Date(ts);
   return dayjs(date).format('HH:mm');
 }
@@ -163,7 +163,7 @@ export default function ChatScreen() {
 
   // Chargement chat en temps réel
   useEffect(() => {
-    if (!chatId) return;
+    if (!chatId) {return;}
     const ref = doc(db, 'chats', chatId);
     const unsub = onSnapshot(ref, (snap) => {
       setChat(snap.exists() ? { id: snap.id, ...snap.data() } : null);
@@ -173,7 +173,7 @@ export default function ChatScreen() {
 
   // Chargement messages en temps réel
   useEffect(() => {
-    if (!chatId) return;
+    if (!chatId) {return;}
     const q = query(collection(db, 'chats', chatId, 'messages'), orderBy('createdAt', 'asc'));
     const unsub = onSnapshot(q, (snap) => {
       setMessages(snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
@@ -184,7 +184,7 @@ export default function ChatScreen() {
 
   // Envoi message
   const sendMessage = useCallback(async () => {
-    if (!input.trim() || !user || !chat || chat.status !== 'active') return;
+    if (!input.trim() || !user || !chat || chat.status !== 'active') {return;}
     setSending(true);
     try {
       await addDoc(collection(db, 'chats', chatId, 'messages'), {
@@ -203,7 +203,7 @@ export default function ChatScreen() {
 
   // Acceptation règlement (aideur ou demandeur)
   const handleAcceptRules = async () => {
-    if (!chat) return;
+    if (!chat) {return;}
     try {
       const who = user.uid === chat.demandeurId ? 'demandeur' : 'aidant';
       await updateDoc(doc(db, 'chats', chatId), {

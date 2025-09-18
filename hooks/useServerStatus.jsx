@@ -11,9 +11,9 @@ export function useServerStatus({ url = 'https://api.ton-backend.com/ping', inte
     const ping = async () => {
       try {
         const res = await fetch(url, { method: 'GET', cache: 'no-store' });
-        if (mounted) setIsOnline(res.ok);
+        if (mounted) {setIsOnline(res.ok);}
       } catch {
-        if (mounted) setIsOnline(false);
+        if (mounted) {setIsOnline(false);}
       }
     };
 

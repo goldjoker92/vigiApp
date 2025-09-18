@@ -21,7 +21,7 @@ export default function AvailableGroupsCarousel({ groups, loading }) {
   }, [groups]);
 
   const handleJoin = async (group) => {
-    if (joining) return;
+    if (joining) {return;}
     setJoining(group.id);
     try {
       await joinGroup({ groupId: group.id, user });

@@ -59,12 +59,12 @@ export default function VizinhosScreen() {
 
   // --- Logique : modale qui s'ouvre SEULEMENT chez le demandeur SI volunteerId renseigné & status pending
   useEffect(() => {
-    if (confirmModalVisible) return;
+    if (confirmModalVisible) {return;}
     const demandeEnAttente = minhasDemandas.find(
       (d) =>
         d.status === 'pending' &&
         d.volunteerId &&
-        (d.volunteerAccepted === undefined || d.volunteerAccepted === null),
+        (d.volunteerAccepted === undefined || d.volunteerAccepted === null)
     );
     if (demandeEnAttente) {
       setSelectedDemanda(demandeEnAttente);
@@ -127,14 +127,14 @@ export default function VizinhosScreen() {
 
   // --- QUAND le DEMANDEUR accepte/refuse l'aide (modale confirm)
   async function handleConfirmAccept() {
-    if (!selectedDemanda) return;
+    if (!selectedDemanda) {return;}
     setConfirmLoading(true);
     try {
       await acceptHelpDemand(
         selectedDemanda.id,
         selectedDemanda.volunteerId,
         selectedDemanda.volunteerApelido,
-        true,
+        true
       );
       Toast.show({ type: 'success', text1: `Ajuda confirmada com sucesso!` });
       setConfirmModalVisible(false);
@@ -145,7 +145,7 @@ export default function VizinhosScreen() {
     setConfirmLoading(false);
   }
   async function handleCancelAccept() {
-    if (!selectedDemanda) return;
+    if (!selectedDemanda) {return;}
     setConfirmLoading(true);
     try {
       await refuseHelpDemand(selectedDemanda.id);
@@ -159,19 +159,19 @@ export default function VizinhosScreen() {
   }
 
   // --- Guards
-  if (user === undefined) return <ActivityIndicator style={{ flex: 1 }} color="#22C55E" />;
+  if (user === undefined) {return <ActivityIndicator style={{ flex: 1 }} color="#22C55E" />;}
   if (!user)
-    return (
+    {return (
       <View style={styles.centered}>
         <ActivityIndicator color="#22C55E" size="large" />
       </View>
-    );
+    );}
   if (loading || !grupo)
-    return (
+    {return (
       <View style={styles.centered}>
         <ActivityIndicator color="#22C55E" size="large" />
       </View>
-    );
+    );}
 
   // --- Mapping demandes du groupe (helpers)
   function mapDemandasGrupo() {

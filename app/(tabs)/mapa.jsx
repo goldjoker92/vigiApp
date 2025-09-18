@@ -71,7 +71,9 @@ function metersPerPixelAt(lat, zoom) {
   return (156543.03392 * Math.cos((lat * Math.PI) / 180)) / Math.pow(2, zoom || 14);
 }
 function haversineMeters(a, b) {
-  if (!a || !b) {return Infinity;}
+  if (!a || !b) {
+    return Infinity;
+  }
   const R = 6371000;
   const dLat = ((b.latitude - a.latitude) * Math.PI) / 180;
   const dLon = ((b.longitude - a.longitude) * Math.PI) / 180;
@@ -156,7 +158,9 @@ function RadarSweepBounded({
     loop.start();
     return () => loop.stop();
   }, [rot, duration]);
-  if (!centerPx || !pxRadius || pxRadius < 8) {return null;}
+  if (!centerPx || !pxRadius || pxRadius < 8) {
+    return null;
+  }
 
   const size = Math.max(8, Math.min(Math.floor(pxRadius * 2), Math.max(width, height) * 1.2));
   const half = size / 2;
@@ -211,7 +215,9 @@ export default function MapaScreen() {
 
   const animateTo = useCallback((cameraLike) => {
     const m = mapRef.current;
-    if (!m) {return;}
+    if (!m) {
+      return;
+    }
     try {
       m.animateCamera(
         {
@@ -276,7 +282,9 @@ export default function MapaScreen() {
 
   // Rayon => ajuste zoom
   useEffect(() => {
-    if (!center) {return;}
+    if (!center) {
+      return;
+    }
     const z = zoomForRadiusMeters(radiusM, center.latitude);
     animateTo({ ...center, zoom: z });
   }, [radiusM, center, animateTo]);
@@ -326,14 +334,18 @@ export default function MapaScreen() {
       );
     })();
     return () => {
-      if (unsub) {unsub();}
+      if (unsub) {
+        unsub();
+      }
     };
   }, []);
 
   // Géométrie pour borner le radar
   const refreshScreenGeometry = useCallback(async () => {
     const m = mapRef.current;
-    if (!m || !center) {return;}
+    if (!m || !center) {
+      return;
+    }
     try {
       const cam = await m.getCamera();
       const zoom = cam?.zoom ?? 14;
@@ -358,7 +370,9 @@ export default function MapaScreen() {
 
   // Incidents dynamiques: <=36h, cluster ~80m UNIQUEMENT si pas de count, puis filtrage dans le cercle
   const markers = useMemo(() => {
-    if (!center) {return [];}
+    if (!center) {
+      return [];
+    }
     const now = Date.now();
     const recent = alerts.filter((a) => now - a.createdAt <= 36 * 3600 * 1000);
 
@@ -388,7 +402,9 @@ export default function MapaScreen() {
   ];
   const onPressPreset = useCallback(
     (p) => {
-      if (!center) {return;}
+      if (!center) {
+        return;
+      }
       if (p.kind === 'brasil') {
         animateTo({ ...center, zoom: 4.2 });
         return;

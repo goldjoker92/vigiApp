@@ -14,5 +14,5 @@ module.exports.purgeAndArchiveOldRequestsAndChats = onSchedule(
     } catch (e) {
       console.error('[purge] error', e);
     }
-  },
+  }
 );

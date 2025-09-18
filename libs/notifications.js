@@ -26,7 +26,7 @@ const isAndroid = Platform.OS === 'android';
 const isAndroid13Plus = isAndroid && Platform.Version >= 33;
 
 // ===== Logs courts =====
-const log  = (...a) => console.log('[NOTIF]', ...a);
+const log = (...a) => console.log('[NOTIF]', ...a);
 const warn = (...a) => console.warn('[NOTIF]', ...a);
 
 // ===== Anti double-navigation =====
@@ -50,7 +50,7 @@ export function wireAuthGateForNotifications(authInstance = auth) {
 }
 
 function tryRoutePending() {
-  if (!__authReady || !__pendingNotifData) return;
+  if (!__authReady || !__pendingNotifData) {return;}
   const data = __pendingNotifData;
   __pendingNotifData = null;
   routeFromData(data);
@@ -59,14 +59,14 @@ function tryRoutePending() {
 // ===== Navigation à partir des data =====
 function routeFromData(data = {}) {
   const alertId = String(data?.alertId || '');
-  if (!alertId) return;
+  if (!alertId) {return;}
 
   const now = Date.now();
-  if (__lastHandled.id === alertId && now - (__lastHandled.ts || 0) < 1200) return;
+  if (__lastHandled.id === alertId && now - (__lastHandled.ts || 0) < 1200) {return;}
   __lastHandled = { id: alertId, ts: now };
 
   const openTarget = String(data?.openTarget || 'detail');
-  const deepLink   = String(data?.deepLink || '');
+  const deepLink = String(data?.deepLink || '');
 
   try {
     if (deepLink && deepLink.startsWith('vigiapp://')) {
@@ -95,7 +95,7 @@ Notifications.setNotificationHandler({
 
 // ===== Canaux Android =====
 async function ensureDefaultChannel() {
-  if (!isAndroid) return;
+  if (!isAndroid) {return;}
   await Notifications.setNotificationChannelAsync(DEFAULT_CHANNEL_ID, {
     name: 'Par défaut',
     description: 'Notifications générales',
@@ -105,7 +105,7 @@ async function ensureDefaultChannel() {
 }
 
 async function ensureAlertsHighChannel() {
-  if (!isAndroid) return;
+  if (!isAndroid) {return;}
 
   // Info sur l’importance actuelle (si déjà créé)
   try {
@@ -137,7 +137,7 @@ async function ensureAlertsHighChannel() {
 }
 
 export async function ensureAndroidChannels() {
-  if (!isAndroid) return;
+  if (!isAndroid) {return;}
   await ensureDefaultChannel();
   await ensureAlertsHighChannel();
   log('Android channels ensured:', DEFAULT_CHANNEL_ID, '+', ALERTS_HIGH_CHANNEL_ID);
@@ -145,11 +145,9 @@ export async function ensureAndroidChannels() {
 
 // ===== Permissions =====
 async function ensureAndroid13Permission() {
-  if (!isAndroid13Plus) return;
+  if (!isAndroid13Plus) {return;}
   try {
-    const r = await PermissionsAndroid.request(
-      PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
-    );
+    const r = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
     log('POST_NOTIFICATIONS:', r);
   } catch (e) {
     warn('POST_NOTIFICATIONS error:', e?.message || e);
@@ -176,18 +174,14 @@ async function saveFcmTokenForUser(token) {
     return;
   }
   const db = getFirestore();
-  await setDoc(
-    doc(db, 'users', u.uid),
-    { fcmTokens: arrayUnion(token) },
-    { merge: true }
-  );
+  await setDoc(doc(db, 'users', u.uid), { fcmTokens: arrayUnion(token) }, { merge: true });
   log('FCM token saved for', u.uid);
 }
 
 // ===== Initialisation complète (à appeler au boot) =====
 export async function initNotifications() {
   if (isAndroid) {
-    await ensureAndroidChannels();    // ✅ canaux avant tout
+    await ensureAndroidChannels(); // ✅ canaux avant tout
     await ensureAndroid13Permission();
   }
   await ensureBasePermissions();
@@ -199,8 +193,8 @@ export async function initNotifications() {
     if (data?.alertId) {
       log('Cold start from notification → data=', data);
       // Si pas encore authentifié, on bufferise jusqu’à ce que l’auth soit prête
-      if (!__authReady) __pendingNotifData = data;
-      else routeFromData(data);
+      if (!__authReady) {__pendingNotifData = data;}
+      else {routeFromData(data);}
     }
   } catch {}
 }
@@ -212,16 +206,21 @@ export function attachNotificationListeners({ onReceive, onResponse } = {}) {
       const content = n?.request?.content || {};
       const d = content?.data ?? {};
       // @ts-ignore (clé possible selon SDK)
-      const chRemote = n?.request?.trigger?.remoteMessage?.notification?.android?.channelId
+      const chRemote =
+        n?.request?.trigger?.remoteMessage?.notification?.android?.channelId ??
         // @ts-ignore
-        ?? n?.request?.trigger?.remoteMessage?.notification?.channelId;
+        n?.request?.trigger?.remoteMessage?.notification?.channelId;
 
       log(
         'received (foreground):',
-        'channelId(data)=', d?.channelId,
-        'channelId(remote)=', chRemote,
-        'title=', content?.title,
-        'data=', d
+        'channelId(data)=',
+        d?.channelId,
+        'channelId(remote)=',
+        chRemote,
+        'title=',
+        content?.title,
+        'data=',
+        d
       );
 
       // Fallback visible si on reçoit un truc “muet” (rare)
@@ -245,11 +244,20 @@ export function attachNotificationListeners({ onReceive, onResponse } = {}) {
       const n = r?.notification;
       const d = n?.request?.content?.data ?? {};
       // @ts-ignore
-      const chRemote = n?.request?.trigger?.remoteMessage?.notification?.android?.channelId
+      const chRemote =
+        n?.request?.trigger?.remoteMessage?.notification?.android?.channelId ??
         // @ts-ignore
-        ?? n?.request?.trigger?.remoteMessage?.notification?.channelId;
+        n?.request?.trigger?.remoteMessage?.notification?.channelId;
 
-      log('tap response:', 'channelId(data)=', d?.channelId, 'channelId(remote)=', chRemote, 'data=', d);
+      log(
+        'tap response:',
+        'channelId(data)=',
+        d?.channelId,
+        'channelId(remote)=',
+        chRemote,
+        'data=',
+        d
+      );
 
       if (!__authReady) {
         __pendingNotifData = d;
@@ -261,8 +269,12 @@ export function attachNotificationListeners({ onReceive, onResponse } = {}) {
   });
 
   return () => {
-    try { sub1?.remove?.(); } catch {}
-    try { sub2?.remove?.(); } catch {}
+    try {
+      sub1?.remove?.();
+    } catch {}
+    try {
+      sub2?.remove?.();
+    } catch {}
   };
 }
 
@@ -272,9 +284,7 @@ export async function registerForPushNotificationsAsync() {
   await initNotifications();
 
   const projectId =
-    Constants?.expoConfig?.extra?.eas?.projectId ||
-    Constants?.easConfig?.projectId ||
-    null;
+    Constants?.expoConfig?.extra?.eas?.projectId || Constants?.easConfig?.projectId || null;
 
   const tokenResp = await Notifications.getExpoPushTokenAsync(
     projectId ? { projectId } : undefined
@@ -294,7 +304,7 @@ export async function getFcmDeviceTokenAsync() {
     await initNotifications(); // canaux + permissions + cold start
     const { data: token } = await Notifications.getDevicePushTokenAsync({ type: 'fcm' });
     log('FCM device token =', token);
-    if (token) await saveFcmTokenForUser(token);
+    if (token) {await saveFcmTokenForUser(token);}
     return token ?? null;
   } catch (e) {
     warn('getFcmDeviceTokenAsync error:', e?.message || e);

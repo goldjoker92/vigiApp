@@ -12,16 +12,26 @@ import { Platform } from 'react-native';
 
 // Util log horodaté
 function ts() {
-  try { return new Date().toISOString(); } catch { return String(Date.now()); }
+  try {
+    return new Date().toISOString();
+  } catch {
+    return String(Date.now());
+  }
 }
 function log(...args) {
-  try { console.log(`[registerDevice][${ts()}]`, ...args); } catch {}
+  try {
+    console.log(`[registerDevice][${ts()}]`, ...args);
+  } catch {}
 }
 function warn(...args) {
-  try { console.warn(`[registerDevice][${ts()}]`, ...args); } catch {}
+  try {
+    console.warn(`[registerDevice][${ts()}]`, ...args);
+  } catch {}
 }
 function err(...args) {
-  try { console.error(`[registerDevice][${ts()}]`, ...args); } catch {}
+  try {
+    console.error(`[registerDevice][${ts()}]`, ...args);
+  } catch {}
 }
 
 /**

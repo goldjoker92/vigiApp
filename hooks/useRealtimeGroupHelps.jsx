@@ -24,7 +24,7 @@ export function useRealtimeGroupHelps(groupId) {
     const q = query(
       collection(db, 'groupHelps'),
       where('groupId', '==', groupId),
-      orderBy('createdAt', 'desc'),
+      orderBy('createdAt', 'desc')
     );
 
     console.log('[useRealtimeGroupHelps] Listen path: /groupHelps | groupId =', groupId);
@@ -38,18 +38,18 @@ export function useRealtimeGroupHelps(groupId) {
 
         // LOGS ULTRA PRÉCIS
         console.log(
-          `[useRealtimeGroupHelps] ${arr.length} demandes reçues pour groupId=${groupId}`,
+          `[useRealtimeGroupHelps] ${arr.length} demandes reçues pour groupId=${groupId}`
         );
         arr.forEach((dem, idx) => {
           console.log(
-            `[useRealtimeGroupHelps] [${idx}] id: ${dem.id} | userId: ${dem.userId} | status: ${dem.status} | volunteerId: ${dem.volunteerId} | volunteerApelido: ${dem.volunteerApelido || '--'}`,
+            `[useRealtimeGroupHelps] [${idx}] id: ${dem.id} | userId: ${dem.userId} | status: ${dem.status} | volunteerId: ${dem.volunteerId} | volunteerApelido: ${dem.volunteerApelido || '--'}`
           );
         });
       },
       (err) => {
         setLoading(false);
         console.error('[useRealtimeGroupHelps] Firestore ERROR', err);
-      },
+      }
     );
 
     return () => {

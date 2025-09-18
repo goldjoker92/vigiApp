@@ -1,4 +1,3 @@
-
 import '@testing-library/jest-native/extend-expect';
 
 // Mocks stables pour tests RN/Expo
@@ -8,9 +7,11 @@ jest.mock('react-native-reanimated', () => require('react-native-reanimated/mock
 const originalError = global.console.error;
 global.console.error = (...args) => {
   const msg = String(args[0] || '');
-  if (msg.includes('useNativeDriver') || msg.includes('React state update on an unmounted component')) {
+  if (
+    msg.includes('useNativeDriver') ||
+    msg.includes('React state update on an unmounted component')
+  ) {
     return;
   }
   originalError(...args);
 };
-

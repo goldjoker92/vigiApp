@@ -10,22 +10,34 @@ import { collection, onSnapshot, orderBy, query, where, Timestamp } from 'fireba
 export const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 export function timeAgo(ts) {
-  if (!ts) { return ''; }
+  if (!ts) {
+    return '';
+  }
   const created = ts.toMillis?.() ?? ts;
   const m = Math.max(0, Math.floor((Date.now() - created) / 60000));
-  if (m < 1) { return 'agora'; }
-  if (m < 60) { return `${m} min atrás`; }
+  if (m < 1) {
+    return 'agora';
+  }
+  if (m < 60) {
+    return `${m} min atrás`;
+  }
   const h = Math.floor(m / 60);
   return `${h} h atrás`;
 }
 
 export function timeLeft(ts) {
-  if (!ts) { return ''; }
+  if (!ts) {
+    return '';
+  }
   const created = ts.toMillis?.() ?? ts;
-  const leftMs = (created + ONE_DAY_MS) - Date.now();
-  if (leftMs <= 0) { return 'expirada'; }
+  const leftMs = created + ONE_DAY_MS - Date.now();
+  if (leftMs <= 0) {
+    return 'expirada';
+  }
   const mins = Math.floor(leftMs / 60000);
-  if (mins < 60) { return `${mins} min restantes`; }
+  if (mins < 60) {
+    return `${mins} min restantes`;
+  }
   const h = Math.floor(mins / 60);
   const r = mins % 60;
   return `${h} h ${r} min restantes`;

@@ -40,16 +40,16 @@ export default function GroupHelpSection({ groupId: groupIdProp }) {
     if (Platform.OS === 'android') {
       if (event.type === 'set' && date) {
         let finalDate = dayjs(date);
-        if (finalDate.isAfter(maxDate)) finalDate = dayjs(maxDate);
-        if (finalDate.isBefore(minDate)) finalDate = dayjs(minDate);
+        if (finalDate.isAfter(maxDate)) {finalDate = dayjs(maxDate);}
+        if (finalDate.isBefore(minDate)) {finalDate = dayjs(minDate);}
         setSelectedDate(finalDate.toDate());
       }
       setShowPicker(false);
     } else if (Platform.OS === 'ios') {
       if (event.type === 'set' && date) {
         let finalDate = dayjs(date);
-        if (finalDate.isAfter(maxDate)) finalDate = dayjs(maxDate);
-        if (finalDate.isBefore(minDate)) finalDate = dayjs(minDate);
+        if (finalDate.isAfter(maxDate)) {finalDate = dayjs(maxDate);}
+        if (finalDate.isBefore(minDate)) {finalDate = dayjs(minDate);}
         setSelectedDate(finalDate.toDate());
       }
     }
@@ -109,7 +109,7 @@ export default function GroupHelpSection({ groupId: groupIdProp }) {
         setIsLoading(false);
         Alert.alert(
           'Limite diário atingido',
-          'Você atingiu o limite de 2 pedidos por dia. Tente novamente amanhã.',
+          'Você atingiu o limite de 2 pedidos por dia. Tente novamente amanhã.'
         );
         return;
       }
@@ -129,7 +129,7 @@ export default function GroupHelpSection({ groupId: groupIdProp }) {
         setIsLoading(false);
         Alert.alert(
           'Limite semanal atingido',
-          'Você atingiu o limite de 8 pedidos por semana. Tente novamente na próxima semana.',
+          'Você atingiu o limite de 8 pedidos por semana. Tente novamente na próxima semana.'
         );
         return;
       }

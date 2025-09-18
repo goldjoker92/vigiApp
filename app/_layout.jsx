@@ -26,8 +26,8 @@ import {
   getFcmDeviceTokenAsync,
   registerForPushNotificationsAsync,
   ensureAndroidChannels,
-  initNotifications,              // ✅
-  wireAuthGateForNotifications,   // ✅
+  initNotifications, // ✅
+  wireAuthGateForNotifications, // ✅
 } from '../libs/notifications';
 
 // Backend device upsert
@@ -46,10 +46,31 @@ const SILENCE_RELEASE = !!extra?.SILENCE_CONSOLE_IN_RELEASE;
 const APP_TAG = 'VigiApp';
 const LAYOUT_TAG = 'PushBootstrap';
 
-function ts() { try { return new Date().toISOString(); } catch { return String(Date.now()); } }
-function log (...a){ if (__DEV__ || !SILENCE_RELEASE) try{ console.log(`[${APP_TAG}][${LAYOUT_TAG}][${ts()}]`,...a);}catch{}}
-function warn(...a){ if (__DEV__ || !SILENCE_RELEASE) try{ console.warn(`[${APP_TAG}][${LAYOUT_TAG}][${ts()}]`,...a);}catch{}}
-function err (...a){ if (__DEV__ || !SILENCE_RELEASE) try{ console.error(`[${APP_TAG}][${LAYOUT_TAG}][${ts()}]`,...a);}catch{}}
+function ts() {
+  try {
+    return new Date().toISOString();
+  } catch {
+    return String(Date.now());
+  }
+}
+function log(...a) {
+  if (__DEV__ || !SILENCE_RELEASE)
+    {try {
+      console.log(`[${APP_TAG}][${LAYOUT_TAG}][${ts()}]`, ...a);
+    } catch {}}
+}
+function warn(...a) {
+  if (__DEV__ || !SILENCE_RELEASE)
+    {try {
+      console.warn(`[${APP_TAG}][${LAYOUT_TAG}][${ts()}]`, ...a);
+    } catch {}}
+}
+function err(...a) {
+  if (__DEV__ || !SILENCE_RELEASE)
+    {try {
+      console.error(`[${APP_TAG}][${LAYOUT_TAG}][${ts()}]`, ...a);
+    } catch {}}
+}
 
 // Polyfill Hermes
 if (typeof global.structuredClone !== 'function') {
@@ -68,20 +89,29 @@ if (!__DEV__ && SILENCE_RELEASE) {
 function MyFallback({ error }) {
   err('ErrorBoundary caught:', error?.message, error?.stack);
   return (
-    <View style={{ flex:1, justifyContent:'center', alignItems:'center', backgroundColor:'#181A20' }}>
-      <Text style={{ color:'#FFD600', fontWeight:'bold', fontSize:20, marginBottom:16 }}>Oops !</Text>
-      <Text style={{ color:'#fff', textAlign:'center', fontSize:16, marginBottom:10 }}>
+    <View
+      style={{
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: '#181A20',
+      }}
+    >
+      <Text style={{ color: '#FFD600', fontWeight: 'bold', fontSize: 20, marginBottom: 16 }}>
+        Oops !
+      </Text>
+      <Text style={{ color: '#fff', textAlign: 'center', fontSize: 16, marginBottom: 10 }}>
         {error?.message || 'Une erreur est survenue.'}
       </Text>
-      <Text style={{ color:'#aaa', fontSize:12 }}>Essaie de relancer l’application.</Text>
+      <Text style={{ color: '#aaa', fontSize: 12 }}>Essaie de relancer l’application.</Text>
     </View>
   );
 }
 
 function mapSeverityToToastType(sev) {
   const s = String(sev || '').toLowerCase();
-  if (s === 'high' || s === 'grave') return 'error';
-  if (s === 'low'  || s === 'minor') return 'success';
+  if (s === 'high' || s === 'grave') {return 'error';}
+  if (s === 'low' || s === 'minor') {return 'success';}
   return 'info';
 }
 
@@ -99,12 +129,22 @@ async function fetchUserCepFromFirestore(uid) {
   }
 }
 
-function safeJson(obj) { try { return JSON.stringify(obj)?.slice(0, 1000); } catch { return '[unserializable]'; } }
-function maskToken(tok){ if(!tok) return tok; const s=String(tok); return s.length<=12 ? s : `${s.slice(0,12)}…(${s.length})`; }
+function safeJson(obj) {
+  try {
+    return JSON.stringify(obj)?.slice(0, 1000);
+  } catch {
+    return '[unserializable]';
+  }
+}
+function maskToken(tok) {
+  if (!tok) {return tok;}
+  const s = String(tok);
+  return s.length <= 12 ? s : `${s.slice(0, 12)}…(${s.length})`;
+}
 
 function PushBootstrap() {
   const expoTokenRef = useRef(null);
-  const fcmTokenRef  = useRef(null);
+  const fcmTokenRef = useRef(null);
   const lastUpsertKeyRef = useRef('');
   const { user } = useUserStore();
 
@@ -142,10 +182,10 @@ function PushBootstrap() {
           onReceive: (n) => {
             const content = n?.request?.content || {};
             const title = content?.title || 'VigiApp';
-            const body  = content?.body || '';
-            const sev   = content?.data?.severidade || content?.data?.severity;
-            const type  = mapSeverityToToastType(sev);
-            const line  = body ? `${title} — ${body}` : title;
+            const body = content?.body || '';
+            const sev = content?.data?.severidade || content?.data?.severity;
+            const type = mapSeverityToToastType(sev);
+            const line = body ? `${title} — ${body}` : title;
             const imageUrl =
               content?.data?.image ||
               content?.image ||
@@ -164,9 +204,12 @@ function PushBootstrap() {
             });
           },
           onResponse: (r) => {
-            log('listener:onResponse', safeJson({
-              data: r?.notification?.request?.content?.data,
-            }));
+            log(
+              'listener:onResponse',
+              safeJson({
+                data: r?.notification?.request?.content?.data,
+              })
+            );
           },
         });
         log('listeners attached');
@@ -243,8 +286,18 @@ function PushBootstrap() {
 
     return () => {
       log('unmount → cleanup…');
-      try { detachListeners?.(); log('listeners detached'); } catch (e) { err('detach listeners error:', e?.message || e); }
-      try { unsubscribeAuth?.(); log('auth listener detached'); } catch (e) { err('detach auth error:', e?.message || e); }
+      try {
+        detachListeners?.();
+        log('listeners detached');
+      } catch (e) {
+        err('detach listeners error:', e?.message || e);
+      }
+      try {
+        unsubscribeAuth?.();
+        log('auth listener detached');
+      } catch (e) {
+        err('detach auth error:', e?.message || e);
+      }
     };
   }, [user?.cep]);
 
@@ -277,8 +330,8 @@ export default function Layout() {
               <Toast
                 config={{
                   success: (props) => <CustomTopToast {...props} />,
-                  info:    (props) => <CustomTopToast {...props} />,
-                  error:   (props) => <CustomTopToast {...props} />,
+                  info: (props) => <CustomTopToast {...props} />,
+                  error: (props) => <CustomTopToast {...props} />,
                   default: (props) => <CustomTopToast {...props} />,
                 }}
                 position="top"

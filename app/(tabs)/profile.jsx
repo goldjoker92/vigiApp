@@ -4,8 +4,8 @@ import { useAuthGuard } from '../../hooks/useAuthGuard';
 
 export default function ProfileScreen() {
   const user = useAuthGuard();
-  if (user === undefined) return <ActivityIndicator style={{ flex: 1 }} color="#22C55E" />;
-  if (!user) return null;
+  if (user === undefined) {return <ActivityIndicator style={{ flex: 1 }} color="#22C55E" />;}
+  if (!user) {return null;}
 
   return (
     <View style={styles.container}>

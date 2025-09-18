@@ -2,6 +2,9 @@
 // -------------------------------------------------------------
 // Google Weather + Geocoding (clé EXPO_PUBLIC_GOOGLE_WEATHER_KEY) avec
 // fallback OpenWeather. Fournit aussi une bascule ville→capitale d'État.
+// - Normalisation robuste de la description météo (pt-BR) : plus de [object Object]
+// - Fallback de température si Google ne fournit pas de temp
+// - Logs de perf pour diag prod-friendly
 // -------------------------------------------------------------
 import Constants from 'expo-constants';
 import * as Location from 'expo-location';
@@ -14,7 +17,7 @@ const WX_COMMON = `languageCode=pt-BR&unitsSystem=METRIC&key=${GOOGLE_WEATHER_KE
 const GEOCODE_BASE = 'https://maps.googleapis.com/maps/api/geocode/json';
 
 // --- Capitals (UF -> {city, coords})
-// Coords approximatives de capitales brésiliennes (OK pour météo/city label).
+// Coords approximatives (OK pour météo/city label).
 const UF_CAPITALS = {
   AC: { city: 'Rio Branco', coords: { latitude: -9.97499, longitude: -67.8243 } },
   AL: { city: 'Maceió', coords: { latitude: -9.64985, longitude: -35.70895 } },
@@ -46,59 +49,83 @@ const UF_CAPITALS = {
 };
 
 export function normalizeUf(ufRaw) {
-  if (!ufRaw) return '';
+  if (!ufRaw) {return '';}
   return String(ufRaw).trim().slice(0, 2).toUpperCase();
 }
+
 function extractCityUfFromAddressComponents(components = []) {
-  let city = '', uf = '';
+  let city = '',
+    uf = '';
   for (const c of components) {
-    if (c.types.includes('administrative_area_level_2') && !city) city = c.long_name; // município
-    if (c.types.includes('administrative_area_level_1') && !uf) uf = c.short_name;   // UF
-    if (c.types.includes('locality') && !city) city = c.long_name;
+    if (c.types.includes('administrative_area_level_2') && !city) {city = c.long_name;} // município
+    if (c.types.includes('administrative_area_level_1') && !uf) {uf = c.short_name;} // UF
+    if (c.types.includes('locality') && !city) {city = c.long_name;}
   }
   return { city, uf };
 }
+
+// ---------- Normalisation sûre de la description météo ----------
+export function normalizeConditionText(desc, code) {
+  const v = desc ?? code ?? '';
+  if (typeof v === 'string') {return v;}
+  if (Array.isArray(v)) {return v.filter(Boolean).join(', ');}
+  if (v && typeof v === 'object') {
+    return v.description || v.text || v.summary || v.main || String(v.code ?? '');
+  }
+  return '';
+}
+
 export function mapConditionToEmojiLabel(code, desc) {
-  const t = (desc || code || '').toLowerCase();
-  if (t.includes('trovoada') || t.includes('thunder') || t.includes('tempest')) return '⛈️ Trovoada';
-  if (t.includes('chuva') || t.includes('rain') || t.includes('shower')) return '🌧️ Chuva';
-  if (t.includes('garoa') || t.includes('drizzle')) return '🌦️ Garoa';
-  if (t.includes('nublado') || t.includes('cloud')) return '☁️ Nublado';
-  if (t.includes('neblina') || t.includes('fog') || t.includes('mist')) return '🌫️ Neblina';
-  if (t.includes('limpo') || t.includes('clear') || t.includes('sun')) return '☀️ Limpo';
+  const norm = normalizeConditionText(desc, code);
+  const t = norm.toLowerCase();
+  if (t.includes('trovoada') || t.includes('thunder') || t.includes('tempest'))
+    {return '⛈️ Trovoada';}
+  if (t.includes('chuva') || t.includes('rain') || t.includes('shower')) {return '🌧️ Chuva';}
+  if (t.includes('garoa') || t.includes('drizzle')) {return '🌦️ Garoa';}
+  if (t.includes('nublado') || t.includes('cloud')) {return '☁️ Nublado';}
+  if (t.includes('neblina') || t.includes('fog') || t.includes('mist')) {return '🌫️ Neblina';}
+  if (t.includes('limpo') || t.includes('clear') || t.includes('sun')) {return '☀️ Limpo';}
   return '🌤️ Tempo';
 }
 
 // ---------------- Geocoding ----------------
 export async function reverseGeocodeCityUf({ latitude, longitude }) {
   const url = `${GEOCODE_BASE}?latlng=${latitude},${longitude}&key=${GOOGLE_WEATHER_KEY}&language=pt-BR`;
+  const t0 = Date.now();
   const resp = await fetch(url);
-  if (!resp.ok) throw new Error(`Geocode reverse HTTP ${resp.status}`);
+  if (!resp.ok) {throw new Error(`Geocode reverse HTTP ${resp.status}`);}
   const json = await resp.json();
   const best = json.results?.[0];
-  if (!best) return { city: '', uf: '' };
-  const { city, uf } = extractCityUfFromAddressComponents(best.address_components || []);
+  const { city, uf } = best
+    ? extractCityUfFromAddressComponents(best.address_components || [])
+    : { city: '', uf: '' };
+  const ms = Date.now() - t0;
+  console.log('[WEATHER][geocode] reverse ok', { city, uf, ms });
   return { city, uf: normalizeUf(uf) };
 }
 
 export async function geocodeCepToCoords(cep) {
   const digits = String(cep || '').replace(/\D/g, '');
-  if (!digits) return null;
+  if (!digits) {return null;}
   const query = `${digits}, Brazil`;
   const url = `${GEOCODE_BASE}?address=${encodeURIComponent(query)}&key=${GOOGLE_WEATHER_KEY}&language=pt-BR`;
+  const t0 = Date.now();
   const resp = await fetch(url);
-  if (!resp.ok) throw new Error(`Geocode CEP HTTP ${resp.status}`);
+  if (!resp.ok) {throw new Error(`Geocode CEP HTTP ${resp.status}`);}
   const json = await resp.json();
   const best = json.results?.[0];
-  if (!best) return null;
+  if (!best) {return null;}
   const { lat, lng } = best.geometry?.location || {};
   const { city, uf } = extractCityUfFromAddressComponents(best.address_components || []);
+  const ms = Date.now() - t0;
+  console.log('[WEATHER][geocode] by CEP ok', { cep: digits, city, uf, ms });
   return { coords: { latitude: lat, longitude: lng }, city, uf: normalizeUf(uf) };
 }
 
 // ---------------- Weather (Google) ----------------
 async function googleCurrent({ latitude, longitude }) {
   const url = `${WX_BASE}/currentConditions:lookup?${WX_COMMON}&location.latitude=${latitude}&location.longitude=${longitude}`;
+  const t0 = Date.now();
   const resp = await fetch(url);
   if (!resp.ok) {
     const err = new Error(`Weather currentConditions HTTP ${resp.status}`);
@@ -106,61 +133,87 @@ async function googleCurrent({ latitude, longitude }) {
     throw err;
   }
   const json = await resp.json();
-  return {
+  const raw = json?.weatherCondition || {};
+  const out = {
     tempC: json?.temperature?.value ?? null,
-    code: json?.weatherCondition?.code || '',
-    text: json?.weatherCondition?.description || '',
+    code: raw?.code || '',
+    text: normalizeConditionText(raw?.description, raw?.code),
     provider: 'google',
   };
+  const ms = Date.now() - t0;
+  console.log('[WEATHER] provider=google ✔', { ...out, ms });
+  return out;
 }
 
 // ---------------- Weather (OpenWeather fallback) ----------------
 async function openWeatherCurrent({ latitude, longitude }) {
-  if (!OPENWEATHER_KEY) throw new Error('OPENWEATHER_API_KEY ausente');
+  if (!OPENWEATHER_KEY) {throw new Error('OPENWEATHER_API_KEY ausente');}
   const url = `https://api.openweathermap.org/data/2.5/weather?lat=${latitude}&lon=${longitude}&appid=${OPENWEATHER_KEY}&units=metric&lang=pt_br`;
+  const t0 = Date.now();
   const resp = await fetch(url);
-  if (!resp.ok) throw new Error(`OpenWeather HTTP ${resp.status}`);
+  if (!resp.ok) {throw new Error(`OpenWeather HTTP ${resp.status}`);}
   const j = await resp.json();
-  return {
+  const w0 = Array.isArray(j?.weather) ? j.weather[0] : j?.weather || {};
+  const out = {
     tempC: j?.main?.temp ?? null,
-    code: j?.weather?.[0]?.main || '',
-    text: j?.weather?.[0]?.description || '',
+    code: w0?.main || '',
+    text: normalizeConditionText(w0?.description || w0?.main, w0?.main),
     provider: 'openweather',
   };
+  const ms = Date.now() - t0;
+  console.log('[WEATHER] provider=openweather ✔', { ...out, ms });
+  return out;
 }
 
 // ---------------- Coord source: GPS > CEP > Capital UF > Brasília ----------------
 export async function resolveCoordsAndLabel({ cep }) {
+  // on essaye d'abord le GPS (fortement recommandé pour météo précise)
+  const t0 = Date.now();
   try {
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status === 'granted') {
-      const { coords } = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const { coords } = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
       const label = await reverseGeocodeCityUf(coords);
-      console.log('[WEATHER] geoloc=GPS', { coords, label });
+      const ms = Date.now() - t0;
+      console.log('[WEATHER] geoloc=GPS', { coords, label, ms });
       return { coords, ...label, source: 'gps' };
     }
-  } catch (_) { /* silent */ }
+  } catch (_) {
+    /* silent */
+  }
 
   if (cep) {
     const got = await geocodeCepToCoords(cep);
     if (got?.coords) {
-      console.log('[WEATHER] geoloc=CEP', got);
+      const ms = Date.now() - t0;
+      console.log('[WEATHER] geoloc=CEP', { ...got, ms });
       return { ...got, source: 'cep' };
     }
   }
 
   // Sans CEP ni GPS → Brasília (neutre)
-  console.log('[WEATHER] geoloc=FALLBACK', { city: 'Brasília', uf: 'DF' });
+  const ms = Date.now() - t0;
+  console.log('[WEATHER] geoloc=FALLBACK', { city: 'Brasília', uf: 'DF', ms });
   return { coords: UF_CAPITALS.DF.coords, city: 'Brasília', uf: 'DF', source: 'fallback' };
 }
 
-// Si ville manquante mais UF connue → on bascule sur la capitale de l’État
+// Si ville manquante mais UF connue → capitale
 export function ensureCityFromCapitalIfMissing({ city, uf, coords }) {
   const U = normalizeUf(uf);
-  if (city && U) return { city, uf: U, coords, used: 'as-is' };
+  if (city && U) {return { city, uf: U, coords, used: 'as-is' };}
   if (U && UF_CAPITALS[U]) {
-    console.log('[WEATHER] city missing → using state capital', { uf: U, capital: UF_CAPITALS[U].city });
-    return { city: UF_CAPITALS[U].city, uf: U, coords: UF_CAPITALS[U].coords, used: 'state-capital' };
+    console.log('[WEATHER] city missing → using state capital', {
+      uf: U,
+      capital: UF_CAPITALS[U].city,
+    });
+    return {
+      city: UF_CAPITALS[U].city,
+      uf: U,
+      coords: UF_CAPITALS[U].coords,
+      used: 'state-capital',
+    };
   }
   console.log('[WEATHER] city+uf missing → Brasília, DF');
   return { city: 'Brasília', uf: 'DF', coords: UF_CAPITALS.DF.coords, used: 'federal-capital' };
@@ -168,15 +221,29 @@ export function ensureCityFromCapitalIfMissing({ city, uf, coords }) {
 
 // ---------------- API publique pour la Card ----------------
 export async function getWeatherNowWithFallback(coords) {
+  // 1) Google
   try {
-    const res = await googleCurrent(coords);
-    console.log('[WEATHER] provider=google ✔', res);
-    return res;
+    const g = await googleCurrent(coords);
+    // Si Google n'a pas de temp, ou description vide → on tente d'enrichir via OpenWeather
+    if (g?.tempC == null || g?.tempC !== g?.tempC || !normalizeConditionText(g?.text, g?.code)) {
+      try {
+        const o = await openWeatherCurrent(coords);
+        return {
+          tempC: o?.tempC ?? g?.tempC ?? null,
+          code: g?.code || o?.code || '',
+          text: normalizeConditionText(g?.text, g?.code) || o?.text || '',
+          provider: o?.tempC != null ? 'google+openweather' : 'google',
+        };
+      } catch {
+        return g;
+      }
+    }
+    return g;
   } catch (e) {
+    // 2) Google 401/403 → OpenWeather
     if (e?.status === 401 || e?.status === 403) {
       console.log('[WEATHER] Google 401/403 → fallback OpenWeather');
       const ow = await openWeatherCurrent(coords);
-      console.log('[WEATHER] provider=openweather ✔', ow);
       return ow;
     }
     console.log('[WEATHER] google error', e?.message || e);

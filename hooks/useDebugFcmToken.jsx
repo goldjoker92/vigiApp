@@ -5,7 +5,7 @@ import messaging from '@react-native-firebase/messaging';
 import * as Notifications from 'expo-notifications';
 import * as Clipboard from 'expo-clipboard';
 
-const wait = (ms) => new Promise(res => setTimeout(res, ms));
+const wait = (ms) => new Promise((res) => setTimeout(res, ms));
 
 export default function useDebugFcmToken() {
   const shownRef = useRef(false); // évite les popups multiples
@@ -34,7 +34,7 @@ export default function useDebugFcmToken() {
         await messaging().registerDeviceForRemoteMessages();
 
         const show = async (token) => {
-          if (!token || shownRef.current) return;
+          if (!token || shownRef.current) {return;}
           shownRef.current = true;
           console.log('FCM TOKEN ▶', token);
           try {
@@ -50,7 +50,7 @@ export default function useDebugFcmToken() {
         for (let i = 0; i < 3; i++) {
           try {
             token = await messaging().getToken();
-            if (token) break;
+            if (token) {break;}
           } catch (e) {
             console.log('[FCM] getToken attempt failed:', e?.message || e);
           }
@@ -71,7 +71,9 @@ export default function useDebugFcmToken() {
     })();
 
     return () => {
-      try { unsubscribeOnTokenRefresh?.(); } catch {}
+      try {
+        unsubscribeOnTokenRefresh?.();
+      } catch {}
     };
   }, []);
 }

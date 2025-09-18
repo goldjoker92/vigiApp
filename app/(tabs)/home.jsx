@@ -45,7 +45,7 @@ function AnimatedSkeletonLine({ style, delay = 0 }) {
       Animated.sequence([
         Animated.timing(opacity, { toValue: 1, duration: 600, delay, useNativeDriver: true }),
         Animated.timing(opacity, { toValue: 0.5, duration: 600, useNativeDriver: true }),
-      ]),
+      ])
     ).start();
   }, [delay, opacity]);
   return <Animated.View style={[style, { opacity }]} />;
@@ -63,13 +63,17 @@ function GroupSkeleton() {
 
 // ---- Affichage du créateur (friendly)
 function getCriador(grupo, user) {
-  if (!grupo) { return 'Desconhecido'; }
+  if (!grupo) {
+    return 'Desconhecido';
+  }
   if (grupo.creatorUserId && grupo.creatorNome) {
     return grupo.creatorUserId === user?.id || grupo.creatorUserId === user?.uid
       ? user?.apelido || user?.username || 'Você'
       : grupo.creatorNome;
   }
-  if (grupo.creatorNome) { return grupo.creatorNome; }
+  if (grupo.creatorNome) {
+    return grupo.creatorNome;
+  }
   if (Array.isArray(grupo.members) && grupo.members[0]?.apelido) {
     return grupo.members[0].apelido;
   }
@@ -107,7 +111,7 @@ export default function HomeScreen() {
   const outrosGrupos = (grupos || []).filter(
     (g) =>
       !(g.membersIds || []).includes(user?.id || user?.uid) &&
-      (g.members?.length || 0) < (g.maxMembers || 30),
+      (g.members?.length || 0) < (g.maxMembers || 30)
   );
 
   // ---- Salutation dynamique
@@ -118,8 +122,11 @@ export default function HomeScreen() {
   });
   const hora = parseInt(horaBrasil, 10);
   let saudacao = 'Bom dia';
-  if (hora >= 12 && hora < 18) { saudacao = 'Boa tarde'; }
-  else if (hora >= 18 || hora < 6) { saudacao = 'Boa noite'; }
+  if (hora >= 12 && hora < 18) {
+    saudacao = 'Boa tarde';
+  } else if (hora >= 18 || hora < 6) {
+    saudacao = 'Boa noite';
+  }
 
   const nome = user?.apelido || user?.username || 'Cidadão';
 

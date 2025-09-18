@@ -19,10 +19,10 @@ import { createChatOnAccept } from '../services/chatService'; // fonction de cr�
 
 // --- Helper universel pour Timestamp Firestore ---
 function toFirestoreTimestamp(val) {
-  if (!val) return null;
-  if (val instanceof Timestamp) return val;
-  if (val instanceof Date) return Timestamp.fromDate(val);
-  if (typeof val === 'string' || typeof val === 'number') return Timestamp.fromDate(new Date(val));
+  if (!val) {return null;}
+  if (val instanceof Timestamp) {return val;}
+  if (val instanceof Date) {return Timestamp.fromDate(val);}
+  if (typeof val === 'string' || typeof val === 'number') {return Timestamp.fromDate(new Date(val));}
   return null;
 }
 
@@ -36,10 +36,10 @@ export async function createGroupHelp({
   dateHelp,
   badgeId,
 }) {
-  if (!groupId || !userId) throw new Error('Paramètre manquant à createGroupHelp');
+  if (!groupId || !userId) {throw new Error('Paramètre manquant à createGroupHelp');}
 
   const cleanMessage = (message || '').trim();
-  if (!cleanMessage) throw new Error('Message vide');
+  if (!cleanMessage) {throw new Error('Message vide');}
 
   const docData = {
     groupId,
@@ -94,14 +94,14 @@ export async function createGroupHelp({
 
 // 2️⃣ Compter demandes user
 export async function countUserRequests({ userId, groupId, since }) {
-  if (!userId || !groupId || !since) throw new Error('Paramètre manquant pour countUserRequests');
+  if (!userId || !groupId || !since) {throw new Error('Paramètre manquant pour countUserRequests');}
   const sinceTimestamp = toFirestoreTimestamp(since);
 
   const q = query(
     collection(db, 'groupHelps'),
     where('userId', '==', userId),
     where('groupId', '==', groupId),
-    where('createdAt', '>=', sinceTimestamp),
+    where('createdAt', '>=', sinceTimestamp)
   );
   const snapshot = await getDocs(q);
   return snapshot.size;
@@ -109,14 +109,14 @@ export async function countUserRequests({ userId, groupId, since }) {
 
 // 3️⃣ Cacher demande pour user
 export async function hideGroupHelpForUser(demandaId, userId) {
-  if (!demandaId || !userId) throw new Error('Manque demandaId/userId');
+  if (!demandaId || !userId) {throw new Error('Manque demandaId/userId');}
   const ref = doc(db, 'groupHelps', demandaId);
   await updateDoc(ref, { hiddenBy: arrayUnion(userId) });
 }
 
 // 4️⃣ Cacher toutes demandes groupe pour user
 export async function hideAllGroupHelpsForUser(groupId, userId) {
-  if (!groupId || !userId) throw new Error('Manque groupId/userId');
+  if (!groupId || !userId) {throw new Error('Manque groupId/userId');}
   const q = query(collection(db, 'groupHelps'), where('groupId', '==', groupId));
   const snapshot = await getDocs(q);
 
@@ -131,7 +131,7 @@ export async function hideAllGroupHelpsForUser(groupId, userId) {
 
 // 5️⃣ Accepter une demande d’aide (ancienne méthode simple)
 export async function acceptGroupHelp({ demandaId, acceptedById, acceptedByApelido }) {
-  if (!demandaId || !acceptedById) throw new Error('Paramètre manquant à acceptGroupHelp');
+  if (!demandaId || !acceptedById) {throw new Error('Paramètre manquant à acceptGroupHelp');}
   const ref = doc(db, 'groupHelps', demandaId);
   await updateDoc(ref, {
     status: 'accepted',
@@ -150,7 +150,7 @@ export async function acceptGroupHelp({ demandaId, acceptedById, acceptedByApeli
 
 // 6️⃣ Mettre à jour message d’une demande
 export async function updateGroupHelpMessage(demandaId, newMessage) {
-  if (!demandaId || !newMessage) throw new Error('Paramètre manquant à updateGroupHelpMessage');
+  if (!demandaId || !newMessage) {throw new Error('Paramètre manquant à updateGroupHelpMessage');}
   const ref = doc(db, 'groupHelps', demandaId);
   await updateDoc(ref, {
     message: newMessage,
@@ -161,7 +161,7 @@ export async function updateGroupHelpMessage(demandaId, newMessage) {
 
 // 7️⃣ Annuler une demande
 export async function cancelGroupHelp(demandaId, userId) {
-  if (!demandaId || !userId) throw new Error('Manque demandaId/userId');
+  if (!demandaId || !userId) {throw new Error('Manque demandaId/userId');}
   const ref = doc(db, 'groupHelps', demandaId);
   await updateDoc(ref, {
     status: 'cancelled',
@@ -178,12 +178,12 @@ export async function cancelGroupHelp(demandaId, userId) {
 
 // 8️⃣ Obtenir toutes les demandes d’un user dans un groupe
 export async function getUserRequests({ userId, groupId }) {
-  if (!userId || !groupId) throw new Error('Paramètre manquant à getUserRequests');
+  if (!userId || !groupId) {throw new Error('Paramètre manquant à getUserRequests');}
   const q = query(
     collection(db, 'groupHelps'),
     where('userId', '==', userId),
     where('groupId', '==', groupId),
-    orderBy('createdAt', 'desc'),
+    orderBy('createdAt', 'desc')
   );
   const snapshot = await getDocs(q);
   const result = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
@@ -192,11 +192,11 @@ export async function getUserRequests({ userId, groupId }) {
 
 // 9️⃣ Obtenir toutes les demandes du groupe (hors hiddenBy)
 export async function getGroupRequests({ groupId, userId }) {
-  if (!userId || !groupId) throw new Error('Paramètre manquant à getGroupRequests');
+  if (!userId || !groupId) {throw new Error('Paramètre manquant à getGroupRequests');}
   const q = query(
     collection(db, 'groupHelps'),
     where('groupId', '==', groupId),
-    orderBy('createdAt', 'desc'),
+    orderBy('createdAt', 'desc')
   );
   const snapshot = await getDocs(q);
   const result = snapshot.docs
@@ -235,7 +235,7 @@ export async function aidantAcceptRegulation(demandaId) {
 export async function demandeurAcceptRegulation(demandaId, demandeur) {
   const docRef = doc(db, 'groupHelps', demandaId);
   const snap = await getDoc(docRef);
-  if (!snap.exists()) throw new Error('Demande introuvable');
+  if (!snap.exists()) {throw new Error('Demande introuvable');}
   const data = snap.data();
 
   if (data.aidantAcceptedRegulation) {

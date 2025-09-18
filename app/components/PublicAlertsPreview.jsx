@@ -16,8 +16,17 @@ export default function PublicAlertsPreview({ limit = 3, containerStyle }) {
 
   return (
     <View style={[{ marginTop: 18 }, containerStyle]}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
-        <Text style={{ color: '#fff', fontSize: 18, fontWeight: '800' }}>Últimos alertas (24h)</Text>
+      <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'baseline',
+          marginBottom: 10,
+        }}
+      >
+        <Text style={{ color: '#fff', fontSize: 18, fontWeight: '800' }}>
+          Últimos alertas (24h)
+        </Text>
         <TouchableOpacity onPress={() => router.push('/public-alerts')}>
           <Text style={{ color: '#60a5fa', fontWeight: '700' }}>Ver todos</Text>
         </TouchableOpacity>
@@ -28,7 +37,15 @@ export default function PublicAlertsPreview({ limit = 3, containerStyle }) {
           <ActivityIndicator color="#22C55E" />
         </View>
       ) : !visible || visible.length === 0 ? (
-        <View style={{ backgroundColor: '#1F222A', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: '#2B2F3A' }}>
+        <View
+          style={{
+            backgroundColor: '#1F222A',
+            borderRadius: 14,
+            padding: 14,
+            borderWidth: 1,
+            borderColor: '#2B2F3A',
+          }}
+        >
           <Text style={{ color: '#9aa3b2' }}>Nenhum alerta nas últimas 24 horas.</Text>
         </View>
       ) : (
@@ -44,7 +61,7 @@ export default function PublicAlertsPreview({ limit = 3, containerStyle }) {
                 padding: 14,
                 marginBottom: 10,
                 borderWidth: 1,
-                borderColor: '#2B2F3A'
+                borderColor: '#2B2F3A',
               }}
               activeOpacity={0.85}
             >
@@ -61,11 +78,21 @@ export default function PublicAlertsPreview({ limit = 3, containerStyle }) {
                 </Text>
               )}
 
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 8 }}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <View
+                  style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 8 }}
+                >
                   <MapPin size={14} color="#9aa3b2" />
                   <Text style={{ color: '#9aa3b2', marginLeft: 6 }} numberOfLines={1}>
-                    {item.ruaNumero ? `${item.ruaNumero} — ${item.cidade}/${item.estado}` : (item.cidade || '')}
+                    {item.ruaNumero
+                      ? `${item.ruaNumero} — ${item.cidade}/${item.estado}`
+                      : item.cidade || ''}
                   </Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>

@@ -14,7 +14,14 @@ export default function PublicAlertsFeedCore() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, backgroundColor: '#181A20', justifyContent: 'center', alignItems: 'center' }}>
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: '#181A20',
+          justifyContent: 'center',
+          alignItems: 'center',
+        }}
+      >
         <ActivityIndicator color="#22C55E" />
       </View>
     );
@@ -22,7 +29,15 @@ export default function PublicAlertsFeedCore() {
 
   if (!alerts || alerts.length === 0) {
     return (
-      <View style={{ flex: 1, backgroundColor: '#181A20', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: '#181A20',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 24,
+        }}
+      >
         <Text style={{ color: '#9aa3b2', textAlign: 'center' }}>
           Nenhum alerta nas últimas 24 horas nesta região.
         </Text>
@@ -44,7 +59,7 @@ export default function PublicAlertsFeedCore() {
             padding: 14,
             marginBottom: 10,
             borderWidth: 1,
-            borderColor: '#2B2F3A'
+            borderColor: '#2B2F3A',
           }}
           activeOpacity={0.85}
         >
@@ -56,16 +71,18 @@ export default function PublicAlertsFeedCore() {
           </View>
 
           {!!item.descricao && (
-            <Text style={{ color: '#cfd3dc', marginBottom: 8 }}>
-              {item.descricao}
-            </Text>
+            <Text style={{ color: '#cfd3dc', marginBottom: 8 }}>{item.descricao}</Text>
           )}
 
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <View
+            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+          >
             <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 8 }}>
               <MapPin size={14} color="#9aa3b2" />
               <Text style={{ color: '#9aa3b2', marginLeft: 6 }} numberOfLines={1}>
-                {item.ruaNumero ? `${item.ruaNumero} — ${item.cidade}/${item.estado}` : (item.cidade || '')}
+                {item.ruaNumero
+                  ? `${item.ruaNumero} — ${item.cidade}/${item.estado}`
+                  : item.cidade || ''}
               </Text>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>

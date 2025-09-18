@@ -9,9 +9,7 @@ const frontConsoleRule = isCI
   : ['warn', { allow: ['warn', 'error'] }];
 
 // Back (functions): on LOG sans drama (WARN au pire)
-const functionsConsoleRule = isCI
-  ? ['warn', { allow: ['warn', 'error', 'log', 'info'] }]
-  : 'off';
+const functionsConsoleRule = isCI ? ['warn', { allow: ['warn', 'error', 'log', 'info'] }] : 'off';
 
 module.exports = [
   // Base Expo (React/JS/TS)

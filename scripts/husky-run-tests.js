@@ -42,7 +42,7 @@ args.push(
   '--maxWorkers=50%',
   '--silent',
   '--passWithNoTests',
-  '--testTimeout=5000',
+  '--testTimeout=5000'
 );
 
 // Lance Jest (toujours non bloquant pour Husky)

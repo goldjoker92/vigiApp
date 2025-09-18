@@ -4,7 +4,7 @@
   "description": "Cloud Functions for Firebase",
   "main": "index.js",
   "type": "commonjs",
-  "engines": { 
+  "engines": {
     "node": "20",
     "npm": "10"
   },

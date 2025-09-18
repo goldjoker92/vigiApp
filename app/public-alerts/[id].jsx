@@ -1,6 +1,15 @@
 // app/public-alerts/[id].jsx
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
-import { View, Text, ActivityIndicator, Pressable, ScrollView, StyleSheet, Platform, Linking } from 'react-native';
+import {
+  View,
+  Text,
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Platform,
+  Linking,
+} from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import MapView, { Marker, Circle, PROVIDER_GOOGLE } from 'react-native-maps';
@@ -27,11 +36,15 @@ function distanceMeters(lat1, lon1, lat2, lon2) {
   const toRad = (x) => (x * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 function fmtDistance(m) {
-  if (!Number.isFinite(m)) return '—';
+  if (!Number.isFinite(m)) {
+    return '—';
+  }
   return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`;
 }
 
@@ -95,7 +108,9 @@ export default function PublicAlertDetail() {
   }, [alertId, isExpired]);
 
   useEffect(() => {
-    if (!alertId) return;
+    if (!alertId) {
+      return;
+    }
     const ref = doc(db, 'publicAlerts', alertId);
     const unsub = onSnapshot(
       ref,
@@ -131,7 +146,9 @@ export default function PublicAlertDetail() {
         }
         const pos = await Location.getCurrentPositionAsync({});
         const { latitude, longitude } = pos?.coords || {};
-        if (isFiniteNum(latitude) && isFiniteNum(longitude)) setUserLoc({ lat: latitude, lng: longitude });
+        if (isFiniteNum(latitude) && isFiniteNum(longitude)) {
+          setUserLoc({ lat: latitude, lng: longitude });
+        }
       } catch {
         setLocDenied(true);
       }
@@ -141,7 +158,9 @@ export default function PublicAlertDetail() {
   useEffect(() => {
     const lat = data?.lat;
     const lng = data?.lng;
-    if (!mapReady || !mapRef.current || !isFiniteNum(lat) || !isFiniteNum(lng)) return;
+    if (!mapReady || !mapRef.current || !isFiniteNum(lat) || !isFiniteNum(lng)) {
+      return;
+    }
 
     try {
       if (userLoc?.lat && userLoc?.lng) {
@@ -154,7 +173,12 @@ export default function PublicAlertDetail() {
         );
       } else {
         mapRef.current.animateToRegion(
-          { latitude: lat, longitude: lng, latitudeDelta: DEFAULT_DELTA, longitudeDelta: DEFAULT_DELTA },
+          {
+            latitude: lat,
+            longitude: lng,
+            latitudeDelta: DEFAULT_DELTA,
+            longitudeDelta: DEFAULT_DELTA,
+          },
           450
         );
       }
@@ -164,7 +188,9 @@ export default function PublicAlertDetail() {
   }, [mapReady, data?.lat, data?.lng, userLoc?.lat, userLoc?.lng]);
 
   const distanceText = useMemo(() => {
-    if (!userLoc || !isFiniteNum(data?.lat) || !isFiniteNum(data?.lng)) return null;
+    if (!userLoc || !isFiniteNum(data?.lat) || !isFiniteNum(data?.lng)) {
+      return null;
+    }
     const m = distanceMeters(userLoc.lat, userLoc.lng, data.lat, data.lng);
     return fmtDistance(m);
   }, [userLoc, data?.lat, data?.lng]);
@@ -172,14 +198,23 @@ export default function PublicAlertDetail() {
   const title = data?.titulo || data?.descricao || 'Alerta';
 
   const recenterToIncident = () => {
-    if (!mapRef.current || !isFiniteNum(data?.lat) || !isFiniteNum(data?.lng)) return;
+    if (!mapRef.current || !isFiniteNum(data?.lat) || !isFiniteNum(data?.lng)) {
+      return;
+    }
     mapRef.current.animateToRegion(
-      { latitude: data.lat, longitude: data.lng, latitudeDelta: DEFAULT_DELTA, longitudeDelta: DEFAULT_DELTA },
+      {
+        latitude: data.lat,
+        longitude: data.lng,
+        latitudeDelta: DEFAULT_DELTA,
+        longitudeDelta: DEFAULT_DELTA,
+      },
       350
     );
   };
   const fitUserAndIncident = () => {
-    if (!mapRef.current || !userLoc || !isFiniteNum(data?.lat) || !isFiniteNum(data?.lng)) return;
+    if (!mapRef.current || !userLoc || !isFiniteNum(data?.lat) || !isFiniteNum(data?.lng)) {
+      return;
+    }
     mapRef.current.fitToCoordinates(
       [
         { latitude: data.lat, longitude: data.lng },
@@ -189,7 +224,9 @@ export default function PublicAlertDetail() {
     );
   };
   const openNav = () => {
-    if (!isFiniteNum(data?.lat) || !isFiniteNum(data?.lng)) return;
+    if (!isFiniteNum(data?.lat) || !isFiniteNum(data?.lng)) {
+      return;
+    }
     const lat = data.lat;
     const lng = data.lng;
     const label = encodeURIComponent(title || 'Incident');
@@ -220,7 +257,11 @@ export default function PublicAlertDetail() {
         </Centered>
       ) : notFound ? (
         <ScrollView contentContainerStyle={styles.container}>
-          <StatusBanner tone="danger" title="Este alerta não está mais disponível." subtitle={`Documento: ${firestorePath}`} />
+          <StatusBanner
+            tone="danger"
+            title="Este alerta não está mais disponível."
+            subtitle={`Documento: ${firestorePath}`}
+          />
           <PrimaryButton label="Recarregar" onPress={fetchOnce} />
           <DebugPanel
             alertId={alertId}
@@ -232,7 +273,11 @@ export default function PublicAlertDetail() {
         </ScrollView>
       ) : expired ? (
         <ScrollView contentContainerStyle={styles.container}>
-          <StatusBanner tone="warn" title="Alerta expirado" subtitle="Status 'expired' ou 'expiresAt' ultrapassado." />
+          <StatusBanner
+            tone="warn"
+            title="Alerta expirado"
+            subtitle="Status 'expired' ou 'expiresAt' ultrapassado."
+          />
         </ScrollView>
       ) : (
         <ScrollView contentContainerStyle={styles.container}>
@@ -285,7 +330,9 @@ export default function PublicAlertDetail() {
 
               <View style={styles.fabCol}>
                 <SmallFab label="Recentrar" onPress={recenterToIncident} />
-                {userLoc ? <SmallFab label="Ajustar 2 pontos" onPress={fitUserAndIncident} /> : null}
+                {userLoc ? (
+                  <SmallFab label="Ajustar 2 pontos" onPress={fitUserAndIncident} />
+                ) : null}
                 <SmallFab label="Traçar rota" onPress={openNav} />
               </View>
 
@@ -307,14 +354,26 @@ export default function PublicAlertDetail() {
           <SectionCard>
             {data?.endereco ? <InfoRow emoji="📍" label="Endereço" value={data.endereco} /> : null}
             {data?.cidade || data?.uf ? (
-              <InfoRow emoji="🗺️" label="Localidade" value={`${data?.cidade || '—'}${data?.uf ? `/${data.uf}` : ''}`} />
+              <InfoRow
+                emoji="🗺️"
+                label="Localidade"
+                value={`${data?.cidade || '—'}${data?.uf ? `/${data.uf}` : ''}`}
+              />
             ) : null}
             {isFiniteNum(data?.lat) && isFiniteNum(data?.lng) ? (
-              <InfoRow emoji="🧿" label="Coordenadas" value={`${Number(data.lat).toFixed(5)}, ${Number(data.lng).toFixed(5)}`} />
+              <InfoRow
+                emoji="🧿"
+                label="Coordenadas"
+                value={`${Number(data.lat).toFixed(5)}, ${Number(data.lng).toFixed(5)}`}
+              />
             ) : null}
-            {data?.radius_m ? <InfoRow emoji="🎯" label="Raio" value={`${data.radius_m} m`} /> : null}
+            {data?.radius_m ? (
+              <InfoRow emoji="🎯" label="Raio" value={`${data.radius_m} m`} />
+            ) : null}
             {distanceText ? <InfoRow emoji="📏" label="Distância" value={distanceText} /> : null}
-            {locDenied ? <InfoRow emoji="🔒" label="Localização" value="Permissão recusada (opcional)." /> : null}
+            {locDenied ? (
+              <InfoRow emoji="🔒" label="Localização" value="Permissão recusada (opcional)." />
+            ) : null}
           </SectionCard>
 
           {/* Description */}
@@ -324,9 +383,15 @@ export default function PublicAlertDetail() {
 
           {/* Dates */}
           <SectionCard>
-            {data?.createdAt?.toDate && <InfoRow emoji="⏱️" label="Criado" value={data.createdAt.toDate().toLocaleString()} />}
-            {data?.expiresAt?.toDate && <InfoRow emoji="⌛" label="Expira" value={data.expiresAt.toDate().toLocaleString()} />}
-            {data?.status ? <InfoRow emoji="🏷️" label="Status" value={String(data.status)} /> : null}
+            {data?.createdAt?.toDate && (
+              <InfoRow emoji="⏱️" label="Criado" value={data.createdAt.toDate().toLocaleString()} />
+            )}
+            {data?.expiresAt?.toDate && (
+              <InfoRow emoji="⌛" label="Expira" value={data.expiresAt.toDate().toLocaleString()} />
+            )}
+            {data?.status ? (
+              <InfoRow emoji="🏷️" label="Status" value={String(data.status)} />
+            ) : null}
           </SectionCard>
 
           <DebugPanel
@@ -343,23 +408,35 @@ export default function PublicAlertDetail() {
 }
 
 /* ===== UI bits ===== */
-function Centered({ children }) { return <View style={styles.centered}>{children}</View>; }
-function Divider() { return <View style={styles.divider} />; }
+function Centered({ children }) {
+  return <View style={styles.centered}>{children}</View>;
+}
+function Divider() {
+  return <View style={styles.divider} />;
+}
 function Badge({ emoji, label }) {
   return (
     <View style={styles.badge}>
-      <Text style={styles.badgeText}>{emoji} {label}</Text>
+      <Text style={styles.badgeText}>
+        {emoji} {label}
+      </Text>
     </View>
   );
 }
 function StatusPill({ status, severity }) {
   const color =
-    status === 'expired' ? theme.warn :
-    severity === 'grave' || severity === 'high' ? theme.danger :
-    severity === 'minor' || severity === 'low' ? theme.warn : theme.accent;
+    status === 'expired'
+      ? theme.warn
+      : severity === 'grave' || severity === 'high'
+        ? theme.danger
+        : severity === 'minor' || severity === 'low'
+          ? theme.warn
+          : theme.accent;
   return (
     <View style={[styles.pill, { backgroundColor: color }]}>
-      <Text style={styles.pillText}>{status === 'expired' ? 'Expirado' : severity ? `Gravidade: ${severity}` : 'Ativo'}</Text>
+      <Text style={styles.pillText}>
+        {status === 'expired' ? 'Expirado' : severity ? `Gravidade: ${severity}` : 'Ativo'}
+      </Text>
     </View>
   );
 }
@@ -373,18 +450,26 @@ function StatusBanner({ tone = 'info', title, subtitle }) {
   const t = map[tone] || map.info;
   return (
     <View style={[styles.banner, { backgroundColor: t.bg }]}>
-      <Text style={styles.bannerTitle}>{t.emoji} {title}</Text>
+      <Text style={styles.bannerTitle}>
+        {t.emoji} {title}
+      </Text>
       {subtitle ? <Text style={styles.bannerSub}>{subtitle}</Text> : null}
     </View>
   );
 }
-function SectionCard({ children }) { return <View style={styles.card}>{children}</View>; }
+function SectionCard({ children }) {
+  return <View style={styles.card}>{children}</View>;
+}
 function InfoRow({ emoji, label, value }) {
   return (
     <>
       <View style={styles.row}>
-        <Text style={styles.rowLabel}>{emoji} {label}</Text>
-        <Text style={styles.rowValue} numberOfLines={3}>{value}</Text>
+        <Text style={styles.rowLabel}>
+          {emoji} {label}
+        </Text>
+        <Text style={styles.rowValue} numberOfLines={3}>
+          {value}
+        </Text>
       </View>
       <Divider />
     </>
@@ -392,7 +477,10 @@ function InfoRow({ emoji, label, value }) {
 }
 function PrimaryButton({ label, onPress }) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.primaryBtn, pressed && styles.btnPressed]}>
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.primaryBtn, pressed && styles.btnPressed]}
+    >
       <Text style={styles.primaryBtnText}>{label}</Text>
     </Pressable>
   );
@@ -427,41 +515,107 @@ const styles = StyleSheet.create({
   headerCard: { backgroundColor: theme.card, borderRadius: 16, padding: 16, ...shadow(), gap: 8 },
   title: { color: theme.text, fontSize: 22, fontWeight: '800', letterSpacing: 0.3 },
   badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 2 },
-  badge: { backgroundColor: theme.cardAlt, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: theme.divider },
+  badge: {
+    backgroundColor: theme.cardAlt,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: theme.divider,
+  },
   badgeText: { color: theme.text, fontSize: 13 },
 
   pill: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
   pillText: { color: '#081018', fontWeight: '700', fontSize: 12 },
 
-  banner: { borderRadius: 14, padding: 14, borderWidth: 1, borderColor: theme.divider, ...shadow(1) },
+  banner: {
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: theme.divider,
+    ...shadow(1),
+  },
   bannerTitle: { color: theme.text, fontWeight: '700', fontSize: 16, marginBottom: 4 },
   bannerSub: { color: theme.textMuted, fontSize: 13, lineHeight: 18 },
 
-  card: { backgroundColor: theme.card, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: theme.divider, ...shadow() },
+  card: {
+    backgroundColor: theme.card,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: theme.divider,
+    ...shadow(),
+  },
   row: { paddingVertical: 10, gap: 6 },
-  rowLabel: { color: theme.textMuted, fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.8 },
+  rowLabel: {
+    color: theme.textMuted,
+    fontSize: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
   rowValue: { color: theme.text, fontSize: 15.5, lineHeight: 22 },
   divider: { height: 1, backgroundColor: theme.divider },
 
-  mapWrap: { height: 220, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: theme.divider, backgroundColor: theme.card, ...shadow() },
+  mapWrap: {
+    height: 220,
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: theme.divider,
+    backgroundColor: theme.card,
+    ...shadow(),
+  },
   map: { flex: 1 },
   fabCol: { position: 'absolute', right: 10, top: 10, gap: 8 },
-  fab: { backgroundColor: theme.accent, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, ...shadow(2) },
+  fab: {
+    backgroundColor: theme.accent,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    ...shadow(2),
+  },
   fabText: { color: '#07131B', fontWeight: '800', fontSize: 12 },
-  mapErrorOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center' },
+  mapErrorOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   mapErrorText: { color: '#fff', fontWeight: '700' },
 
-  primaryBtn: { flex: 1, backgroundColor: theme.accent, borderRadius: 12, paddingVertical: 12, alignItems: 'center', ...shadow(2) },
+  primaryBtn: {
+    flex: 1,
+    backgroundColor: theme.accent,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    ...shadow(2),
+  },
   primaryBtnText: { color: '#07131B', fontWeight: '800', fontSize: 15 },
   btnPressed: { opacity: 0.85 },
 
-  debug: { marginTop: 12, backgroundColor: theme.cardAlt, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.divider },
+  debug: {
+    marginTop: 12,
+    backgroundColor: theme.cardAlt,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.divider,
+  },
   debugTitle: { color: theme.text, fontWeight: '800', marginBottom: 6 },
   debugText: { color: theme.textMuted, fontSize: 12, lineHeight: 18 },
 });
 
 function shadow(level = 3) {
   const e = Math.max(1, Math.min(level, 4));
-  if (Platform.OS === 'android') return { elevation: 2 * e };
-  return { shadowColor: '#000', shadowOpacity: 0.15 + e * 0.05, shadowRadius: 4 + e * 2, shadowOffset: { width: 0, height: 2 + e } };
+  if (Platform.OS === 'android') {
+    return { elevation: 2 * e };
+  }
+  return {
+    shadowColor: '#000',
+    shadowOpacity: 0.15 + e * 0.05,
+    shadowRadius: 4 + e * 2,
+    shadowOffset: { width: 0, height: 2 + e },
+  };
 }

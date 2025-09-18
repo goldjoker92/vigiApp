@@ -28,7 +28,7 @@ export async function createGroup({ cep, name, description, userId, apelido, nom
   const q = query(collection(db, 'groups'), where('cep', '==', cep), where('name', '==', name));
   const snap = await getDocs(q);
   console.log('[createGroup] Résultat doublon:', snap.empty ? 'OK' : 'EXISTANT');
-  if (!snap.empty) throw new Error('Nom de groupe déjà utilisé pour ce CEP.');
+  if (!snap.empty) {throw new Error('Nom de groupe déjà utilisé pour ce CEP.');}
 
   const creatorMember = {
     userId: String(userId),
@@ -75,7 +75,7 @@ export async function leaveGroup({ groupId, userId, apelido }) {
 
   const groupRef = doc(db, 'groups', groupId);
   const snap = await getDoc(groupRef);
-  if (!snap.exists()) throw new Error('Groupe introuvable');
+  if (!snap.exists()) {throw new Error('Groupe introuvable');}
   const groupData = snap.data();
 
   const members = (groupData.members || []).filter((m) => m.userId !== userId);
@@ -99,12 +99,12 @@ export async function joinGroup({ groupId, user }) {
 
   const groupRef = doc(db, 'groups', groupId);
   const snap = await getDoc(groupRef);
-  if (!snap.exists()) throw new Error('Groupe introuvable');
+  if (!snap.exists()) {throw new Error('Groupe introuvable');}
 
   const data = snap.data();
-  if ((data.membersIds || []).includes(user.id)) throw new Error('Déjà membre du groupe.');
+  if ((data.membersIds || []).includes(user.id)) {throw new Error('Déjà membre du groupe.');}
   if ((data.members?.length || 0) >= (data.maxMembers || 30))
-    throw new Error('Le groupe est plein.');
+    {throw new Error('Le groupe est plein.');}
 
   await updateDoc(groupRef, {
     members: arrayUnion({

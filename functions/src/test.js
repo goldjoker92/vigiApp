@@ -29,7 +29,7 @@ exports.testFCM = onRequest(async (req, res) => {
       android: {
         priority: 'high',
         notification: {
-          channelId: 'alerts-high',              // DOIT exister côté app
+          channelId: 'alerts-high', // DOIT exister côté app
           sound: 'default',
           color: '#FF3B30',
           visibility: 'PUBLIC',
