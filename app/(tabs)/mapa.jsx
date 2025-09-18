@@ -71,7 +71,7 @@ function metersPerPixelAt(lat, zoom) {
   return (156543.03392 * Math.cos((lat * Math.PI) / 180)) / Math.pow(2, zoom || 14);
 }
 function haversineMeters(a, b) {
-  if (!a || !b) return Infinity;
+  if (!a || !b) {return Infinity;}
   const R = 6371000;
   const dLat = ((b.latitude - a.latitude) * Math.PI) / 180;
   const dLon = ((b.longitude - a.longitude) * Math.PI) / 180;
@@ -102,7 +102,7 @@ function clusterByTypeNoCount(rows, proximityM = CLUSTER_THRESHOLD_M) {
       if ((c.type || c.categoria) === (a.type || a.categoria)) {
         const dist = haversineMeters(
           { latitude: c.lat, longitude: c.lng },
-          { latitude: a.lat, longitude: a.lng },
+          { latitude: a.lat, longitude: a.lng }
         );
         if (dist <= proximityM) {
           idx = i;
@@ -151,12 +151,12 @@ function RadarSweepBounded({
   const rot = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     const loop = Animated.loop(
-      Animated.timing(rot, { toValue: 1, duration, easing: Easing.linear, useNativeDriver: true }),
+      Animated.timing(rot, { toValue: 1, duration, easing: Easing.linear, useNativeDriver: true })
     );
     loop.start();
     return () => loop.stop();
   }, [rot, duration]);
-  if (!centerPx || !pxRadius || pxRadius < 8) return null;
+  if (!centerPx || !pxRadius || pxRadius < 8) {return null;}
 
   const size = Math.max(8, Math.min(Math.floor(pxRadius * 2), Math.max(width, height) * 1.2));
   const half = size / 2;
@@ -211,7 +211,7 @@ export default function MapaScreen() {
 
   const animateTo = useCallback((cameraLike) => {
     const m = mapRef.current;
-    if (!m) return;
+    if (!m) {return;}
     try {
       m.animateCamera(
         {
@@ -220,7 +220,7 @@ export default function MapaScreen() {
           heading: 0,
           zoom: cameraLike.zoom ?? 14,
         },
-        { duration: 250 },
+        { duration: 250 }
       );
     } catch (e) {
       console.log('[MAP] animateCamera error', e);
@@ -228,7 +228,7 @@ export default function MapaScreen() {
   }, []);
   const colorFor = useCallback(
     (a) => a.color || CATEGORY_COLOR[a.categoria] || CATEGORY_COLOR[a.type] || '#007AFF',
-    [],
+    []
   );
 
   // Localisation + reverse geocode + cache Estado
@@ -276,7 +276,7 @@ export default function MapaScreen() {
 
   // Rayon => ajuste zoom
   useEffect(() => {
-    if (!center) return;
+    if (!center) {return;}
     const z = zoomForRadiusMeters(radiusM, center.latitude);
     animateTo({ ...center, zoom: z });
   }, [radiusM, center, animateTo]);
@@ -322,18 +322,18 @@ export default function MapaScreen() {
           await cacheSet('alerts:public:v1', rows, 300); // cache alerts (5 min)
           console.log('[CACHE] alerts saved =', rows.length);
         },
-        (err) => console.log('[MAP] onSnapshot error', err),
+        (err) => console.log('[MAP] onSnapshot error', err)
       );
     })();
     return () => {
-      if (unsub) unsub();
+      if (unsub) {unsub();}
     };
   }, []);
 
   // Géométrie pour borner le radar
   const refreshScreenGeometry = useCallback(async () => {
     const m = mapRef.current;
-    if (!m || !center) return;
+    if (!m || !center) {return;}
     try {
       const cam = await m.getCamera();
       const zoom = cam?.zoom ?? 14;
@@ -353,12 +353,12 @@ export default function MapaScreen() {
       setRegion(reg);
       refreshScreenGeometry();
     },
-    [refreshScreenGeometry],
+    [refreshScreenGeometry]
   );
 
   // Incidents dynamiques: <=36h, cluster ~80m UNIQUEMENT si pas de count, puis filtrage dans le cercle
   const markers = useMemo(() => {
-    if (!center) return [];
+    if (!center) {return [];}
     const now = Date.now();
     const recent = alerts.filter((a) => now - a.createdAt <= 36 * 3600 * 1000);
 
@@ -369,7 +369,7 @@ export default function MapaScreen() {
     const combined = [...withCount, ...clusteredNoCount];
 
     return combined.filter(
-      (c) => haversineMeters(center, { latitude: c.lat, longitude: c.lng }) <= radiusM,
+      (c) => haversineMeters(center, { latitude: c.lat, longitude: c.lng }) <= radiusM
     );
   }, [alerts, center, radiusM]);
 
@@ -388,7 +388,7 @@ export default function MapaScreen() {
   ];
   const onPressPreset = useCallback(
     (p) => {
-      if (!center) return;
+      if (!center) {return;}
       if (p.kind === 'brasil') {
         animateTo({ ...center, zoom: 4.2 });
         return;
@@ -399,7 +399,7 @@ export default function MapaScreen() {
       }
       setRadiusM(p.meters);
     },
-    [center, animateTo],
+    [center, animateTo]
   );
 
   return (
