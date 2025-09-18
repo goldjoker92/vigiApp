@@ -20,7 +20,9 @@ const UseCase = ({ db, chatId, user, input, setInput, Toast }) => {
 
   // Dans ta fonction d'envoi de message :
   const handleSend = async () => {
-    if (!input.trim() || !user) return;
+    if (!input.trim() || !user) {
+      return;
+    }
     const msg = {
       text: input.trim(),
       senderId: user.uid,

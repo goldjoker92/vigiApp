@@ -6,9 +6,15 @@ import 'dayjs/locale/pt-br';
 
 // --- HELPERS ---
 function parseFirestoreDate(val) {
-  if (!val) return null;
-  if (typeof val.toDate === 'function') return val.toDate();
-  if (typeof val === 'string' || typeof val === 'number') return new Date(val);
+  if (!val) {
+    return null;
+  }
+  if (typeof val.toDate === 'function') {
+    return val.toDate();
+  }
+  if (typeof val === 'string' || typeof val === 'number') {
+    return new Date(val);
+  }
   return val; // déjà une Date JS
 }
 

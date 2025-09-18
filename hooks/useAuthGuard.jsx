@@ -6,13 +6,21 @@ import { doc, onSnapshot } from 'firebase/firestore';
 
 // petite égalité superficielle suffisante ici
 function shallowEqual(a, b) {
-  if (a === b) return true;
-  if (!a || !b) return false;
+  if (a === b) {
+    return true;
+  }
+  if (!a || !b) {
+    return false;
+  }
   const ka = Object.keys(a),
     kb = Object.keys(b);
-  if (ka.length !== kb.length) return false;
+  if (ka.length !== kb.length) {
+    return false;
+  }
   for (const k of ka) {
-    if (a[k] !== b[k]) return false;
+    if (a[k] !== b[k]) {
+      return false;
+    }
   }
   return true;
 }
@@ -61,7 +69,9 @@ export function useAuthGuard() {
           const data = snap.exists() ? { id: snap.id, ...snap.data() } : null;
 
           // ne pas setState si rien n'a changé
-          if (shallowEqual(lastUserRef.current, data)) return;
+          if (shallowEqual(lastUserRef.current, data)) {
+            return;
+          }
 
           lastUserRef.current = data;
           setUser(data);
@@ -73,8 +83,10 @@ export function useAuthGuard() {
           }
         },
         (err) => {
-          if (__DEV__) console.warn('[useAuthGuard] onSnapshot error:', err?.message || err);
-        },
+          if (__DEV__) {
+            console.warn('[useAuthGuard] onSnapshot error:', err?.message || err);
+          }
+        }
       );
     });
 

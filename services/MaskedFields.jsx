@@ -87,7 +87,7 @@ export function UFField({ value, onChange }) {
           t
             .toUpperCase()
             .replace(/[^A-Z]/g, '')
-            .slice(0, 2),
+            .slice(0, 2)
         )
       }
       placeholder="UF (ex: CE)"

@@ -1,14 +1,23 @@
 // app/components/CustomTopToast.js
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, Animated, StyleSheet, Vibration, useWindowDimensions, Platform } from 'react-native';
+import {
+  View,
+  Text,
+  Animated,
+  StyleSheet,
+  Vibration,
+  useWindowDimensions,
+  Platform,
+  Image,
+} from 'react-native';
 import { FontAwesome } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const TYPE_STYLES = {
   success: { bg: '#0A84FF', icon: 'check-circle', iconColor: '#FFFFFF' },
-  info:    { bg: '#23262F', icon: 'info-circle',  iconColor: '#60A5FA' },
-  warn:    { bg: '#23262F', icon: 'exclamation-triangle', iconColor: '#FFD600' },
-  error:   { bg: '#2B1A1A', icon: 'times-circle', iconColor: '#FF3B30' },
+  info: { bg: '#23262F', icon: 'info-circle', iconColor: '#60A5FA' },
+  warn: { bg: '#23262F', icon: 'exclamation-triangle', iconColor: '#FFD600' },
+  error: { bg: '#2B1A1A', icon: 'times-circle', iconColor: '#FF3B30' },
   default: { bg: '#181A20', icon: 'exclamation-circle', iconColor: '#FFD700' },
 };
 
@@ -16,11 +25,12 @@ export default function CustomTopToast(props) {
   const {
     text1,
     text2,
-    duration = 6000,          // ⏱️ plus long par défaut
+    duration = 6000, // ⏱️ plus long par défaut
     textColor = '#fff',
+    imageUrl,
     containerStyle = {},
-    type = 'success',         // fourni par react-native-toast-message
-    vibrate = true,           // tu peux désactiver si besoin
+    type = 'success', // fourni par react-native-toast-message
+    vibrate = true, // tu peux désactiver si besoin
   } = props;
 
   const insets = useSafeAreaInsets();
@@ -67,13 +77,16 @@ export default function CustomTopToast(props) {
     }).start();
 
     // slide out
-    const hide = setTimeout(() => {
-      Animated.timing(slideY, {
-        toValue: -measuredH - 16, // un peu plus haut pour masquer l'ombre
-        duration: 320,
-        useNativeDriver: true,
-      }).start();
-    }, Math.max(0, duration - 180));
+    const hide = setTimeout(
+      () => {
+        Animated.timing(slideY, {
+          toValue: -measuredH - 16, // un peu plus haut pour masquer l'ombre
+          duration: 320,
+          useNativeDriver: true,
+        }).start();
+      },
+      Math.max(0, duration - 180)
+    );
 
     return () => clearTimeout(hide);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -106,11 +119,7 @@ export default function CustomTopToast(props) {
       pointerEvents="none"
     >
       <View
-        style={[
-          styles.card,
-          { width: CARD_W, backgroundColor: palette.bg },
-          containerStyle,
-        ]}
+        style={[styles.card, { width: CARD_W, backgroundColor: palette.bg }, containerStyle]}
         onLayout={(e) => {
           const h = e?.nativeEvent?.layout?.height || 80;
           setMeasuredH(h);
@@ -118,12 +127,33 @@ export default function CustomTopToast(props) {
         }}
       >
         <View style={styles.row}>
-          <FontAwesome name={palette.icon} size={22} color={palette.iconColor} style={{ marginRight: 10 }} />
+          <FontAwesome
+            name={palette.icon}
+            size={22}
+            color={palette.iconColor}
+            style={{ marginRight: 10 }}
+          />
           <View style={{ flex: 1 }}>
-            {!!text1 && <Text style={[styles.title, { color: textColor }]} numberOfLines={3}>{text1}</Text>}
-            {!!text2 && <Text style={[styles.body, { color: textColor }]} numberOfLines={4}>{text2}</Text>}
+            {!!text1 && (
+              <Text style={[styles.title, { color: textColor }]} numberOfLines={3}>
+                {text1}
+              </Text>
+            )}
+            {!!text2 && (
+              <Text style={[styles.body, { color: textColor }]} numberOfLines={4}>
+                {text2}
+              </Text>
+            )}
           </View>
         </View>
+
+        {!!imageUrl && (
+          <Image
+            source={{ uri: imageUrl }}
+            resizeMode="cover"
+            style={styles.preview} // << NEW
+          />
+        )}
 
         <Animated.View style={[styles.progressBar, { width: barW }]} />
       </View>

@@ -1,8 +1,0 @@
-● Validation Error:
-
-  Module <rootDir>/jest.setup.jsx in the setupFilesAfterEnv option was not found.
-         <rootDir> is: C:\Users\Oscar\vigiApp
-
-  Configuration Documentation:
-  https://jestjs.io/docs/configuration
-

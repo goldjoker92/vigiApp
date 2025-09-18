@@ -1,23 +1,22 @@
 #!/bin/sh
+# Husky shim (peut activer `set -e` en interne)
+. "$(dirname "$0")/_/husky.sh" 2>/dev/null || true
+
+# Désactive l’arrêt sur erreur pour ce hook
+set +e
+
 echo ""
 echo "🔎 [husky] Vérification (non-bloquante) des dépendances Expo/Yarn..."
 
 # 1) Check alignement Expo (info only)
-CI=1 yarn expo install --check >/dev/null 2>&1
-if [ $? -eq 0 ]; then
-  echo "📦 Expo deps OK"
-else
-  echo "⚠️ Expo deps possiblement désalignées."
-  echo "   👉 Conseils Yarn :"
-  echo "      - Aligner Expo :  yarn expo install"
-  echo "      - Inspecter pkg : yarn why <package>"
-fi
+CI=1 yarn expo install --check >/dev/null 2>&1 || \
+  echo "ℹ️ expo install --check a renvoyé un code ≠ 0 (ignoré)"
 
 # 2) Dedupe (selon Yarn major)
-YARN_VERSION=$(yarn -v 2>/dev/null)
-YARN_MAJOR=$(echo "$YARN_VERSION" | cut -d. -f1)
+YARN_VERSION=$(yarn -v 2>/dev/null) || YARN_VERSION=""
+YARN_MAJOR=$(echo "$YARN_VERSION" | cut -d. -f1 2>/dev/null)
 
-if [ "$YARN_MAJOR" -ge 2 ]; then
+if [ -n "$YARN_MAJOR" ] && [ "$YARN_MAJOR" -ge 2 ] 2>/dev/null; then
   yarn dedupe >/dev/null 2>&1 \
     && echo "🧹 yarn dedupe (Berry) OK" \
     || echo "ℹ️ Tips Berry: yarn dedupe && yarn install"
@@ -25,6 +24,54 @@ else
   npx --yes yarn-deduplicate yarn.lock >/dev/null 2>&1 \
     && echo "🧹 yarn-deduplicate (v1) OK" \
     || echo "ℹ️ Tips v1: npm i -D yarn-deduplicate && npx yarn-deduplicate yarn.lock && yarn install"
+fi
+
+# 3) Détermination des fichiers modifiés du push
+echo "🛠️  ESLint + Prettier (non-bloquant) sur les fichiers modifiés…"
+
+CHANGED_FILES=""
+
+# Si rien n'arrive sur stdin (cas GUI/PowerShell), on fait un fallback
+if [ -t 0 ]; then
+  # Pas de stdin -> fallback upstream...HEAD, sinon dernier commit
+  upstream=$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null)
+  if [ -n "$upstream" ]; then
+    CHANGED_FILES=$(git diff --name-only --diff-filter=ACMRTUXB "$upstream"...HEAD 2>/dev/null)
+  else
+    CHANGED_FILES=$(git diff --name-only --diff-filter=ACMRTUXB HEAD~1 HEAD 2>/dev/null)
+  fi
+else
+  # Lecture des refs envoyées par Git
+  while read -r local_ref local_sha remote_ref remote_sha; do
+    if [ -z "$remote_sha" ] || [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
+      RANGE="${local_sha}~1 ${local_sha}"
+    else
+      RANGE="${remote_sha} ${local_sha}"
+    fi
+    files=$(git diff --name-only --diff-filter=ACMRTUXB $RANGE 2>/dev/null)
+    [ -n "$files" ] && CHANGED_FILES="$CHANGED_FILES
+$files"
+  done || true
+fi
+
+# Filtre extensions gérées + fichiers formatables
+echo "$CHANGED_FILES" | while read -r f; do
+  case "$f" in
+    *.js|*.jsx|*.ts|*.tsx|*.json|*.md|*.css|*.scss) [ -f "$f" ] && echo "$f";;
+  esac
+done | sort -u > /tmp/changed_files.txt 2>/dev/null
+
+# 4) ESLint --fix (non-bloquant)
+if [ -s /tmp/changed_files.txt ] && command -v npx >/dev/null 2>&1; then
+  echo "🔧 ESLint --fix…"
+  xargs -a /tmp/changed_files.txt -r npx eslint --fix >/dev/null 2>&1 || \
+    echo "ℹ️ ESLint a retourné un code ≠ 0 (ignoré)"
+  # 5) Prettier --write (non-bloquant)
+  echo "🎨 Prettier --write…"
+  xargs -a /tmp/changed_files.txt -r npx prettier --write >/dev/null 2>&1 || \
+    echo "ℹ️ Prettier a retourné un code ≠ 0 (ignoré)"
+else
+  echo "ℹ️ Aucun fichier modifié pertinent, ou npx indisponible. Skip ESLint/Prettier."
 fi
 
 echo "✅ [husky] Non-bloquant. Push autorisé."

@@ -1,4 +1,4 @@
-import { create } from "zustand";
+import { create } from 'zustand';
 // Types légers pour éviter les soucis si TS strict
 type CustomerInfo = any;
 type Offerings = any;
@@ -20,7 +20,7 @@ export const useMonetizationStore = create<State>((set) => ({
       const active = !!ci?.entitlements?.active?.[entitlementId];
       set({ proActive: active });
     } catch (e: any) {
-      console.warn("[RC] applyCustomerInfo failed:", e?.message || e);
+      console.warn('[RC] applyCustomerInfo failed:', e?.message || e);
     }
   },
 }));

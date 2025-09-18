@@ -13,7 +13,9 @@ import { db } from '@/firebase';
 
 // Normalise un CEP en "NNNNNNNN"
 export function normalizeCep(cep) {
-  if (!cep) return null;
+  if (!cep) {
+    return null;
+  }
   const digits = String(cep).replace(/\D/g, '');
   return digits.length === 8 ? digits : null;
 }
@@ -23,7 +25,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Renvoie true si "updatedAt" est plus vieux que maxAgeDays
 function isStale(updatedAt, maxAgeDays) {
-  if (!updatedAt || !maxAgeDays || maxAgeDays <= 0) return false;
+  if (!updatedAt || !maxAgeDays || maxAgeDays <= 0) {
+    return false;
+  }
   const ts = updatedAt?.toDate ? updatedAt.toDate() : new Date(updatedAt);
   const ageMs = Date.now() - ts.getTime();
   return ageMs > maxAgeDays * 24 * 3600 * 1000;
@@ -36,9 +40,13 @@ async function fetchViaCep(cep) {
   const url = `https://viacep.com.br/ws/${cep}/json/`;
   console.log('[geoCep][ViaCEP] GET', url);
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`ViaCEP HTTP ${res.status}`);
+  if (!res.ok) {
+    throw new Error(`ViaCEP HTTP ${res.status}`);
+  }
   const data = await res.json();
-  if (data?.erro) throw new Error('ViaCEP: CEP desconhecido');
+  if (data?.erro) {
+    throw new Error('ViaCEP: CEP desconhecido');
+  }
 
   const out = {
     logradouro: data.logradouro || '',
@@ -64,10 +72,14 @@ async function geocodeWithOsm({ logradouro, bairro, localidade, uf }, { userAgen
       'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
     },
   });
-  if (!res.ok) throw new Error(`OSM HTTP ${res.status}`);
+  if (!res.ok) {
+    throw new Error(`OSM HTTP ${res.status}`);
+  }
 
   const arr = await res.json();
-  if (!Array.isArray(arr) || arr.length === 0) throw new Error('OSM: no results');
+  if (!Array.isArray(arr) || arr.length === 0) {
+    throw new Error('OSM: no results');
+  }
 
   const item = arr[0];
   const lat = parseFloat(item.lat);
@@ -99,7 +111,9 @@ export async function resolveCepToLatLng(cepRaw, options = {}) {
   const { forceRefresh = false, maxAgeDays = 180, userAgent, sleepMs = 200 } = options;
 
   const cep = normalizeCep(cepRaw);
-  if (!cep) throw new Error('CEP inválido');
+  if (!cep) {
+    throw new Error('CEP inválido');
+  }
 
   // 1) Cache Firestore
   let needFetch = true;

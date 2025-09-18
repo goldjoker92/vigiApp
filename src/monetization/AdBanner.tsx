@@ -1,14 +1,8 @@
-import React from "react";
-import { View, ViewStyle } from "react-native";
-import {
-  BannerAd,
-  BannerAdSize,
-  TestIds,
-} from "react-native-google-mobile-ads";
+import React from 'react';
+import { View, ViewStyle } from 'react-native';
+import { BannerAd, BannerAdSize, TestIds } from 'react-native-google-mobile-ads';
 
-const DEFAULT_UNIT_ID = __DEV__
-  ? TestIds.BANNER
-  : "ca-app-pub-3940256099942544/6300978111"; // Remplace par ton vrai ID en prod
+const DEFAULT_UNIT_ID = __DEV__ ? TestIds.BANNER : 'ca-app-pub-3940256099942544/6300978111'; // Remplace par ton vrai ID en prod
 
 type Props = {
   unitId?: string;
@@ -22,7 +16,7 @@ export default function AdBanner({
   style,
 }: Props) {
   return (
-    <View style={[{ alignItems: "center", justifyContent: "center" }, style]}>
+    <View style={[{ alignItems: 'center', justifyContent: 'center' }, style]}>
       <BannerAd unitId={unitId} size={size} />
     </View>
   );

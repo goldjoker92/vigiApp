@@ -1,4 +1,4 @@
 module.exports = {
   // ...ton config existant
-  testPathIgnorePatterns: ["<rootDir>/functions/"],
+  testPathIgnorePatterns: ['<rootDir>/functions/'],
 };

@@ -1,4 +1,15 @@
-import React, { useEffect, useRef } from 'react';
+// app/(tabs)/home.jsx
+// -------------------------------------------------------------
+// HomeScreen
+// - Garde tout ce que tu avais (météo, groupes, etc.)
+// - Ajoute l'aperçu "Últimos alertas (24h)" (PublicAlertsPreview)
+// - Si on vient d'une notification (fromNotif=1&alertId=...):
+//     • Affiche un bandeau InlineAlertHighlight (CTA "Ver detalhes")
+//     • Scroll en douceur vers la section alertes (pas d'empilement de scroll)
+// - Code commenté en FR, UI en pt-BR
+// -------------------------------------------------------------
+
+import React, { useEffect, useRef, useState } from 'react';
 
 import {
   Animated,
@@ -22,7 +33,11 @@ import { useUserGroupEffect } from '../../hooks/useUserGroupEffect';
 import Toast from 'react-native-toast-message';
 import AvailableGroupsCarousel from '../components/AvailableGroupsCarousel';
 
-// ---- Skeleton animé
+// ✅ Nouveautés
+import PublicAlertsPreview from '../components/PublicAlertsPreview';
+import InlineAlertHighlight from '../components/InlineAlertHighlight';
+
+// ---- Skeleton animé (inchangé)
 function AnimatedSkeletonLine({ style, delay = 0 }) {
   const opacity = useRef(new Animated.Value(0.5)).current;
   useEffect(() => {
@@ -30,7 +45,7 @@ function AnimatedSkeletonLine({ style, delay = 0 }) {
       Animated.sequence([
         Animated.timing(opacity, { toValue: 1, duration: 600, delay, useNativeDriver: true }),
         Animated.timing(opacity, { toValue: 0.5, duration: 600, useNativeDriver: true }),
-      ]),
+      ])
     ).start();
   }, [delay, opacity]);
   return <Animated.View style={[style, { opacity }]} />;
@@ -48,14 +63,20 @@ function GroupSkeleton() {
 
 // ---- Affichage du créateur (friendly)
 function getCriador(grupo, user) {
-  if (!grupo) return 'Desconhecido';
+  if (!grupo) {
+    return 'Desconhecido';
+  }
   if (grupo.creatorUserId && grupo.creatorNome) {
     return grupo.creatorUserId === user?.id || grupo.creatorUserId === user?.uid
       ? user?.apelido || user?.username || 'Você'
       : grupo.creatorNome;
   }
-  if (grupo.creatorNome) return grupo.creatorNome;
-  if (Array.isArray(grupo.members) && grupo.members[0]?.apelido) return grupo.members[0].apelido;
+  if (grupo.creatorNome) {
+    return grupo.creatorNome;
+  }
+  if (Array.isArray(grupo.members) && grupo.members[0]?.apelido) {
+    return grupo.members[0].apelido;
+  }
   return 'Desconhecido';
 }
 
@@ -67,7 +88,13 @@ export default function HomeScreen() {
   console.log('[DEBUG][HomeScreen] Zustand user:', useUserStore.getState().user);
 
   useUserGroupEffect();
-  const { quitGroup } = useLocalSearchParams();
+
+  // ✅ On capte les params passés par la notif (libs/notifications.js)
+  const { quitGroup, fromNotif, alertId } = useLocalSearchParams();
+
+  // ✅ Réfs pour gérer le scroll doux vers la section alertes (pas d'empilement)
+  const scrollRef = useRef(null);
+  const [alertsSectionY, setAlertsSectionY] = useState(null);
 
   useEffect(() => {
     if (quitGroup) {
@@ -84,7 +111,7 @@ export default function HomeScreen() {
   const outrosGrupos = (grupos || []).filter(
     (g) =>
       !(g.membersIds || []).includes(user?.id || user?.uid) &&
-      (g.members?.length || 0) < (g.maxMembers || 30),
+      (g.members?.length || 0) < (g.maxMembers || 30)
   );
 
   // ---- Salutation dynamique
@@ -95,10 +122,25 @@ export default function HomeScreen() {
   });
   const hora = parseInt(horaBrasil, 10);
   let saudacao = 'Bom dia';
-  if (hora >= 12 && hora < 18) saudacao = 'Boa tarde';
-  else if (hora >= 18 || hora < 6) saudacao = 'Boa noite';
+  if (hora >= 12 && hora < 18) {
+    saudacao = 'Boa tarde';
+  } else if (hora >= 18 || hora < 6) {
+    saudacao = 'Boa noite';
+  }
 
   const nome = user?.apelido || user?.username || 'Cidadão';
+
+  // ✅ Scroll automatique (doux) vers la section "Últimos alertas (24h)" si fromNotif
+  useEffect(() => {
+    if (fromNotif && alertsSectionY !== null && scrollRef.current?.scrollTo) {
+      console.log('[Home] fromNotif detected, smooth scroll to alerts at Y=', alertsSectionY);
+      const t = setTimeout(() => {
+        const y = Math.max(0, alertsSectionY - 12);
+        scrollRef.current.scrollTo({ y, animated: true });
+      }, 350); // on laisse le temps de peindre
+      return () => clearTimeout(t);
+    }
+  }, [fromNotif, alertsSectionY]);
 
   // --- Loader user pas chargé
   if (!user) {
@@ -121,11 +163,31 @@ export default function HomeScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={{ flex: 1 }}
     >
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={styles.container}
+        showsVerticalScrollIndicator={false}
+      >
         <Text style={styles.greeting}>
           {saudacao}, <Text style={styles.username}>{nome}</Text> 👋
         </Text>
+
+        {/* Météo (existant) */}
         <WeatherCard cep={user?.cep} />
+
+        {/* ✅ Bandeau si on vient d'une notif (pour minor/medium routées vers Home) */}
+        {fromNotif && alertId ? (
+          <InlineAlertHighlight
+            color="#FF3B30"
+            endereco={undefined /* tu peux charger le doc ici si tu veux afficher la rua/cidade */}
+            onPress={() => router.push(`/public-alerts/${alertId}`)}
+          />
+        ) : null}
+
+        {/* ✅ Section: Últimos alertas (24h) — preview (pas de scroll interne) */}
+        <View onLayout={(e) => setAlertsSectionY(e.nativeEvent.layout.y)}>
+          <PublicAlertsPreview />
+        </View>
 
         {/* --- PAS DE GROUPE --- */}
         {!groupId && !loadingGrupo ? (

@@ -22,5 +22,5 @@ module.exports.sendPrivateAlertByGroup = onRequest(
       console.error('[sendPrivateAlertByGroup] error', e);
       res.status(500).json({ ok: false, error: String(e?.message || e) });
     }
-  },
+  }
 );

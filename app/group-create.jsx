@@ -31,7 +31,9 @@ export default function GroupCreateScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
-  if (!user) return <ActivityIndicator style={{ flex: 1 }} color="#22C55E" />;
+  if (!user) {
+    return <ActivityIndicator style={{ flex: 1 }} color="#22C55E" />;
+  }
 
   const handleCreate = async () => {
     if (!name) {

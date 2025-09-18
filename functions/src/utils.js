@@ -2,13 +2,15 @@
  * utils.js (VERBOSE + CLEAN)
  * - Init ADMIN (idempotent)
  * - Firestore handle
- * - Helpers: chunk, dedupe, assertRole
- * - Expo push:
- *    - expoPushSend (compat)
- *    - expoPushSendWithMap (nouveau, conserve l'ordre token→ticket)
- *    - summarizeExpoResults
- *    - cleanInvalidTokens (supprime expoPushToken invalides dans Firestore)
+ * - Logs & helpers génériques
+ * - Expo push (tes fonctions existantes, inchangées)
+ * - Helpers “Public Alerts”
+ * - FCM wrapper (sendToToken) ✅ channelId + sound corrigés
+ * - upsertPublicAlertDoc (merge idempotent)
  */
+
+/* eslint-env node */
+'use strict';
 
 const functions = require('firebase-functions');
 const v1functions = require('firebase-functions/v1');
@@ -18,14 +20,13 @@ const admin = require('firebase-admin');
 if (admin.apps.length === 0) {
   admin.initializeApp();
 }
-
 const db = admin.firestore();
 
 // ---- Logs formatés
 const APP_TAG = 'VigiApp';
 const LIB_TAG = 'FnsUtils';
 const nowIso = () => new Date().toISOString();
-const log = (...a) => console.warn(`[${APP_TAG}][${LIB_TAG}][${nowIso()}]`, ...a);
+const log = (...a) => console.log(`[${APP_TAG}][${LIB_TAG}][${nowIso()}]`, ...a);
 const warn = (...a) => console.warn(`[${APP_TAG}][${LIB_TAG}][${nowIso()}]`, ...a);
 const err = (...a) => console.error(`[${APP_TAG}][${LIB_TAG}][${nowIso()}]`, ...a);
 
@@ -36,6 +37,7 @@ const safeJson = (obj, max = 800) => {
     return '[unserializable]';
   }
 };
+
 const maskToken = (t) => {
   if (!t) {
     return t;
@@ -44,7 +46,9 @@ const maskToken = (t) => {
   return s.length > 14 ? `${s.slice(0, 6)}…${s.slice(-6)}(${s.length})` : s;
 };
 
-// ---- Utils
+// ======================================================================
+// Helpers génériques
+// ======================================================================
 function chunk(arr, size) {
   const out = [];
   for (let i = 0; i < arr.length; i += size) {
@@ -52,33 +56,106 @@ function chunk(arr, size) {
   }
   return out;
 }
-
 function dedupe(arr) {
-  const set = new Set(arr);
-  return Array.from(set);
+  return Array.from(new Set(arr));
 }
 
-// ---- Auth guard
+// ---- Auth guard (conserve le comportement)
 function assertRole(context, allowed = ['admin', 'moderator']) {
   const role = context?.auth?.token?.role;
   if (!role || !allowed.includes(role)) {
     warn('[assertRole] refusé — role:', role, 'required:', allowed);
     throw new functions.https.HttpsError(
       'permission-denied',
-      'Accès refusé: rôle requis (admin/moderator).',
+      'Accès refusé: rôle requis (admin/moderator).'
     );
   }
 }
 
 // ======================================================================
-// Expo Push — VERSION COMPAT (sans map) : laisse ton code existant tourner
+// Helpers “Public Alerts”
+// ======================================================================
+const toDigits = (v = '') => String(v).replace(/\D/g, '');
+const isHexColor = (c) => /^#?[0-9A-Fa-f]{6}$/.test(String(c || ''));
+const normColor = (c) => (String(c || '').startsWith('#') ? String(c) : `#${c}`);
+
+const coerceBool = (v) => {
+  if (typeof v === 'boolean') {
+    return v;
+  }
+  return ['true', '1', 'yes', 'on'].includes(String(v).toLowerCase());
+};
+
+function resolveAccentColor({ severity, formColor }) {
+  if (formColor && isHexColor(formColor)) {
+    return normColor(formColor);
+  }
+  if (severity === 'high' || severity === 'grave') {
+    return '#FF3B30';
+  } // rouge
+  if (severity === 'low' || severity === 'minor') {
+    return '#FFE600';
+  } // jaune
+  if (severity === 'medium') {
+    return '#FFA500';
+  } // orange
+  return '#0A84FF'; // bleu par défaut
+}
+
+function localLabel({ endereco, bairro, cidade, uf }) {
+  if (endereco) {
+    return endereco;
+  }
+  if (bairro) {
+    return bairro;
+  }
+  if (cidade && uf) {
+    return `${cidade}/${uf}`;
+  }
+  if (cidade) {
+    return cidade;
+  }
+  return 'sua região';
+}
+
+function textsBySeverity(sev, local, distText) {
+  const sfx = distText
+    ? ` (a ${distText}). Abra para mais detalhes.`
+    : `. Abra para mais detalhes.`;
+  switch (sev) {
+    case 'low':
+    case 'minor':
+      return { title: 'VigiApp — Aviso', body: `Aviso informativo em ${local}${sfx}` };
+    case 'high':
+    case 'grave':
+      return { title: 'VigiApp — URGENTE', body: `URGENTE: risco em ${local}${sfx}` };
+    case 'medium':
+    default:
+      return { title: 'VigiApp — Alerta público', body: `Alerta em ${local}${sfx}` };
+  }
+}
+
+// (utiles pour l’endpoint “adresse”)
+function distanceMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const toRad = (x) => (x * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+const fmtDist = (m) => (m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`);
+
+// ======================================================================
+// Expo Push — (inchangé, juste comments + logs)
 // ======================================================================
 async function expoPushSend(tokens, title, body, data = {}) {
   if (!Array.isArray(tokens) || tokens.length === 0) {
     warn('[expoPushSend] no tokens');
     return [];
   }
-
   const unique = dedupe(tokens);
   const dupes = tokens.length - unique.length;
   if (dupes > 0) {
@@ -122,7 +199,7 @@ async function expoPushSend(tokens, title, body, data = {}) {
       text = await res.text();
       log(
         `[expoPushSend] http ${res.status} ${res.statusText} (batch ${batchIndex}) body=`,
-        text.slice(0, 700),
+        (text || '').slice(0, 700)
       );
     } catch (e) {
       err(`[expoPushSend] fetch failed (batch ${batchIndex})`, e?.message || e);
@@ -132,7 +209,6 @@ async function expoPushSend(tokens, title, body, data = {}) {
 
     try {
       const json = JSON.parse(text);
-      // Expo retourne un tableau de tickets dans data
       const dataArr = Array.isArray(json?.data) ? json.data : [];
       const okCount = dataArr.filter((d) => d?.status === 'ok').length;
       const errCount = dataArr.filter((d) => d?.status === 'error').length;
@@ -149,7 +225,7 @@ async function expoPushSend(tokens, title, body, data = {}) {
         log(`[expoPushSend] batch ${batchIndex} ok=${okCount}`);
       }
       results.push(json);
-    } catch (_e) {
+    } catch {
       warn(`[expoPushSend] non-JSON response (batch ${batchIndex})`, (text || '').slice(0, 256));
       results.push({ raw: text });
     }
@@ -159,15 +235,11 @@ async function expoPushSend(tokens, title, body, data = {}) {
   return results;
 }
 
-// ===================================================================================
-// Expo Push — VERSION AVEC MAP : retourne aussi la map de tokens dans l’ordre d’envoi
-// ===================================================================================
 async function expoPushSendWithMap(tokens, title, body, data = {}) {
   if (!Array.isArray(tokens) || tokens.length === 0) {
     warn('[expoPushSendWithMap] no tokens');
     return { results: [], map: [] };
   }
-
   const unique = dedupe(tokens);
   const dupes = tokens.length - unique.length;
   if (dupes > 0) {
@@ -182,23 +254,15 @@ async function expoPushSendWithMap(tokens, title, body, data = {}) {
   });
 
   const results = [];
-  const map = []; // ordre strict des tokens envoyés
+  const map = []; // ordre strict
   const batches = chunk(unique, 100);
   let batchIndex = 0;
 
   for (const batch of batches) {
     batchIndex += 1;
-
     const payload = batch.map((to) => {
       map.push(to);
-      return {
-        to,
-        sound: 'default',
-        title,
-        body,
-        data,
-        channelId: 'default',
-      };
+      return { to, sound: 'default', title, body, data, channelId: 'default' };
     });
 
     log(`[expoPushSendWithMap] POST batch ${batchIndex}/${batches.length}`, {
@@ -216,7 +280,7 @@ async function expoPushSendWithMap(tokens, title, body, data = {}) {
       text = await res.text();
       log(
         `[expoPushSendWithMap] http ${res.status} ${res.statusText} (batch ${batchIndex}) body=`,
-        text.slice(0, 700),
+        (text || '').slice(0, 700)
       );
     } catch (e) {
       err(`[expoPushSendWithMap] fetch failed (batch ${batchIndex})`, e?.message || e);
@@ -227,10 +291,10 @@ async function expoPushSendWithMap(tokens, title, body, data = {}) {
     try {
       const json = JSON.parse(text);
       results.push(json);
-    } catch (_e) {
+    } catch {
       warn(
         `[expoPushSendWithMap] non-JSON response (batch ${batchIndex})`,
-        (text || '').slice(0, 256),
+        (text || '').slice(0, 256)
       );
       results.push({ raw: text });
     }
@@ -240,13 +304,11 @@ async function expoPushSendWithMap(tokens, title, body, data = {}) {
   return { results, map };
 }
 
-// ---- Résumé des résultats Expo (ok/error par code)
 function summarizeExpoResults(results) {
   const summary = { ok: 0, error: 0, errorsByCode: {} };
   if (!Array.isArray(results)) {
     return summary;
   }
-
   for (const r of results) {
     const arr = Array.isArray(r?.data) ? r.data : [];
     for (const t of arr) {
@@ -262,11 +324,7 @@ function summarizeExpoResults(results) {
   return summary;
 }
 
-// ======================================================================
-// Nettoyage des tokens invalides (DeviceNotRegistered / InvalidCredentials)
-// - Nécessite expoPushSendWithMap pour l’index → token
-// - Supprime le champ expoPushToken dans devices où il match
-// ======================================================================
+// Nettoyage des tokens Expo invalides
 async function cleanInvalidTokens(expoResults, tokenMap) {
   let globalIdx = 0;
   const toDelete = new Set();
@@ -295,9 +353,8 @@ async function cleanInvalidTokens(expoResults, tokenMap) {
   log(
     '[cleanInvalidTokens] candidates:',
     invalidTokens.length,
-    invalidTokens.slice(0, 5).map(maskToken),
+    invalidTokens.slice(0, 5).map(maskToken)
   );
-
   const delField = admin.firestore.FieldValue.delete();
   let matchedDocs = 0;
 
@@ -322,7 +379,113 @@ async function cleanInvalidTokens(expoResults, tokenMap) {
   return { removed: invalidTokens.length, matchedDocs, tokens: invalidTokens };
 }
 
-// ---- Delivery log
+// ======================================================================
+// FCM wrapper — ✅ canal & son corrigés + data stringifiée
+// ======================================================================
+function stringifyDataValues(obj) {
+  // FCM data = { [key: string]: string }; on évite undefined/null
+  const out = {};
+  for (const [k, v] of Object.entries(obj || {})) {
+    out[k] = v == null ? '' : String(v);
+  }
+  return out;
+}
+
+async function sendToToken({ token, title, body, image, androidColor, data = {} }) {
+  const payloadData = stringifyDataValues(data);
+
+  const message = {
+    token,
+    // ⚠️ Title/body obligatoires pour affichage quand l'app est FERMÉE
+    notification: {
+      title,
+      body,
+      ...(image ? { image } : {}),
+    },
+    android: {
+      priority: 'high', // delivery prioritaire
+      collapseKey: 'vigiapp-public-alert', // facultatif: regroupe
+      notification: {
+        channelId: 'alerts-high', // ✅ BON CANAL (heads-up)
+        color: androidColor || '#FFA500',
+        sound: 'default', // ✅ CORRECT (pas defaultSound)
+        visibility: 'PUBLIC',
+        tag: 'vigiapp-public-alert',
+        // Certains OEM lisent encore ces champs:
+        title,
+        body,
+        ...(image ? { imageUrl: image } : {}),
+      },
+    },
+    apns: {
+      headers: { 'apns-priority': '10' },
+      payload: { aps: { sound: 'default', mutableContent: 1 } },
+    },
+    data: payloadData, // meta pour deep-link et UI
+  };
+
+  log('[sendToToken] →', maskToken(token), { title, hasImage: !!image });
+  return admin.messaging().send(message);
+}
+
+// ======================================================================
+// Firestore — upsert publicAlerts/{alertId} (merge idempotent)
+// ======================================================================
+async function upsertPublicAlertDoc({
+  alertId,
+  titulo,
+  descricao,
+  endereco,
+  cidade,
+  uf,
+  cep,
+  lat,
+  lng,
+  radius_m,
+  severity,
+  accent,
+  image,
+  expiresAt,
+}) {
+  const ref = db.collection('publicAlerts').doc(alertId);
+
+  const payload = {
+    // --- Schéma standard pour le front ---
+    titulo: titulo || descricao || 'Alerta público',
+    descricao: descricao || 'Alerta público',
+    endereco: endereco || null,
+    cidade: cidade || null,
+    uf: uf || null,
+    cep: cep || null,
+    lat: Number.isFinite(lat) ? lat : null,
+    lng: Number.isFinite(lng) ? lng : null,
+    radius_m: Number(radius_m) || 1000,
+    status: 'active',
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    expiresAt, // clé pour gérer l’expiration côté app
+
+    // --- Meta UI ---
+    gravidade: severity || 'medium',
+    color: accent || null,
+    image: image || null,
+
+    // --- Compat legacy (ne rien casser)
+    ruaNumero: endereco || null,
+    estado: uf || null,
+    location: {
+      latitude: Number.isFinite(lat) ? lat : null,
+      longitude: Number.isFinite(lng) ? lng : null,
+    },
+  };
+
+  log('[upsertPublicAlertDoc] publicAlerts/%s ←', alertId, safeJson(payload, 400));
+  await ref.set(payload, { merge: true }); // idempotent
+  return { id: alertId };
+}
+
+// ======================================================================
+// Logs de delivery & fetch tokens (préservé)
+// ======================================================================
 async function createDeliveryLog(kind, meta) {
   const ref = await db.collection('deliveries').add({
     kind,
@@ -333,7 +496,6 @@ async function createDeliveryLog(kind, meta) {
   return ref;
 }
 
-// ---- Tokens fetchers
 async function getTokensByCEP(cep) {
   log('[getTokensByCEP] cep=', cep);
   const snap = await db.collection('devices').where('cep', '==', cep).get();
@@ -367,7 +529,7 @@ async function getTokensByUserIds(userIds) {
     '[getTokensByUserIds] total tokens=',
     tokens.length,
     'sample=',
-    tokens.slice(0, 3).map(maskToken),
+    tokens.slice(0, 3).map(maskToken)
   );
   return tokens;
 }
@@ -392,23 +554,45 @@ async function errorHandlingWrapper(functionName, callback) {
   }
 }
 
+// ======================================================================
+// Exports
+// ======================================================================
 module.exports = {
+  // Firebase
   functions,
   v1functions,
   admin,
   db,
+
+  // Génériques
   chunk,
   dedupe,
   assertRole,
-  // push
+  maskToken,
+  safeJson,
+
+  // Public Alerts helpers
+  toDigits,
+  coerceBool,
+  resolveAccentColor,
+  localLabel,
+  textsBySeverity,
+  distanceMeters,
+  fmtDist,
+
+  // Expo push
   expoPushSend,
   expoPushSendWithMap,
   summarizeExpoResults,
   cleanInvalidTokens,
-  // logs & tokens utils
+
+  // FCM + Firestore
+  sendToToken,
+  upsertPublicAlertDoc,
+
+  // Logs & tokens utilitaires
   createDeliveryLog,
   getTokensByCEP,
   getTokensByUserIds,
   errorHandlingWrapper,
-  maskToken,
 };

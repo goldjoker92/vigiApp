@@ -109,8 +109,12 @@ const UF_MAP = {
 };
 const stateToUF = (s = '') => {
   const up = stripUpper(s);
-  if (UF_MAP[up]) return UF_MAP[up];
-  if (/^[A-Z]{2}$/.test(up)) return up;
+  if (UF_MAP[up]) {
+    return UF_MAP[up];
+  }
+  if (/^[A-Z]{2}$/.test(up)) {
+    return up;
+  }
   return '';
 };
 
@@ -119,23 +123,30 @@ async function fetchJSON(url, init = {}, timeoutMs = 9000) {
   const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
   try {
     const res = await fetch(url, { ...(init || {}), signal: ctrl?.signal });
-    if (!res.ok) throw new Error(`HTTP_${res.status}`);
+    if (!res.ok) {
+      throw new Error(`HTTP_${res.status}`);
+    }
     return await res.json();
   } finally {
-    if (timer) clearTimeout(timer);
+    if (timer) {
+      clearTimeout(timer);
+    }
   }
 }
 
 // ---------- Providers ----------
 async function reverseGoogle(lat, lng, apiKey) {
-  if (!apiKey) return null;
+  if (!apiKey) {
+    return null;
+  }
   const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&language=pt-BR&key=${apiKey}&result_type=street_address|premise|route`;
   console.log('[CEP] Google reverse →', url.replace(apiKey, '***'));
   try {
     const data = await fetchJSON(url, {}, 9000);
     console.log('[CEP] Google status =', data?.status, 'error =', data?.error_message || '');
-    if (data?.status !== 'OK' || !Array.isArray(data?.results) || data.results.length === 0)
+    if (data?.status !== 'OK' || !Array.isArray(data?.results) || data.results.length === 0) {
       return null;
+    }
 
     const res = data.results[0];
     const comps = res.address_components || [];
@@ -199,7 +210,9 @@ async function nominatimReverse(lat, lng) {
 }
 
 async function viaCepByStreet(uf, city, street) {
-  if (!uf || !city || !street) return [];
+  if (!uf || !city || !street) {
+    return [];
+  }
   const variants = [];
   const base = street.trim();
   const noType = base
@@ -216,7 +229,9 @@ async function viaCepByStreet(uf, city, street) {
       const j = await fetchJSON(url, {}, 9000);
       const arr = Array.isArray(j) ? j : [];
       console.log('[CEP] ViaCEP results =', arr.length, '(variant =', s, ')');
-      if (arr.length) return arr;
+      if (arr.length) {
+        return arr;
+      }
     } catch (e) {
       console.log('[CEP] ViaCEP street FAIL (variant=', s, '):', e?.message || e);
     }
@@ -225,12 +240,16 @@ async function viaCepByStreet(uf, city, street) {
 }
 
 async function viaCepByCep(cep8) {
-  if (!cep8 || cep8.length !== 8) return null;
+  if (!cep8 || cep8.length !== 8) {
+    return null;
+  }
   const url = `https://viacep.com.br/ws/${cep8}/json/`;
   try {
     console.log('[CEP] ViaCEP by CEP →', url.replace(cep8, cep8.replace(/\d/g, '*')));
     const j = await fetchJSON(url, {}, 9000);
-    if (j?.erro) return null;
+    if (j?.erro) {
+      return null;
+    }
     return j;
   } catch (e) {
     console.log('[CEP] ViaCEP by CEP FAIL:', e?.message || e);

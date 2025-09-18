@@ -49,7 +49,7 @@ const pkgs = parse(lines);
 
 if (pkgs.length === 0) {
   console.log(
-    `### Dépendances — cohérence OK\n\nAucun paquet à réaligner d’après \`expo install --check\`.\n`,
+    `### Dépendances — cohérence OK\n\nAucun paquet à réaligner d’après \`expo install --check\`.\n`
   );
   process.exit(0);
 }

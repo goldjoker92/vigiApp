@@ -22,7 +22,9 @@ export async function cacheSet(key, value, ttlSec = 3600) {
 export async function cacheGet(key) {
   try {
     const raw = await AsyncStorage.getItem(key);
-    if (!raw) return null;
+    if (!raw) {
+      return null;
+    }
     const { value, expiresAt } = p(raw) || {};
     if (!expiresAt || Date.now() > expiresAt) {
       AsyncStorage.removeItem(key).catch(() => {});
@@ -39,7 +41,7 @@ export async function cacheSetForever(key, value) {
   try {
     await AsyncStorage.setItem(
       key,
-      j({ value, expiresAt: Date.now() + 100 * 365 * 24 * 3600 * 1000 }),
+      j({ value, expiresAt: Date.now() + 100 * 365 * 24 * 3600 * 1000 })
     );
   } catch {}
 }

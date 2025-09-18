@@ -21,7 +21,9 @@ export default function NovaDemandaModal({ visible, onClose, onCreate }) {
 
   // Reset à l'ouverture
   React.useEffect(() => {
-    if (visible) setDesc('');
+    if (visible) {
+      setDesc('');
+    }
   }, [visible]);
 
   // Fermer sur backdrop
@@ -32,7 +34,9 @@ export default function NovaDemandaModal({ visible, onClose, onCreate }) {
 
   // Création
   async function handleCreate() {
-    if (!desc.trim()) return;
+    if (!desc.trim()) {
+      return;
+    }
     setLoading(true);
     try {
       await onCreate(desc.trim());
@@ -44,7 +48,9 @@ export default function NovaDemandaModal({ visible, onClose, onCreate }) {
     setLoading(false);
   }
 
-  if (!visible) return null;
+  if (!visible) {
+    return null;
+  }
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>

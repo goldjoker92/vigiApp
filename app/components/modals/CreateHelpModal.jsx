@@ -38,8 +38,12 @@ function HeureStepperModal({ visible, initialHour = 8, initialMinute = 0, onVali
   const adjustHour = useCallback((delta) => {
     setHour((h) => {
       let n = h + delta;
-      if (n < 8) n = 22;
-      if (n > 22) n = 8;
+      if (n < 8) {
+        n = 22;
+      }
+      if (n > 22) {
+        n = 8;
+      }
       return n;
     });
   }, []);
@@ -47,8 +51,12 @@ function HeureStepperModal({ visible, initialHour = 8, initialMinute = 0, onVali
   const adjustMinute = useCallback((delta) => {
     setMinute((m) => {
       let nm = m + delta;
-      if (nm < 0) nm = 55;
-      if (nm > 55) nm = 0;
+      if (nm < 0) {
+        nm = 55;
+      }
+      if (nm > 55) {
+        nm = 0;
+      }
       return nm;
     });
   }, []);
@@ -58,7 +66,9 @@ function HeureStepperModal({ visible, initialHour = 8, initialMinute = 0, onVali
     onCancel();
   }, [hour, minute, onValidate, onCancel]);
 
-  if (!visible) return null;
+  if (!visible) {
+    return null;
+  }
   return (
     <Modal transparent animationType="fade" visible={visible} onRequestClose={onCancel}>
       <View style={stepperStyles.overlay}>
@@ -186,19 +196,23 @@ export default function CreateHelpModal({ visible, onClose, onCreate, loading = 
         .locale('pt-br')
         .format('dddd, D [de] MMMM [de] YYYY [às] HH:mm')
         .replace(/^./, (m) => m.toUpperCase()),
-    [],
+    []
   );
 
   const isToday = (d) => dayjs(d).isSame(dayjs(), 'day');
 
   const handleCreateImmediate = useCallback(() => {
-    if (!desc.trim()) return;
+    if (!desc.trim()) {
+      return;
+    }
     onCreate({ message: desc.trim(), isScheduled: false });
     onClose();
   }, [desc, onCreate, onClose]);
 
   const handleCreateScheduled = useCallback(() => {
-    if (!desc.trim() || !pickedTime) return;
+    if (!desc.trim() || !pickedTime) {
+      return;
+    }
     onCreate({ message: desc.trim(), isScheduled: true, dateHelp: pickedTime });
     onClose();
   }, [desc, pickedTime, onCreate, onClose]);
@@ -286,7 +300,9 @@ export default function CreateHelpModal({ visible, onClose, onCreate, loading = 
                       style={styles.btnValidate}
                       onPress={() => {
                         // si pas de sélection manuelle, forcer la minDate
-                        if (!pickedDate) setPickedDate(minDate);
+                        if (!pickedDate) {
+                          setPickedDate(minDate);
+                        }
                         const now = new Date();
                         setStepperInit({
                           hour: isToday(pickedDate || minDate) ? (now.getHours() + 2) % 24 : 8,
@@ -316,7 +332,7 @@ export default function CreateHelpModal({ visible, onClose, onCreate, loading = 
                     hour,
                     minute,
                     0,
-                    0,
+                    0
                   );
                   setPickedTime(final);
                 }}
