@@ -2,7 +2,6 @@
 # EOL global: on normalise en LF partout
 # ---------------------------------------
 * text=auto eol=lf
-
 # ---------------------------------------
 # Formats sensibles: forcer LF
 # ---------------------------------------
@@ -11,10 +10,12 @@
 *.yaml text eol=lf
 *.json text eol=lf
 .husky/* text eol=lf
-
 # ---------------------------------------
 # Exceptions CRITIQUES (doivent matcher en dernier)
 # ---------------------------------------
 # Le lockfile doit rester byte-for-byte identique
 # => désactiver toute conversion + eol
 package-lock.json -text -eol
+*.apk filter=lfs diff=lfs merge=lfs -text
+*.aab filter=lfs diff=lfs merge=lfs -text
+*.ipa filter=lfs diff=lfs merge=lfs -text
