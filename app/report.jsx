@@ -25,7 +25,8 @@ import {
   Animated,
   Easing,
   Platform,
- Pressable } from 'react-native';
+  Pressable,
+} from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { db, auth } from '../firebase';
@@ -130,7 +131,9 @@ async function geocodeAddressToCoords({ ruaNumero, cidade, estado, cep, googleKe
         // Tentative d’extraire un CEP si pas fourni
         let cepOut = cep || '';
         const postal = first.address_components?.find((c) => c.types?.includes('postal_code'));
-        if (!cepOut && postal?.long_name) {cepOut = postal.long_name;}
+        if (!cepOut && postal?.long_name) {
+          cepOut = postal.long_name;
+        }
         return {
           ok: true,
           latitude: loc.lat,
@@ -162,9 +165,13 @@ function useToastQueue() {
   const activeRef = useRef(false);
 
   const play = () => {
-    if (activeRef.current) {return;} // déjà en cours
+    if (activeRef.current) {
+      return;
+    } // déjà en cours
     const next = queueRef.current.shift();
-    if (!next) {return;}
+    if (!next) {
+      return;
+    }
     activeRef.current = true;
     setCurrent(next);
     progress.setValue(1);
@@ -211,7 +218,9 @@ function useToastQueue() {
   useEffect(() => () => timerRef.current && clearTimeout(timerRef.current), []);
 
   const ToastOverlay = useMemo(() => {
-    if (!current) {return null;}
+    if (!current) {
+      return null;
+    }
     const bg =
       current.type === 'success' ? '#0ea15f' : current.type === 'error' ? '#b91c1c' : '#2b2e36';
     const border =
@@ -244,16 +253,28 @@ function useToastQueue() {
 
 function getMissingFields({ categoria, descricao, ruaNumero, cidade, estado }) {
   const missing = [];
-  if (!categoria) {missing.push('• categoria');}
-  if (!String(descricao || '').trim()) {missing.push('• descrição');}
-  if (!String(ruaNumero || '').trim()) {missing.push('• rua e número');}
-  if (!String(cidade || '').trim()) {missing.push('• cidade');}
-  if (!String(estado || '').trim()) {missing.push('• estado/UF');}
+  if (!categoria) {
+    missing.push('• categoria');
+  }
+  if (!String(descricao || '').trim()) {
+    missing.push('• descrição');
+  }
+  if (!String(ruaNumero || '').trim()) {
+    missing.push('• rua e número');
+  }
+  if (!String(cidade || '').trim()) {
+    missing.push('• cidade');
+  }
+  if (!String(estado || '').trim()) {
+    missing.push('• estado/UF');
+  }
   return missing;
 }
 
 function showDisabledGuideToast(show, fields) {
-  if (!fields.length) {return;}
+  if (!fields.length) {
+    return;
+  }
   const text = `⚠️ Campos obrigatórios faltando:\n${fields.join('\n')}`;
   console.log('[REPORT][TOAST][GUIDE] missing =', fields);
   show({ type: 'error', text });
@@ -437,8 +458,12 @@ export default function ReportScreen() {
         return null;
       }
       coords = { latitude: g.latitude, longitude: g.longitude };
-      if (!cep && g.cep) {setCep(g.cep);}
-      if (cepPrecision === 'none') {setCepPrecision('general');}
+      if (!cep && g.cep) {
+        setCep(g.cep);
+      }
+      if (cepPrecision === 'none') {
+        setCepPrecision('general');
+      }
     }
 
     return coords;
@@ -449,7 +474,9 @@ export default function ReportScreen() {
   // -----------------------------------------------------------
   const handleSendAutoFlow = async () => {
     console.log('[REPORT][AUTO] handleSendAutoFlow');
-    if (local?.latitude && local?.longitude) {return local;}
+    if (local?.latitude && local?.longitude) {
+      return local;
+    }
     console.log('[REPORT][AUTO] Missing coords unexpectedly — fallback MANUAL geocode');
     return await handleSendManualFlow();
   };
