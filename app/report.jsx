@@ -5,9 +5,11 @@
 // - Sauvegarde Firestore avec createdAt + expiresAt = now + 90j (TTL)
 // - Logs [REPORT] pour tout suivre (diagnostic production-friendly)
 // - Déclenchement non-bloquant de la Cloud Function d’alerte publique
+// - Toast UX friendly (pt-BR) : "Pronto para enviar" + champs manquants (😢)
+// - ⚠️ Hooks : aucun return avant les hooks → évite "Rendered more hooks…"
 // -------------------------------------------------------------
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Text,
   TextInput,
@@ -17,6 +19,9 @@ import {
   Alert,
   View,
   ActivityIndicator,
+  Animated,
+  Easing,
+  Pressable,
 } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import * as Location from 'expo-location';
@@ -47,9 +52,6 @@ import { GOOGLE_MAPS_KEY } from '@/utils/env';
 const DB_RETENTION_DAYS = 90; // TTL base (analytics), indépendant de la carte
 
 // Catégories affichées (UI)
-// NOTE: on garde la couleur UI pour cohérence visuelle du bouton,
-// mais la couleur "formulaire" envoyée et le rayon sont re-mappés
-// proprement via la "gravidade" (minor/medium/grave) plus bas.
 const categories = [
   { label: 'Roubo/Furto', icon: ShieldAlert, severity: 'medium', color: '#FFA500' },
   { label: 'Agressão', icon: UserX, severity: 'medium', color: '#FFA500' },
@@ -60,14 +62,11 @@ const categories = [
   { label: 'Outros', icon: FileQuestion, severity: 'minor', color: '#007AFF' },
 ];
 
-// Normalisation CEP -> "99999-999" (affichage) / digits only (backend)
+// Normalisation CEP
 const onlyDigits = (v = '') => String(v).replace(/\D/g, '');
 const formatCepDisplay = (digits) => (digits ? digits.replace(/(\d{5})(\d{3})/, '$1-$2') : '');
 
-// Mapping gravité -> (couleur, portée en mètres)
-// - on utilise CE MAPPING pour:
-//   1) payload.color (couleur formulaire)
-//   2) payload.radius_m (clé standard pour le backend / FCM)
+// Gravité -> couleur & rayon
 const severityToColorAndRadius = (sev) => {
   switch (sev) {
     case 'minor':
@@ -80,15 +79,68 @@ const severityToColorAndRadius = (sev) => {
   }
 };
 
-// Adresse lisible pour la notif (ex: "Rua X, 123 — Fortaleza/CE")
+// Adresse lisible pour notif
 const buildEnderecoLabel = (ruaNumero, cidade, estado) =>
   [ruaNumero, cidade && `${cidade}/${estado}`].filter(Boolean).join(' — ');
 
 // -------------------------------------------------------------
+// Mini Toast interne (Animated, sans dépendance)
+// -------------------------------------------------------------
+function useToast(autoHideMs = 3800) {
+  const [message, setMessage] = useState('');
+  const [visible, setVisible] = useState(false);
+  const [variant, setVariant] = useState('info'); // 'info' | 'success' | 'error'
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(-10)).current; // sort du haut
+
+  const runAnim = () => {
+    Animated.parallel([
+      Animated.timing(opacity, { toValue: 1, duration: 180, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(translateY, { toValue: 0, duration: 180, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+    ]).start(() => {
+      setTimeout(() => {
+        Animated.parallel([
+          Animated.timing(opacity, { toValue: 0, duration: 220, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
+          Animated.timing(translateY, { toValue: -10, duration: 220, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
+        ]).start(() => setVisible(false));
+      }, autoHideMs);
+    });
+  };
+
+  const showBase = (msg, v) => {
+    setMessage(msg);
+    setVariant(v);
+    setVisible(true);
+    runAnim();
+  };
+
+  const show = (msg) => showBase(msg, 'info');
+  const showSuccess = (msg) => showBase(msg, 'success');
+  const showError = (msg) => showBase(msg, 'error');
+
+  const Toast = () =>
+    visible ? (
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.toast,
+          variant === 'success' && styles.toastSuccess,
+          variant === 'error' && styles.toastError,
+          { opacity, transform: [{ translateY }] },
+        ]}
+      >
+        <Text style={styles.toastText}>{message}</Text>
+      </Animated.View>
+    ) : null;
+
+  return { show, showSuccess, showError, Toast };
+}
+
+// -------------------------------------------------------------
 // Composant
 // -------------------------------------------------------------
-
 export default function ReportScreen() {
+  // ⚠️ Tous les hooks en haut, aucun return avant → évite "Rendered more hooks…"
   const router = useRouter();
   const user = useAuthGuard();
 
@@ -102,33 +154,63 @@ export default function ReportScreen() {
   const [loadingLoc, setLoadingLoc] = useState(false);
   const [cepPrecision, setCepPrecision] = useState('none');
 
-  if (user === undefined) {
-    return <ActivityIndicator style={{ flex: 1 }} color="#22C55E" />;
-  }
-  if (!user) {
-    return null;
-  }
+  const { show, showSuccess, showError, Toast } = useToast(3800);
+
+  // 👉 Flags de rendu (on NE return PAS avant d'avoir défini les hooks)
+  const isUserLoading = user === undefined;
+  const isUserLoggedOut = !isUserLoading && !user;
 
   const now = new Date();
   const dateBR = now.toLocaleDateString('pt-BR');
   const timeBR = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
   const selectedCategory = categories.find((c) => c.label === categoria);
-  // Couleur UI du bouton = couleur de la catégorie (pas la mapping gravité, pour ne pas casser l’habitude visuelle)
   const severityColorUI = selectedCategory?.color || '#007AFF';
+
+  // Champs requis (CEP optionnel)
+  const isBtnActive = !!(
+    categoria &&
+    descricao.trim().length > 0 &&
+    ruaNumero.trim().length > 0 &&
+    cidade.trim().length > 0 &&
+    estado.trim().length > 0
+  );
+
+  // Liste des champs manquants (pt-BR)
+  const missingFields = () => {
+    const items = [];
+    if (!categoria) items.push('tipo de evento');
+    if (!descricao.trim()) items.push('descrição');
+    if (!ruaNumero.trim()) items.push('rua e número');
+    if (!cidade.trim()) items.push('cidade');
+    if (!estado.trim()) items.push('estado');
+    return items;
+  };
+
+  // Feedback positif quand on passe de incomplet -> complet
+  const prevActiveRef = useRef(isBtnActive);
+  useEffect(() => {
+    if (!prevActiveRef.current && isBtnActive) {
+      // ✈️/paper-plane style Telegram
+      showSuccess('✈️  Pronto para enviar');
+    }
+    prevActiveRef.current = isBtnActive;
+  }, [isBtnActive, showSuccess]);
 
   // -----------------------------------------------------------
   // Localisation -> CEP via Google + fallback UI
+  // NOTE: Retourne les coords capturées (ou null) pour réutilisation.
   // -----------------------------------------------------------
   const handleLocation = async () => {
     console.log('[REPORT] handleLocation START');
     setLoadingLoc(true);
+    let coordsCaptured = null;
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       console.log('[REPORT] Location perm =', status);
       if (status !== 'granted') {
         Alert.alert('Permissão negada para acessar a localização.');
-        return;
+        return null;
       }
 
       const { coords } = await Location.getCurrentPositionAsync({
@@ -136,6 +218,7 @@ export default function ReportScreen() {
       });
       console.log('[REPORT] coords =', coords);
       setLocal(coords);
+      coordsCaptured = coords;
 
       // Reverse geocoding -> CEP (Google-first)
       console.log('[REPORT] resolveExactCepFromCoords…');
@@ -151,11 +234,9 @@ export default function ReportScreen() {
       const rua = res.address?.logradouro || '';
       const numero = res.address?.numero || '';
       let ruaNumeroVal = '';
-      if (rua && numero) {
-        ruaNumeroVal = `${rua}, ${numero}`;
-      } else {
-        ruaNumeroVal = rua || numero || '';
-      }
+      if (rua && numero) ruaNumeroVal = `${rua}, ${numero}`;
+      else ruaNumeroVal = rua || numero || '';
+
       setRuaNumero(ruaNumeroVal.trim());
       setCidade(res.address?.cidade || '');
       setEstado(res.address?.uf || '');
@@ -172,11 +253,7 @@ export default function ReportScreen() {
         );
       } else {
         setCep('');
-        setCepPrecision('general');
-        Alert.alert(
-          'Localização imprecisa',
-          'Não encontramos o CEP exato para esta rua. Você pode inserir manualmente o CEP (opcional).'
-        );
+        setCepPrecision('general'); // CEP opcional
       }
     } catch (e) {
       console.log('[REPORT] ERREUR =', e?.message || e);
@@ -185,6 +262,7 @@ export default function ReportScreen() {
       setLoadingLoc(false);
       console.log('[REPORT] handleLocation END');
     }
+    return coordsCaptured;
   };
 
   // -----------------------------------------------------------
@@ -193,51 +271,53 @@ export default function ReportScreen() {
   const handleSend = async () => {
     console.log('[REPORT] handleSend START');
 
-    // Validations strictes (pas de régression)
-    if (!categoria) {
-      return Alert.alert('Selecione uma categoria.');
+    if (!isBtnActive) {
+      const faltantes = missingFields();
+      if (faltantes.length) showError(`😢 Faltam: ${faltantes.join(', ')}.`);
+      console.log('[REPORT] handleSend ABORT (missing fields):', faltantes);
+      return;
     }
-    if (!ruaNumero.trim()) {
-      return Alert.alert('Preencha o campo Rua e número.');
-    }
-    if (!cidade.trim() || !estado.trim()) {
-      return Alert.alert('Preencha cidade e estado.');
-    }
-    if (!descricao.trim()) {
-      return Alert.alert('Descreva o ocorrido.');
-    }
+
+    // GPS non requis pour activer le bouton, mais requis pour l’envoi
     if (!local?.latitude || !local?.longitude) {
-      return Alert.alert('Use sua localização para posicionar o alerta.');
+      console.log('[REPORT] No coords yet -> trying to fetch on send…');
+      const coords = await handleLocation();
+      if (!coords?.latitude || !coords?.longitude) {
+        Alert.alert(
+          'Posição necessária',
+          'Precisamos da sua localização para enviar o alerta público. Ative a permissão ou toque em "Usar minha localização".'
+        );
+        console.log('[REPORT] handleSend ABORT (no coords after prompt)');
+        return;
+      }
     }
 
     try {
       // TTL Firestore
       const expires = new Date(Date.now() + DB_RETENTION_DAYS * 24 * 3600 * 1000);
 
-      // 1) Mapping gravité -> (couleur + portée)
       const sev = selectedCategory?.severity; // 'minor' | 'medium' | 'grave'
       const { color: mappedColor, radius_m } = severityToColorAndRadius(sev);
-      // On garde la couleur UI pour le bouton, mais on envoie "mappedColor" côté back
-      // pour assurer la cohérence des niveaux de gravité dans la notif.
-
-      // 2) Adresse lisible pour la notif
       const enderecoLabel = buildEnderecoLabel(ruaNumero, cidade, estado);
 
-      // 3) Payload Firestore (AUCUNE régression)
+      // ⚠️ IMPORTANT : on duplique lat/lng AU NIVEAU RACINE + on sauve endereco
       const payload = {
         userId: auth.currentUser?.uid,
         apelido: user?.apelido || '',
         username: user?.username || '',
         categoria,
         descricao,
-        gravidade: sev || 'medium', // cohérence back
-        color: mappedColor, // couleur formulaire normalisée (pas forcément la couleur UI)
+        gravidade: sev || 'medium',
+        color: mappedColor,
         ruaNumero,
         cidade,
         estado,
-        cep,
+        cep, // optionnel
         cepPrecision,
         pais: 'BR',
+        endereco: enderecoLabel,      // <— lisible pour les écrans publics
+        lat: local.latitude,          // <— racine (consommé par /public-alerts/[id])
+        lng: local.longitude,         // <— racine
         location: {
           latitude: local.latitude,
           longitude: local.longitude,
@@ -250,33 +330,31 @@ export default function ReportScreen() {
         time: timeBR,
         createdAt: serverTimestamp(),
         expiresAt: Timestamp.fromDate(expires),
-        // Compat + standard
-        radius: radius_m, // compat ancien champ
-        radius_m, // clé standard
+        radius: radius_m,             // compat
+        radius_m,                     // champ standard
       };
 
       console.log('[REPORT] Firestore payload =', payload);
 
-      // 4) Sauvegarde Firestore
+      // Sauvegarde Firestore
       const docRef = await addDoc(collection(db, 'publicAlerts'), payload);
       console.log('[REPORT] addDoc OK => id:', docRef.id);
 
-      // 5) Appel Cloud Function (non-bloquant) — on trace mais on ne bloque pas l’UX
+      // Cloud Function (non-bloquant)
       (async () => {
         try {
           const body = {
             alertId: docRef.id,
             endereco: enderecoLabel,
-            bairro: '', // si tu ajoutes un champ quartier plus tard
+            bairro: '',
             cidade,
             uf: estado,
-            cep: onlyDigits(cep), // backend préfère digits only
+            cep: onlyDigits(cep),
             lat: local.latitude,
             lng: local.longitude,
             radius_m,
             severidade: sev || 'medium',
             color: mappedColor,
-            // image: 'https://firebasestorage.googleapis.com/v0/b/<bucket>/o/banner_alerta.jpg?alt=media' // optionnel
           };
           console.log('[REPORT] Calling sendPublicAlertByAddress with:', body);
 
@@ -300,7 +378,7 @@ export default function ReportScreen() {
         }
       })();
 
-      // 6) UX : confirmation immédiate + retour Home
+      // UX : confirmation immédiate + retour Home
       Alert.alert('Alerta enviado!', 'Seu alerta foi registrado.');
       router.replace('/(tabs)/home');
     } catch (e) {
@@ -312,168 +390,171 @@ export default function ReportScreen() {
   };
 
   // -----------------------------------------------------------
-  // State d’activation du bouton
+  // Bouton + overlay d'aide quand inactif (toast des manquants)
   // -----------------------------------------------------------
-  const isBtnActive = !!(
-    categoria &&
-    descricao.trim().length > 0 &&
-    ruaNumero.trim().length > 0 &&
-    cidade.trim().length > 0 &&
-    estado.trim().length > 0 &&
-    local?.latitude &&
-    local?.longitude
+  const ButtonWithOverlay = (
+    <View style={{ position: 'relative' }}>
+      <TouchableOpacity
+        style={[
+          styles.sendBtn,
+          { backgroundColor: isBtnActive ? severityColorUI : '#aaa', opacity: isBtnActive ? 1 : 0.6 },
+        ]}
+        onPress={handleSend}
+        disabled={!isBtnActive}
+        activeOpacity={0.9}
+      >
+        <Send size={20} color="#fff" style={{ marginRight: 8 }} />
+        <Text style={styles.sendBtnText}>Enviar alerta</Text>
+      </TouchableOpacity>
+
+      {!isBtnActive && (
+        <Pressable
+          onPress={() => {
+            const faltantes = missingFields();
+            if (faltantes.length) showError(`😢 Faltam: ${faltantes.join(', ')}.`);
+          }}
+          style={StyleSheet.absoluteFill}
+        />
+      )}
+    </View>
   );
 
   // -----------------------------------------------------------
-  // Render
+  // Render (pas de return précoces → on gère ici)
   // -----------------------------------------------------------
   return (
-    <ScrollView contentContainerStyle={styles.scrollContainer}>
-      <View style={styles.container}>
-        <View style={styles.alertCard}>
-          <AlertTriangle color="#fff" size={26} style={{ marginRight: 12 }} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.alertTitle}>⚠️ Atenção!</Text>
-            <Text style={styles.alertMsg}>
-              Toda declaração feita no aplicativo envolve sua{' '}
-              <Text style={{ fontWeight: 'bold' }}>boa fé</Text> e{' '}
-              <Text style={{ fontWeight: 'bold' }}>responsabilidade</Text>.{'\n'}Nunca substitua os
-              serviços de emergência!
-              {'\n'}
-              <Text style={{ fontWeight: 'bold' }}>
-                ☎️ Ligue 190 (Polícia) ou 192 (Samu) em caso de risco ou emergência.
-              </Text>
-            </Text>
+    <View style={{ flex: 1 }}>
+      <ScrollView contentContainerStyle={styles.scrollContainer}>
+        {isUserLoading ? (
+          <View style={{ flex: 1, paddingTop: 24 }}>
+            <ActivityIndicator color="#22C55E" />
           </View>
-        </View>
+        ) : null}
 
-        <Text style={styles.title}>
-          <Bell color="#007AFF" size={22} style={{ marginRight: 5 }} />
-          Sinalizar um evento público
-        </Text>
+        {isUserLoggedOut ? <View style={{ padding: 22 }} /> : null}
 
-        <View style={styles.categoriaGroup}>
-          {categories.map(({ label, icon: Icon, color }) => (
-            <TouchableOpacity
-              key={label}
-              style={[
-                styles.categoriaBtn,
-                categoria === label && { backgroundColor: color, borderColor: color },
-              ]}
-              onPress={() => setCategoria(label)}
-            >
-              <Icon size={18} color={categoria === label ? '#fff' : color} style={{ marginRight: 7 }} />
-              <Text
-                style={[
-                  styles.categoriaText,
-                  categoria === label && { color: '#fff', fontWeight: 'bold' },
-                ]}
-              >
-                {label}
+        {!isUserLoading && !isUserLoggedOut && (
+          <View style={styles.container}>
+            <View style={styles.alertCard}>
+              <AlertTriangle color="#fff" size={26} style={{ marginRight: 12 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.alertTitle}>⚠️ Atenção!</Text>
+                <Text style={styles.alertMsg}>
+                  Toda declaração feita no aplicativo envolve sua <Text style={{ fontWeight: 'bold' }}>boa fé</Text> e{' '}
+                  <Text style={{ fontWeight: 'bold' }}>responsabilidade</Text>.{'\n'}Nunca substitua os serviços de
+                  emergência!{'\n'}
+                  <Text style={{ fontWeight: 'bold' }}>☎️ Ligue 190 (Polícia) ou 192 (Samu) em caso de risco ou emergência.</Text>
+                </Text>
+              </View>
+            </View>
+
+            <Text style={styles.title}>
+              <Bell color="#007AFF" size={22} style={{ marginRight: 5 }} />
+              Sinalizar um evento público
+            </Text>
+
+            <View style={styles.categoriaGroup}>
+              {categories.map(({ label, icon: Icon, color }) => (
+                <TouchableOpacity
+                  key={label}
+                  style={[styles.categoriaBtn, categoria === label && { backgroundColor: color, borderColor: color }]}
+                  onPress={() => setCategoria(label)}
+                >
+                  <Icon size={18} color={categoria === label ? '#fff' : color} style={{ marginRight: 7 }} />
+                  <Text style={[styles.categoriaText, categoria === label && { color: '#fff', fontWeight: 'bold' }]}>
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.label}>Descreva o ocorrido</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Descrição (obrigatório)"
+              value={descricao}
+              onChangeText={setDescricao}
+              multiline
+            />
+
+            <View style={styles.row}>
+              <View style={styles.readonlyField}>
+                <Text style={styles.readonlyLabel}>Data</Text>
+                <Text style={styles.readonlyValue}>{dateBR}</Text>
+              </View>
+              <View style={styles.readonlyField}>
+                <Text style={styles.readonlyLabel}>Horário</Text>
+                <Text style={styles.readonlyValue}>{timeBR}</Text>
+              </View>
+            </View>
+
+            <Text style={styles.label}>Localização</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Rua e número (obrigatório)"
+              value={ruaNumero}
+              onChangeText={setRuaNumero}
+            />
+            <TextInput style={styles.input} placeholder="Cidade (obrigatório)" value={cidade} onChangeText={setCidade} />
+            <TextInput style={styles.input} placeholder="Estado (obrigatório)" value={estado} onChangeText={setEstado} />
+            <TextInput
+              style={styles.input}
+              placeholder="CEP (opcional)"
+              value={cep}
+              onChangeText={setCep}
+              onBlur={() =>
+                setCep((v) => {
+                  const digits = onlyDigits(v);
+                  return formatCepDisplay(digits);
+                })
+              }
+              keyboardType="numeric"
+            />
+            {cepPrecision !== 'none' && (
+              <Text style={{ color: '#aaa', marginBottom: 6, marginLeft: 2, fontSize: 13 }}>
+                {cepPrecision === 'exact'
+                  ? 'CEP exato detectado.'
+                  : cepPrecision === 'needs-confirmation'
+                  ? 'Vários CEPs possíveis — confirme o endereço/CEP.'
+                  : 'CEP não foi identificado — você pode inserir manualmente (opcional).'}
+              </Text>
+            )}
+
+            <TouchableOpacity style={styles.locBtn} onPress={handleLocation} disabled={loadingLoc}>
+              <MapPin color="#007AFF" size={18} style={{ marginRight: 8 }} />
+              <Text style={styles.locBtnText}>
+                {loadingLoc ? 'Buscando localização...' : 'Usar minha localização atual'}
               </Text>
             </TouchableOpacity>
-          ))}
-        </View>
 
-        <Text style={styles.label}>Descreva o ocorrido</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Descrição (obrigatório)"
-          value={descricao}
-          onChangeText={setDescricao}
-          multiline
-        />
+            {local && (
+              <MapView
+                style={styles.map}
+                initialRegion={{
+                  latitude: local.latitude,
+                  longitude: local.longitude,
+                  latitudeDelta: 0.01,
+                  longitudeDelta: 0.01,
+                }}
+              >
+                <Marker coordinate={{ latitude: local.latitude, longitude: local.longitude }} />
+              </MapView>
+            )}
 
-        <View style={styles.row}>
-          <View style={styles.readonlyField}>
-            <Text style={styles.readonlyLabel}>Data</Text>
-            <Text style={styles.readonlyValue}>{dateBR}</Text>
+            {ButtonWithOverlay}
+
+            <Text style={styles.hint}>
+              • O CEP é opcional.{'\n'}• Se você ainda não usou sua localização, vamos pedir permissão ao enviar.
+            </Text>
           </View>
-          <View style={styles.readonlyField}>
-            <Text style={styles.readonlyLabel}>Horário</Text>
-            <Text style={styles.readonlyValue}>{timeBR}</Text>
-          </View>
-        </View>
-
-        <Text style={styles.label}>Localização</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Rua e número (obrigatório)"
-          value={ruaNumero}
-          onChangeText={setRuaNumero}
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Cidade (obrigatório)"
-          value={cidade}
-          onChangeText={setCidade}
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Estado (obrigatório)"
-          value={estado}
-          onChangeText={setEstado}
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="CEP (opcional)"
-          value={cep}
-          onChangeText={setCep}
-          onBlur={() =>
-            setCep((v) => {
-              const digits = onlyDigits(v);
-              return formatCepDisplay(digits);
-            })
-          }
-          keyboardType="numeric"
-        />
-        {cepPrecision !== 'none' && (
-          <Text style={{ color: '#aaa', marginBottom: 6, marginLeft: 2, fontSize: 13 }}>
-            {cepPrecision === 'exact'
-              ? 'CEP exato detectado.'
-              : cepPrecision === 'needs-confirmation'
-              ? 'Vários CEPs possíveis — confirme o endereço/CEP.'
-              : 'CEP não foi identificado — você pode inserir manualmente.'}
-          </Text>
         )}
+      </ScrollView>
 
-        <TouchableOpacity style={styles.locBtn} onPress={handleLocation} disabled={loadingLoc}>
-          <MapPin color="#007AFF" size={18} style={{ marginRight: 8 }} />
-          <Text style={styles.locBtnText}>
-            {loadingLoc ? 'Buscando localização...' : 'Usar minha localização atual'}
-          </Text>
-        </TouchableOpacity>
-
-        {local && (
-          <MapView
-            style={styles.map}
-            initialRegion={{
-              latitude: local.latitude,
-              longitude: local.longitude,
-              latitudeDelta: 0.01,
-              longitudeDelta: 0.01,
-            }}
-          >
-            <Marker coordinate={{ latitude: local.latitude, longitude: local.longitude }} />
-          </MapView>
-        )}
-
-        <TouchableOpacity
-          style={[
-            styles.sendBtn,
-            {
-              backgroundColor: isBtnActive ? severityColorUI : '#aaa',
-              opacity: isBtnActive ? 1 : 0.6,
-            },
-          ]}
-          onPress={handleSend}
-          disabled={!isBtnActive}
-        >
-          <Send size={20} color="#fff" style={{ marginRight: 8 }} />
-          <Text style={styles.sendBtnText}>Enviar alerta</Text>
-        </TouchableOpacity>
+      {/* Zone d’ancrage du toast (EN HAUT) */}
+      <View pointerEvents="none" style={styles.toastContainer}>
+        <Toast />
       </View>
-    </ScrollView>
+    </View>
   );
 }
 
@@ -559,4 +640,35 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   sendBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 18 },
+  hint: { color: '#8A96A3', marginTop: 10, fontSize: 13, lineHeight: 18 },
+
+  // Toast (TOP)
+  toastContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 18, // plus haut
+    alignItems: 'center',
+    justifyContent: 'center',
+    pointerEvents: 'none',
+  },
+  toast: {
+    maxWidth: '92%',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: 'rgba(30, 41, 59, 0.96)',
+    borderWidth: 1,
+    borderColor: 'rgba(100,116,139,0.25)',
+  },
+  toastSuccess: {
+    backgroundColor: 'rgba(22, 163, 74, 0.96)',
+    borderColor: 'rgba(34,197,94,0.25)',
+  },
+  toastError: {
+    backgroundColor: 'rgba(185, 28, 28, 0.96)',
+    borderColor: 'rgba(248,113,113,0.25)',
+  },
+  toastText: { color: '#fff', fontSize: 15, fontWeight: '600' },
 });
+  console.log('[REPORT] reverseGeocodeCityUf START with:', { latitude, longitude });
