@@ -1,22 +1,35 @@
 #!/bin/sh
-. "$(dirname "$0")/_/husky.sh"
+. "$(dirname "$0")/_/husky.sh" 2>/dev/null || true
 
-echo "🧹 [husky] Auto-fix Prettier + ESLint (commit non bloqué)..."
+set +e
 
-# Tente yarn, sinon npx. Toujours non bloquant.
-if command -v yarn >/dev/null 2>&1; then
-  yarn lint-staged && ok=1 || ok=0
-elif command -v npx >/dev/null 2>&1; then
-  npx lint-staged && ok=1 || ok=0
+echo "🧹 [husky] Auto-fix ESLint + Prettier (commit non bloqué)..."
+
+# Récupère les fichiers modifiés mis en staging
+FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(js|jsx|ts|tsx|json|md|css|scss)$')
+
+if [ -n "$FILES" ]; then
+  echo "🔧 Fichiers détectés :"
+  echo "$FILES"
+
+  if command -v yarn >/dev/null 2>&1; then
+    echo "👉 Fix avec yarn..."
+    echo "$FILES" | xargs yarn eslint --fix
+    echo "$FILES" | xargs yarn prettier --write
+  elif command -v npx >/dev/null 2>&1; then
+    echo "👉 Fix avec npx..."
+    echo "$FILES" | xargs npx eslint --fix
+    echo "$FILES" | xargs npx prettier --write
+  else
+    echo "⚠️ Ni yarn ni npx trouvés — skip auto-fix."
+  fi
+
+  # Ré-ajoute les fichiers corrigés au commit
+  git add $FILES
+
+  echo "✅ Auto-fix terminé (non bloquant)"
 else
-  echo "⚠️ Ni yarn ni npx trouvés — skip auto-fix."
-  ok=0
-fi
-
-if [ "$ok" -eq 1 ]; then
-  echo "✅ Fichiers corrigés (lint-staged)"
-else
-  echo "⚠️ Auto-fix terminé avec des erreurs (commit non bloqué)"
+  echo "ℹ️ Aucun fichier modifié pertinent — skip ESLint/Prettier."
 fi
 
 exit 0
