@@ -1,0 +1,36 @@
+﻿name: Backup on push (master + tags)
+
+on:
+  push:
+    branches: [ master ]
+    tags:
+      - "*"
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - run: |
+          git config user.name "backup-bot"
+          git config user.email "backup@example.com"
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.BACKUP_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan gitlab.com >> ~/.ssh/known_hosts
+
+      - name: Add remote + push
+        run: |
+          git remote add backup "${{ vars.BACKUP_REMOTE_URL }}"
+          git fetch origin
+          git checkout master
+          git reset --hard origin/master
+          git push backup master
+          git push --tags backup
