@@ -1,10 +1,8 @@
-﻿name: Backup on push (master + tags)
+﻿name: Backup on push (master only)
 
 on:
   push:
     branches: [ master ]
-    tags:
-      - "*"
   workflow_dispatch: {}
 
 jobs:
@@ -36,4 +34,3 @@ jobs:
           git checkout master
           git reset --hard origin/master
           git push backup master
-          git push --tags backup
