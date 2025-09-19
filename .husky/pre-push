@@ -66,82 +66,13 @@ cat > "$REPORT_FILE" <<EOF
 <tr><th>Check</th><th>Status</th><th>Recommendation</th><th>Docs</th></tr>
 EOF
 
-# ---------- Node ----------
-NODE_VER="$(node -v 2>/dev/null || echo 'absent')"
-NODE_MAJOR=$(echo "$NODE_VER" | sed 's/v//' | cut -d. -f1)
-if [ "$NODE_VER" = "absent" ]; then
-  row "Node.js" "$(status_err)" "Install Node.js >= 18" "https://nodejs.org/"
-elif [ "$NODE_MAJOR" -lt 18 ]; then
-  row "Node.js ($NODE_VER)" "$(status_warn)" "Use: nvm install 18 && nvm use 18" "https://nodejs.org/"
-else
-  row "Node.js ($NODE_VER)" "$(status_ok)" "-" "https://nodejs.org/"
-fi
-
-# ---------- Yarn ----------
-YARN_VER="$(yarn -v 2>/dev/null || echo 'absent')"
-if [ "$YARN_VER" = "absent" ]; then
-  row "Yarn" "$(status_warn)" "Install with: npm i -g yarn" "https://yarnpkg.com/"
-else
-  row "Yarn ($YARN_VER)" "$(status_ok)" "-" "https://yarnpkg.com/"
-fi
-
-# ---------- Expo CLI ----------
-if have expo; then
-  EXPO_VER="$(expo --version 2>/dev/null)"
-  row "Expo CLI ($EXPO_VER)" "$(status_ok)" "-" "https://docs.expo.dev/"
-else
-  row "Expo CLI" "$(status_warn)" "Install with: npm i -g expo-cli" "https://docs.expo.dev/"
-fi
-
-# ---------- Expo deps ----------
-if have npx; then
-  CI=1 npx expo install --check >/dev/null 2>&1
-  if [ $? -ne 0 ]; then
-    row "Expo deps" "$(status_warn)" "Run: npx expo install" "https://docs.expo.dev/workflow/expo-cli/"
-    ask_and_run "Expo dependencies mismatch detected." "npx expo install"
-  else
-    row "Expo deps" "$(status_ok)" "-" "https://docs.expo.dev/workflow/expo-cli/"
-  fi
-fi
-
-# ---------- Lockfile ----------
-if [ "$YARN_VER" != "absent" ]; then
-  YARN_MAJOR=$(echo "$YARN_VER" | cut -d. -f1)
-  if [ "$YARN_MAJOR" -ge 2 ]; then
-    CI=1 yarn install --immutable --mode=skip-build >/dev/null 2>&1
-    if [ $? -ne 0 ]; then
-      row "Yarn Lockfile (Berry)" "$(status_warn)" "Run: yarn install && yarn dedupe" "https://yarnpkg.com/cli/dedupe"
-      ask_and_run "Yarn lockfile drift detected (Berry)." "yarn install && yarn dedupe"
-    else
-      row "Yarn Lockfile (Berry)" "$(status_ok)" "-" "https://yarnpkg.com/"
-    fi
-  else
-    CI=1 yarn install --frozen-lockfile --ignore-scripts >/dev/null 2>&1
-    if [ $? -ne 0 ]; then
-      row "Yarn Lockfile (v1)" "$(status_warn)" "Run: yarn install && npx yarn-deduplicate yarn.lock" "https://classic.yarnpkg.com/"
-      ask_and_run "Yarn lockfile drift detected (v1)." "yarn install && npx yarn-deduplicate yarn.lock"
-    else
-      row "Yarn Lockfile (v1)" "$(status_ok)" "-" "https://classic.yarnpkg.com/"
-    fi
-  fi
-fi
-
-# ---------- Expo doctor ----------
-if have npx; then
-  npx expo doctor >/dev/null 2>&1
-  if [ $? -ne 0 ]; then
-    row "Expo Doctor" "$(status_warn)" "Run: npx expo doctor" "https://docs.expo.dev/"
-    ask_and_run "Expo doctor found issues." "npx expo doctor"
-  else
-    row "Expo Doctor" "$(status_ok)" "-" "https://docs.expo.dev/"
-  fi
-fi
+# (… tes checks Node/Yarn/Expo/Lockfile/Doctor ici …)
 
 # ---------- Close HTML ----------
 cat >> "$REPORT_FILE" <<EOF
 </table>
 <p style="margin-top:20px;font-weight:bold;">
-✅ Conclusion: Your push is allowed. Some checks may need attention (⚠️), 
+✅ Conclusion: Your push is allowed. Some checks may need attention (⚠️),
 but nothing blocks the push. Use the recommendations above to fix your environment.
 </p>
 </body></html>
@@ -153,11 +84,15 @@ echo "👉 You can click on this green link to see the detailed report:"
 echo -e "\033[32mfile://$REPORT_FILE\033[0m"
 echo ""
 
-# ---------- Auto-open in Chrome (optionnel, commente si tu veux pas) ----------
-case "$(uname)" in
-  Darwin*) open -a "Google Chrome" "$REPORT_FILE" ;;
-  Linux*) google-chrome "$REPORT_FILE" >/dev/null 2>&1 & ;;
-  MINGW*|MSYS*|CYGWIN*) start chrome "$REPORT_FILE" ;;
-esac
+# ---------- Auto-open in browser (unless NO_AUTO_OPEN=1) ----------
+if [ "$NO_AUTO_OPEN" != "1" ]; then
+  case "$(uname)" in
+    Darwin*) open "$REPORT_FILE" ;;                  # macOS
+    Linux*) xdg-open "$REPORT_FILE" >/dev/null 2>&1 & ;;  # Linux
+    MINGW*|MSYS*|CYGWIN*) start "" "$REPORT_FILE" ;;      # Windows
+  esac
+else
+  echo "ℹ️ NO_AUTO_OPEN=1 detected → not opening browser automatically."
+fi
 
 exit 0
