@@ -114,7 +114,9 @@ function localLabel({ endereco, bairro, cidade, uf }) {
 }
 
 function textsBySeverity(sev, local, distText) {
-  const sfx = distText ? ` (a ${distText}). Abra para mais detalhes.` : `. Abra para mais detalhes.`;
+  const sfx = distText
+    ? ` (a ${distText}). Abra para mais detalhes.`
+    : `. Abra para mais detalhes.`;
   switch (sev) {
     case 'low':
     case 'minor':
