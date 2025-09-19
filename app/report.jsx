@@ -54,6 +54,9 @@ import { GOOGLE_MAPS_KEY } from '@/utils/env';
 // -------------------------------------------------------------
 
 const DB_RETENTION_DAYS = 90; // TTL base (analytics)
+// Rayon fixe V1 pour "incident" (danger public)
+const ALERT_RADIUS_M = 1000;
+
 
 const categories = [
   { label: 'Roubo/Furto', icon: ShieldAlert, severity: 'medium', color: '#FFA500' },
@@ -68,17 +71,15 @@ const categories = [
 const onlyDigits = (v = '') => String(v).replace(/\D/g, '');
 const formatCepDisplay = (digits) => (digits ? digits.replace(/(\d{5})(\d{3})/, '$1-$2') : '');
 
-const severityToColorAndRadius = (sev) => {
+const severityToColor = (sev) => {
   switch (sev) {
-    case 'minor':
-      return { color: '#FFE600', radius_m: 500 }; // jaune
-    case 'grave':
-      return { color: '#FF3B30', radius_m: 2000 }; // rouge
+    case 'minor':  return '#FFE600'; // jaune
+    case 'grave':  return '#FF3B30'; // rouge
     case 'medium':
-    default:
-      return { color: '#FFA500', radius_m: 1000 }; // orange
+    default:       return '#FFA500'; // orange
   }
 };
+
 
 const buildEnderecoLabel = (ruaNumero, cidade, estado) =>
   [ruaNumero, cidade && `${cidade}/${estado}`].filter(Boolean).join(' — ');
@@ -279,6 +280,8 @@ function showDisabledGuideToast(show, fields) {
   console.log('[REPORT][TOAST][GUIDE] missing =', fields);
   show({ type: 'error', text });
 }
+
+
 
 // -------------------------------------------------------------
 // Composant principal
@@ -508,38 +511,40 @@ export default function ReportScreen() {
     try {
       const expires = new Date(Date.now() + DB_RETENTION_DAYS * 24 * 3600 * 1000);
       const sev = selectedCategory?.severity;
-      const { color: mappedColor, radius_m } = severityToColorAndRadius(sev);
-      const enderecoLabel = buildEnderecoLabel(ruaNumero, cidade, estado.toUpperCase());
+const mappedColor = severityToColor(sev);
+const enderecoLabel = buildEnderecoLabel(ruaNumero, cidade, estado.toUpperCase());
 
-      const payload = {
-        userId: auth.currentUser?.uid,
-        apelido: user?.apelido || '',
-        username: user?.username || '',
-        categoria,
-        descricao,
-        gravidade: sev || 'medium',
-        color: mappedColor,
-        ruaNumero,
-        cidade,
-        estado: estado.toUpperCase(),
-        cep,
-        cepPrecision,
-        pais: 'BR',
-        location: {
-          latitude: coords.latitude,
-          longitude: coords.longitude,
-          accuracy: local?.accuracy ?? null,
-          heading: local?.heading ?? null,
-          altitudeAccuracy: local?.altitudeAccuracy ?? null,
-          speed: local?.speed ?? null,
-        },
-        date: dateBR,
-        time: timeBR,
-        createdAt: serverTimestamp(),
-        expiresAt: Timestamp.fromDate(expires),
-        radius: radius_m,
-        radius_m,
-      };
+const payload = {
+  userId: auth.currentUser?.uid,
+  apelido: user?.apelido || '',
+  username: user?.username || '',
+  categoria,
+  descricao,
+  gravidade: sev || 'medium',
+  color: mappedColor,
+  ruaNumero,
+  cidade,
+  estado: estado.toUpperCase(),
+  cep,
+  cepPrecision,
+  pais: 'BR',
+  location: {
+    latitude: coords.latitude,
+    longitude: coords.longitude,
+    accuracy: local?.accuracy ?? null,
+    heading: local?.heading ?? null,
+    altitudeAccuracy: local?.altitudeAccuracy ?? null,
+    speed: local?.speed ?? null,
+  },
+  date: dateBR,
+  time: timeBR,
+  createdAt: serverTimestamp(),
+  expiresAt: Timestamp.fromDate(expires),
+
+  // ✅ Rayon fixe V1
+  radius: ALERT_RADIUS_M,    // compat front si tu lis encore "radius"
+  radius_m: ALERT_RADIUS_M,  // clé canonique back
+};
 
       console.log('[REPORT] Firestore payload =', payload);
       const docRef = await addDoc(collection(db, 'publicAlerts'), payload);
@@ -548,19 +553,23 @@ export default function ReportScreen() {
       // Cloud Function (non-bloquant)
       (async () => {
         try {
-          const body = {
-            alertId: docRef.id,
-            endereco: enderecoLabel,
-            bairro: '',
-            cidade,
-            uf: estado.toUpperCase(),
-            cep: onlyDigits(cep),
-            lat: coords.latitude,
-            lng: coords.longitude,
-            radius_m,
-            severidade: sev || 'medium',
-            color: mappedColor,
-          };
+         const body = {
+  alertId: docRef.id,
+  endereco: enderecoLabel,
+  bairro: '',
+  cidade,
+  uf: estado.toUpperCase(),
+  cep: onlyDigits(cep),
+  lat: coords.latitude,
+  lng: coords.longitude,
+
+  // ✅ fixe
+  radius_m: ALERT_RADIUS_M,
+
+  severidade: sev || 'medium',
+  color: mappedColor,
+};
+
           console.log('[REPORT] Calling sendPublicAlertByAddress with:', body);
           const resp = await fetch(
             'https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/sendPublicAlertByAddress',
