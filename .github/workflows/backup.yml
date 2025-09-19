@@ -18,13 +18,13 @@ jobs:
           git config user.name  "backup-bot"
           git config user.email "backup@example.com"
 
-      - name: Setup SSH (robust)
+      - name: Setup SSH (decode base64)
         env:
-          KEY: ${{ secrets.BACKUP_SSH_KEY }}
+          KEY_B64: ${{ secrets.BACKUP_SSH_KEY_B64 }}
         run: |
+          set -e
           mkdir -p ~/.ssh
-          # normalise CRLF éventuels de la clé privée collée depuis Windows
-          printf "%s" "$KEY" | tr -d '\r' > ~/.ssh/id_ed25519
+          echo "$KEY_B64" | base64 -d > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan gitlab.com >> ~/.ssh/known_hosts
           cat <<EOF >> ~/.ssh/config
@@ -32,6 +32,9 @@ jobs:
             IdentityFile ~/.ssh/id_ed25519
             IdentitiesOnly yes
           EOF
+
+      - name: Debug SSH
+        run: ssh -T git@gitlab.com || true
 
       - name: Push master + tags + branches backup to GitLab
         env:
@@ -49,7 +52,7 @@ jobs:
           # 2) tags
           git push backup --tags
 
-          # 3) branches de secours (forcées sur le HEAD d'origin/master)
+          # 3) branches de secours
           git push --force backup origin/master:refs/heads/backup/master-1
           git push --force backup origin/master:refs/heads/backup/master-2
           git push --force backup origin/master:refs/heads/backup/master-3
@@ -80,13 +83,13 @@ jobs:
         if: ${{ success() }}
         uses: dawidd6/action-send-mail@v3
         with:
-          server_address: ${{ secrets.SMTP_HOST }}   # ex: smtp.mail.yahoo.com
-          server_port: ${{ secrets.SMTP_PORT }}     # ex: 465
-          username: ${{ secrets.SMTP_USERNAME }}    # ex: guillaumeragot92@yahoo.com
-          password: ${{ secrets.SMTP_PASSWORD }}    # mot de passe d’application Yahoo
+          server_address: ${{ secrets.SMTP_HOST }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
           subject: "✅ Backup GitLab OK — ${{ github.repository }} @ ${{ github.ref_name }}"
-          to: ${{ secrets.MAIL_TO }}                # ex: même adresse Yahoo
-          from: ${{ secrets.MAIL_FROM }}            # ex: même adresse Yahoo
+          to: ${{ secrets.MAIL_TO }}
+          from: ${{ secrets.MAIL_FROM }}
           secure: true
           html_body: |
             <p>Backup terminé avec succès.</p>
