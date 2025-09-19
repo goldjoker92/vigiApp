@@ -13,24 +13,86 @@ jobs:
         with:
           fetch-depth: 0
 
-      - run: |
-          git config user.name "backup-bot"
+      - name: Git identity
+        run: |
+          git config user.name  "backup-bot"
           git config user.email "backup@example.com"
 
-      - name: Setup SSH
+      - name: Setup SSH (robust)
+        env:
+          KEY: ${{ secrets.BACKUP_SSH_KEY }}
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.BACKUP_SSH_KEY }}" > ~/.ssh/id_ed25519
+          # normalise CRLF éventuels de la clé privée collée depuis Windows
+          printf "%s" "$KEY" | tr -d '\r' > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan gitlab.com >> ~/.ssh/known_hosts
-          echo "Host gitlab.com
+          cat <<EOF >> ~/.ssh/config
+          Host gitlab.com
             IdentityFile ~/.ssh/id_ed25519
-            IdentitiesOnly yes" >> ~/.ssh/config
+            IdentitiesOnly yes
+          EOF
 
-      - name: Add remote + push
+      - name: Push master + tags + branches backup to GitLab
+        env:
+          BACKUP_REMOTE_URL: ${{ vars.BACKUP_REMOTE_URL }}
         run: |
-          git remote add backup "${{ vars.BACKUP_REMOTE_URL }}" || true
-          git fetch origin
+          set -e
+          git remote add backup "$BACKUP_REMOTE_URL" || true
+          git fetch origin --prune
           git checkout master
           git reset --hard origin/master
+
+          # 1) master
           git push backup master
+
+          # 2) tags
+          git push backup --tags
+
+          # 3) branches de secours (forcées sur le HEAD d'origin/master)
+          git push --force backup origin/master:refs/heads/backup/master-1
+          git push --force backup origin/master:refs/heads/backup/master-2
+          git push --force backup origin/master:refs/heads/backup/master-3
+
+      - name: Notify on commit (GitHub comment)
+        if: ${{ success() }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const sha = process.env.GITHUB_SHA;
+            const url = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              "✅ **Backup GitLab OK**",
+              "",
+              `• Branch: \`${context.ref}\``,
+              `• Commit: \`${sha.slice(0,7)}\``,
+              `• Logs: ${url}`,
+              "• Poussé: `master`, **tags**, `backup/master-1`, `backup/master-2`, `backup/master-3`"
+            ].join("\n");
+            await github.rest.repos.createCommitComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: sha,
+              body
+            });
+
+      - name: Send success email (Yahoo SMTP)
+        if: ${{ success() }}
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_HOST }}   # ex: smtp.mail.yahoo.com
+          server_port: ${{ secrets.SMTP_PORT }}     # ex: 465
+          username: ${{ secrets.SMTP_USERNAME }}    # ex: guillaumeragot92@yahoo.com
+          password: ${{ secrets.SMTP_PASSWORD }}    # mot de passe d’application Yahoo
+          subject: "✅ Backup GitLab OK — ${{ github.repository }} @ ${{ github.ref_name }}"
+          to: ${{ secrets.MAIL_TO }}                # ex: même adresse Yahoo
+          from: ${{ secrets.MAIL_FROM }}            # ex: même adresse Yahoo
+          secure: true
+          html_body: |
+            <p>Backup terminé avec succès.</p>
+            <ul>
+              <li>Repo: <code>${{ github.repository }}</code></li>
+              <li>Branche: <code>${{ github.ref_name }}</code></li>
+              <li>Run: <a href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}">logs</a></li>
+              <li>Poussé: <code>master</code>, <code>tags</code>, <code>backup/master-1</code>, <code>backup/master-2</code>, <code>backup/master-3</code></li>
+            </ul>
