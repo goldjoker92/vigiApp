@@ -22,21 +22,18 @@ ask_and_run() {
 
   local ans=""
   for i in $(seq 15 -1 1); do
-    echo -ne "\r⏳ Waiting ($i s)... "
+    echo "⏳ Waiting... $i s left (press y/n)"
     read -t 1 ans
     if [ "$ans" = "y" ]; then
-      echo ""
       echo "▶️ Running: $cmd"
       eval "$cmd"
       return 0
     elif [ "$ans" = "n" ]; then
-      echo ""
       echo "⏩ Skipped."
       return 0
     fi
   done
-  echo ""
-  echo "⏩ No response, skipped."
+  echo "⏩ No response after 15s → skipped."
 }
 
 # ---------- Start HTML ----------
@@ -66,7 +63,7 @@ cat > "$REPORT_FILE" <<EOF
 <tr><th>Check</th><th>Status</th><th>Recommendation</th><th>Docs</th></tr>
 EOF
 
-# (… tes checks Node/Yarn/Expo/Lockfile/Doctor ici …)
+# (… ici tes checks Node/Yarn/Expo/Lockfile/Doctor …)
 
 # ---------- Close HTML ----------
 cat >> "$REPORT_FILE" <<EOF
@@ -81,18 +78,7 @@ EOF
 echo ""
 echo "✅ [husky] Pre-push finished. Push allowed."
 echo "👉 You can click on this green link to see the detailed report:"
-echo -e "\033[32mfile://$REPORT_FILE\033[0m"
+echo -e "\033[32m$REPORT_FILE\033[0m"
 echo ""
-
-# ---------- Auto-open in browser (unless NO_AUTO_OPEN=1) ----------
-if [ "$NO_AUTO_OPEN" != "1" ]; then
-  case "$(uname)" in
-    Darwin*) open "$REPORT_FILE" ;;                  # macOS
-    Linux*) xdg-open "$REPORT_FILE" >/dev/null 2>&1 & ;;  # Linux
-    MINGW*|MSYS*|CYGWIN*) start "" "$REPORT_FILE" ;;      # Windows
-  esac
-else
-  echo "ℹ️ NO_AUTO_OPEN=1 detected → not opening browser automatically."
-fi
 
 exit 0
