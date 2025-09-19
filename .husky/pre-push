@@ -21,8 +21,7 @@ ask_and_run() {
   echo "   $cmd"
 
   local ans=""
-  local i=15
-  while [ $i -gt 0 ]; do
+  for i in $(seq 15 -1 1); do
     echo -ne "\r⏳ Waiting ($i s)... "
     read -t 1 ans
     if [ "$ans" = "y" ]; then
@@ -35,7 +34,6 @@ ask_and_run() {
       echo "⏩ Skipped."
       return 0
     fi
-    i=$((i-1))
   done
   echo ""
   echo "⏩ No response, skipped."
@@ -152,6 +150,14 @@ EOF
 echo ""
 echo "✅ [husky] Pre-push finished. Push allowed."
 echo "👉 You can click on this green link to see the detailed report:"
-echo "file://$REPORT_FILE"
+echo -e "\033[32mfile://$REPORT_FILE\033[0m"
 echo ""
+
+# ---------- Auto-open in Chrome (optionnel, commente si tu veux pas) ----------
+case "$(uname)" in
+  Darwin*) open -a "Google Chrome" "$REPORT_FILE" ;;
+  Linux*) google-chrome "$REPORT_FILE" >/dev/null 2>&1 & ;;
+  MINGW*|MSYS*|CYGWIN*) start chrome "$REPORT_FILE" ;;
+esac
+
 exit 0
