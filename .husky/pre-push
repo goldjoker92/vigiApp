@@ -2,74 +2,145 @@
 . "$(dirname "$0")/_/husky.sh" 2>/dev/null || true
 set +e
 
-ask_and_run () {
-  msg=$1
-  cmd=$2
+REPORT_DIR=".husky/logs"
+REPORT_FILE="$REPORT_DIR/last-prepush-report.html"
+mkdir -p "$REPORT_DIR"
 
-  echo "❓ $msg"
-  printf "   👉 Lancer la commande maintenant ? (y/n) "
-  read ans
-  case "$ans" in
-    y|Y|yes)
-      echo "▶️  Execution: $cmd"
-      eval "$cmd"
-      ;;
-    *)
-      echo "⏭️  Skip (tu pourras lancer manuellement: $cmd)"
-      ;;
-  esac
-}
+# Helpers
+have() { command -v "$1" >/dev/null 2>&1; }
+status_ok()   { echo "<td class='ok'>✅ OK</td>"; }
+status_warn() { echo "<td class='warn'>⚠️ Warning</td>"; }
+status_err()  { echo "<td class='err'>❌ Error</td>"; }
+row() { echo "<tr><td>$1</td>$2<td>$3</td><td><a href='$4'>link</a></td></tr>" >> "$REPORT_FILE"; }
 
-echo "🚦 [husky] Pré-push — vérifications lecture seule (non bloquant)"
+# Start HTML
+cat > "$REPORT_FILE" <<EOF
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Husky Pre-push Report</title>
+<style>
+  body { font-family:sans-serif; background:#181A20; color:#EEE; padding:20px; }
+  h1 { color:#22C55E; }
+  table { width:100%; border-collapse:collapse; margin-top:20px; }
+  th, td { padding:10px; border:1px solid #333; text-align:left; }
+  th { background:#222; }
+  .ok { color:#22C55E; font-weight:bold; }
+  .warn { color:#FACC15; font-weight:bold; }
+  .err { color:#EF4444; font-weight:bold; }
+  a { color:#22C55E; font-weight:bold; text-decoration:none; }
+  a:hover { text-decoration:underline; }
+</style>
+</head>
+<body>
+<h1>🚦 Husky Pre-push Report</h1>
+<p>You can click on the green link to see documentation or run recommended fixes.</p>
+<table>
+<tr><th>Check</th><th>Status</th><th>Recommendation</th><th>Docs</th></tr>
+EOF
 
-# --- Node version ---
-if command -v node >/dev/null 2>&1; then
-  NODE_MAJOR=$(node -p 'process.versions.node.split(".")[0]')
+# ---------- Node ----------
+NODE_VER="absent"
+if have node; then NODE_VER="$(node -v 2>/dev/null)"
+  NODE_MAJOR="$(node -p 'process.versions.node.split(\".\")[0]')"
   if [ "$NODE_MAJOR" -lt 18 ]; then
-    ask_and_run "Node <18 détecté. Installer Node 18 avec nvm ?" \
-      "nvm install 18 && nvm use 18"
+    row "Node.js ($NODE_VER)" "$(status_warn)" "Use: nvm install 18 && nvm use 18" "https://nodejs.org/"
+  else
+    row "Node.js ($NODE_VER)" "$(status_ok)" "-" "https://nodejs.org/"
   fi
 else
-  ask_and_run "Node non installé. Installer Node 18 ?" \
-    "npm install -g node"
+  row "Node.js" "$(status_err)" "Install Node.js >= 18" "https://nodejs.org/"
 fi
 
-# --- Expo deps check ---
-if command -v npx >/dev/null 2>&1; then
+# ---------- Yarn ----------
+YARN_VER="absent"
+if have yarn; then
+  YARN_VER="$(yarn -v 2>/dev/null)"
+  row "Yarn ($YARN_VER)" "$(status_ok)" "-" "https://yarnpkg.com/"
+else
+  row "Yarn" "$(status_warn)" "Install with: npm i -g yarn" "https://yarnpkg.com/"
+fi
+
+# ---------- Expo CLI ----------
+if have expo; then
+  EXPO_VER="$(expo --version 2>/dev/null)"
+  row "Expo CLI ($EXPO_VER)" "$(status_ok)" "-" "https://docs.expo.dev/"
+else
+  row "Expo CLI" "$(status_warn)" "Install with: npm i -g expo-cli" "https://docs.expo.dev/"
+fi
+
+# ---------- Expo install check ----------
+if have npx; then
   CI=1 npx expo install --check >/dev/null 2>&1
   if [ $? -ne 0 ]; then
-    if command -v yarn >/dev/null 2>&1; then
-      ask_and_run "Incohérences Expo détectées. Corriger ?" "yarn install"
-    else
-      ask_and_run "Incohérences Expo détectées. Corriger avec npm ?" "npm install"
-    fi
+    row "Expo deps" "$(status_warn)" "Run: npx expo install" "https://docs.expo.dev/workflow/expo-cli/"
+  else
+    row "Expo deps" "$(status_ok)" "-" "https://docs.expo.dev/workflow/expo-cli/"
   fi
 fi
 
-# --- Yarn lockfile ---
-if command -v yarn >/dev/null 2>&1; then
-  YARN_MAJOR=$(yarn -v | cut -d. -f1)
-  if [ "$YARN_MAJOR" -ge 2 ]; then
-    yarn install --immutable --mode=skip-build >/dev/null 2>&1
+# ---------- Lockfile ----------
+if have yarn; then
+  YARN_MAJOR="$(echo "$YARN_VER" | cut -d. -f1 2>/dev/null)"
+  if [ -n "$YARN_MAJOR" ] && [ "$YARN_MAJOR" -ge 2 ]; then
+    YARN_ENABLE_INLINE_BUILDS=1 CI=1 yarn install --immutable --mode=skip-build >/dev/null 2>&1
     if [ $? -ne 0 ]; then
-      ask_and_run "Lockfile drift (Berry). Corriger ?" "yarn install && yarn dedupe"
+      row "Yarn Lockfile (Berry)" "$(status_warn)" "Run: yarn install && yarn dedupe" "https://yarnpkg.com/cli/dedupe"
+    else
+      row "Yarn Lockfile (Berry)" "$(status_ok)" "-" "https://yarnpkg.com/"
     fi
   else
-    yarn install --frozen-lockfile --ignore-scripts >/dev/null 2>&1
+    CI=1 yarn install --frozen-lockfile --ignore-scripts >/dev/null 2>&1
     if [ $? -ne 0 ]; then
-      ask_and_run "Lockfile drift (Yarn v1). Corriger ?" \
-        "npm i -D yarn-deduplicate && npx yarn-deduplicate yarn.lock && yarn install"
+      row "Yarn Lockfile (v1)" "$(status_warn)" "Run: yarn install && npx yarn-deduplicate yarn.lock" "https://classic.yarnpkg.com/"
+    else
+      row "Yarn Lockfile (v1)" "$(status_ok)" "-" "https://classic.yarnpkg.com/"
     fi
   fi
 fi
 
-# --- Expo doctor ---
-if command -v npx >/dev/null 2>&1; then
+# ---------- Expo doctor ----------
+if have npx; then
   npx expo doctor >/dev/null 2>&1
   if [ $? -ne 0 ]; then
-    ask_and_run "expo doctor signale des problèmes. Lancer maintenant ?" "npx expo doctor"
+    row "Expo Doctor" "$(status_warn)" "Run: npx expo doctor" "https://docs.expo.dev/"
+  else
+    row "Expo Doctor" "$(status_ok)" "-" "https://docs.expo.dev/"
   fi
 fi
 
-echo "✅ [husky] Pré-push terminé. Push autorisé."
+# ---------- Java / Android ----------
+if have java; then
+  JAVA_VER="$(java -version 2>&1 | head -n1 | sed 's/\"/ /g')"
+  row "Java" "$(status_ok)" "$JAVA_VER" "https://adoptium.net/"
+fi
+if [ -n "$ANDROID_HOME" ]; then
+  row "Android SDK" "$(status_ok)" "$ANDROID_HOME" "https://developer.android.com/studio"
+fi
+
+# Close HTML
+cat >> "$REPORT_FILE" <<EOF
+</table>
+<p style="margin-top:20px;font-weight:bold;">
+✅ Conclusion: Your push is allowed. Some checks may need attention (⚠️), 
+but nothing blocks the push. Use the recommendations above to fix your environment.
+</p>
+</body></html>
+EOF
+
+# Terminal output
+echo ""
+echo "✅ [husky] Pre-push finished. Push allowed."
+echo "👉 You can click on this green link to see the detailed report:"
+echo "\033[32mfile://$REPORT_FILE\033[0m"
+echo ""
+
+# Auto open (optional)
+case "$(uname)" in
+  Darwin*) open "$REPORT_FILE" ;;
+  Linux*) xdg-open "$REPORT_FILE" >/dev/null 2>&1 ;;
+  MINGW*|MSYS*|CYGWIN*) start "" "$REPORT_FILE" ;;
+esac
+
 exit 0
