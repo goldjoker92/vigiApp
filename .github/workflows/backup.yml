@@ -18,7 +18,7 @@ jobs:
           git config user.name  "backup-bot"
           git config user.email "backup@example.com"
 
-      - name: Setup SSH (decode base64)
+      - name: Setup SSH (decode base64) + print fingerprint
         env:
           KEY_B64: ${{ secrets.BACKUP_SSH_KEY_B64 }}
         run: |
@@ -26,6 +26,13 @@ jobs:
           mkdir -p ~/.ssh
           echo "$KEY_B64" | base64 -d > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
+          # dérive la clé publique pour vérifier l'empreinte
+          ssh-keygen -y -f ~/.ssh/id_ed25519 > ~/.ssh/id_ed25519.pub
+          echo "== Public key (first 60 chars) =="
+          head -c 60 ~/.ssh/id_ed25519.pub; echo
+          echo "== Fingerprint (doit matcher celle de GitLab Deploy Key) =="
+          ssh-keygen -lf ~/.ssh/id_ed25519.pub
+          # known_hosts + config
           ssh-keyscan gitlab.com >> ~/.ssh/known_hosts
           cat <<EOF >> ~/.ssh/config
           Host gitlab.com
@@ -33,69 +40,26 @@ jobs:
             IdentitiesOnly yes
           EOF
 
-      - name: Debug SSH
-        run: ssh -T git@gitlab.com || true
+      - name: Debug remote + SSH handshake (verbose)
+        env:
+          BACKUP_REMOTE_URL: ${{ vars.BACKUP_REMOTE_URL }}
+        run: |
+          echo "BACKUP_REMOTE_URL=$BACKUP_REMOTE_URL"
+          git remote add backup "$BACKUP_REMOTE_URL" || true
+          git remote -v
+          echo "== SSH -vvv =="
+          ssh -vvv -T git@gitlab.com || true
 
       - name: Push master + tags + branches backup to GitLab
         env:
           BACKUP_REMOTE_URL: ${{ vars.BACKUP_REMOTE_URL }}
         run: |
           set -e
-          git remote add backup "$BACKUP_REMOTE_URL" || true
           git fetch origin --prune
           git checkout master
           git reset --hard origin/master
-
-          # 1) master
           git push backup master
-
-          # 2) tags
           git push backup --tags
-
-          # 3) branches de secours
           git push --force backup origin/master:refs/heads/backup/master-1
           git push --force backup origin/master:refs/heads/backup/master-2
           git push --force backup origin/master:refs/heads/backup/master-3
-
-      - name: Notify on commit (GitHub comment)
-        if: ${{ success() }}
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const sha = process.env.GITHUB_SHA;
-            const url = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            const body = [
-              "✅ **Backup GitLab OK**",
-              "",
-              `• Branch: \`${context.ref}\``,
-              `• Commit: \`${sha.slice(0,7)}\``,
-              `• Logs: ${url}`,
-              "• Poussé: `master`, **tags**, `backup/master-1`, `backup/master-2`, `backup/master-3`"
-            ].join("\n");
-            await github.rest.repos.createCommitComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              commit_sha: sha,
-              body
-            });
-
-      - name: Send success email (Yahoo SMTP)
-        if: ${{ success() }}
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: ${{ secrets.SMTP_HOST }}
-          server_port: ${{ secrets.SMTP_PORT }}
-          username: ${{ secrets.SMTP_USERNAME }}
-          password: ${{ secrets.SMTP_PASSWORD }}
-          subject: "✅ Backup GitLab OK — ${{ github.repository }} @ ${{ github.ref_name }}"
-          to: ${{ secrets.MAIL_TO }}
-          from: ${{ secrets.MAIL_FROM }}
-          secure: true
-          html_body: |
-            <p>Backup terminé avec succès.</p>
-            <ul>
-              <li>Repo: <code>${{ github.repository }}</code></li>
-              <li>Branche: <code>${{ github.ref_name }}</code></li>
-              <li>Run: <a href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}">logs</a></li>
-              <li>Poussé: <code>master</code>, <code>tags</code>, <code>backup/master-1</code>, <code>backup/master-2</code>, <code>backup/master-3</code></li>
-            </ul>
