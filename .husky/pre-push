@@ -1,145 +1,75 @@
 #!/bin/sh
-# Husky shim (peut activer `set -e` en interne)
 . "$(dirname "$0")/_/husky.sh" 2>/dev/null || true
-
-# Toujours non-bloquant (on n'échoue jamais le push)
 set +e
 
-echo ""
-echo "🚦 [husky] Pré-push — vérifications d'environnement (lecture seule, non bloquant)"
-echo "    - Node/Yarn/Expo présents et versions"
-echo "    - Cohérence des dépendances Expo"
-echo "    - Lockfile/installation probable (sans modifier)"
-echo ""
+ask_and_run () {
+  msg=$1
+  cmd=$2
 
-# ---------- Helpers ----------
-have() { command -v "$1" >/dev/null 2>&1; }
+  echo "❓ $msg"
+  printf "   👉 Lancer la commande maintenant ? (y/n) "
+  read ans
+  case "$ans" in
+    y|Y|yes)
+      echo "▶️  Execution: $cmd"
+      eval "$cmd"
+      ;;
+    *)
+      echo "⏭️  Skip (tu pourras lancer manuellement: $cmd)"
+      ;;
+  esac
+}
 
-print_kv() { printf "   • %-22s %s\n" "$1" "$2"; }
+echo "🚦 [husky] Pré-push — vérifications lecture seule (non bloquant)"
 
-# ---------- Versions ----------
-NODE_VER="absent"
-YARN_VER="absent"
-EXPO_VER="absent"
-
-if have node; then NODE_VER="$(node -v 2>/dev/null)"; fi
-if have yarn; then YARN_VER="$(yarn -v 2>/dev/null)"; fi
-if have expo; then EXPO_VER="$(expo --version 2>/dev/null)"; fi
-
-echo "🔎 Versions détectées :"
-print_kv "Node" "$NODE_VER"
-print_kv "Yarn" "$YARN_VER"
-print_kv "Expo CLI" "$EXPO_VER"
-echo ""
-
-# ---------- Conseils versions ----------
-# Node recommandé >= 18
-if have node; then
-  NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null)"
-  if [ -n "$NODE_MAJOR" ] && [ "$NODE_MAJOR" -lt 18 ] 2>/dev/null; then
-    echo "⚠️  Node < 18 détecté. Conseillé : Node 18+"
-    echo "    👉 installe via nvm : nvm install 18 && nvm use 18"
-    echo ""
+# --- Node version ---
+if command -v node >/dev/null 2>&1; then
+  NODE_MAJOR=$(node -p 'process.versions.node.split(".")[0]')
+  if [ "$NODE_MAJOR" -lt 18 ]; then
+    ask_and_run "Node <18 détecté. Installer Node 18 avec nvm ?" \
+      "nvm install 18 && nvm use 18"
   fi
 else
-  echo "⚠️  Node non détecté. Installe Node.js (>= 18) : https://nodejs.org/"
-  echo ""
+  ask_and_run "Node non installé. Installer Node 18 ?" \
+    "npm install -g node"
 fi
 
-# ---------- Yarn flavor ----------
-YARN_MAJOR=""
-if [ "$YARN_VER" != "absent" ]; then
-  YARN_MAJOR="$(echo "$YARN_VER" | cut -d. -f1 2>/dev/null)"
-fi
-
-if [ -z "$YARN_MAJOR" ]; then
-  echo "ℹ️  Yarn non détecté. Tu peux utiliser npm, mais le projet semble basé sur Yarn."
-  echo "    👉 npm i -g yarn"
-  echo ""
-fi
-
-# ---------- Check Expo deps (lecture seule) ----------
-if have npx; then
-  echo "🧪 Vérification Expo deps (lecture seule)…"
+# --- Expo deps check ---
+if command -v npx >/dev/null 2>&1; then
   CI=1 npx expo install --check >/dev/null 2>&1
-  EXPO_CHECK=$?
-  if [ $EXPO_CHECK -ne 0 ]; then
-    echo "⚠️  Incohérences Expo détectées."
-    echo "    👉 corrige : npx expo install"
-    echo "    (ou : yarn add <pkg>@expo — selon les suggestions de 'expo install')"
-    echo ""
-  else
-    echo "✅ Expo deps OK"
-    echo ""
-  fi
-else
-  echo "ℹ️  npx non disponible — skip 'expo install --check'."
-  echo ""
-fi
-
-# ---------- Vérification lockfile sans modifier ----------
-# Yarn Berry (>=2) : --immutable ; Yarn v1 : --frozen-lockfile
-if have yarn; then
-  if [ -n "$YARN_MAJOR" ] && [ "$YARN_MAJOR" -ge 2 ] 2>/dev/null; then
-    echo "🧪 Yarn Berry: test lockfile (--immutable, lecture seule)…"
-    YARN_ENABLE_INLINE_BUILDS=1 CI=1 yarn install --immutable --mode=skip-build >/dev/null 2>&1
-    IMM=$?
-    if [ $IMM -ne 0 ]; then
-      echo "⚠️  Dépendances potentiellement non installées / lockfile drift."
-      echo "    👉 corrige : yarn install"
-      echo "    👉 dédupe : yarn dedupe"
-      echo ""
+  if [ $? -ne 0 ]; then
+    if command -v yarn >/dev/null 2>&1; then
+      ask_and_run "Incohérences Expo détectées. Corriger ?" "yarn install"
     else
-      echo "✅ Lockfile OK (Berry)"
-      echo ""
-    fi
-  else
-    echo "🧪 Yarn v1: test lockfile (--frozen-lockfile, lecture seule)…"
-    CI=1 yarn install --frozen-lockfile --ignore-scripts >/dev/null 2>&1
-    FROZ=$?
-    if [ $FROZ -ne 0 ]; then
-      echo "⚠️  Dépendances possiblement out-of-sync."
-      echo "    👉 corrige : yarn install"
-      echo "    👉 dédupe (Yarn v1) : npm i -D yarn-deduplicate && npx yarn-deduplicate yarn.lock && yarn install"
-      echo ""
-    else
-      echo "✅ Lockfile OK (Yarn v1)"
-      echo ""
+      ask_and_run "Incohérences Expo détectées. Corriger avec npm ?" "npm install"
     fi
   fi
-else
-  echo "ℹ️  Yarn non trouvé — skip test lockfile."
-  echo ""
 fi
 
-# ---------- Expo Doctor (lecture seule) ----------
-if have npx; then
-  echo "🩺 expo doctor (lecture seule)…"
+# --- Yarn lockfile ---
+if command -v yarn >/dev/null 2>&1; then
+  YARN_MAJOR=$(yarn -v | cut -d. -f1)
+  if [ "$YARN_MAJOR" -ge 2 ]; then
+    yarn install --immutable --mode=skip-build >/dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      ask_and_run "Lockfile drift (Berry). Corriger ?" "yarn install && yarn dedupe"
+    fi
+  else
+    yarn install --frozen-lockfile --ignore-scripts >/dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      ask_and_run "Lockfile drift (Yarn v1). Corriger ?" \
+        "npm i -D yarn-deduplicate && npx yarn-deduplicate yarn.lock && yarn install"
+    fi
+  fi
+fi
+
+# --- Expo doctor ---
+if command -v npx >/dev/null 2>&1; then
   npx expo doctor >/dev/null 2>&1
-  EXPO_DOC=$?
-  if [ $EXPO_DOC -ne 0 ]; then
-    echo "⚠️  expo doctor signale des problèmes."
-    echo "    👉 lance : npx expo doctor"
-    echo "    👉 puis suis les recommandations (packages, SDK, env)."
-    echo ""
-  else
-    echo "✅ expo doctor OK"
-    echo ""
+  if [ $? -ne 0 ]; then
+    ask_and_run "expo doctor signale des problèmes. Lancer maintenant ?" "npx expo doctor"
   fi
-else
-  echo "ℹ️  npx non disponible — skip expo doctor."
-  echo ""
 fi
 
-# ---------- Java/Android SDK (facultatif, info) ----------
-if have java; then
-  JAVA_VER="$(java -version 2>&1 | head -n1 | sed 's/"/ /g')"
-  print_kv "Java" "$JAVA_VER"
-fi
-if [ -n "$ANDROID_HOME" ]; then
-  print_kv "ANDROID_HOME" "$ANDROID_HOME"
-fi
-echo ""
-
-echo "✅ [husky] Pré-push terminé. Rien n'a été modifié, push autorisé."
+echo "✅ [husky] Pré-push terminé. Push autorisé."
 exit 0
