@@ -1,19 +1,47 @@
 #!/bin/sh
-. "$(dirname "$0")/_/husky.sh" 2>/dev/null || true
 set +e
 
 REPORT_DIR=".husky/logs"
-REPORT_FILE="$REPORT_DIR/last-prepush-report.html"
 mkdir -p "$REPORT_DIR"
+REPORT_FILE="$REPORT_DIR/last-prepush-report.html"
 
-# Helpers
+# ---------- Helpers ----------
 have() { command -v "$1" >/dev/null 2>&1; }
 status_ok()   { echo "<td class='ok'>✅ OK</td>"; }
 status_warn() { echo "<td class='warn'>⚠️ Warning</td>"; }
 status_err()  { echo "<td class='err'>❌ Error</td>"; }
 row() { echo "<tr><td>$1</td>$2<td>$3</td><td><a href='$4'>link</a></td></tr>" >> "$REPORT_FILE"; }
 
-# Start HTML
+ask_and_run() {
+  local msg="$1"
+  local cmd="$2"
+  echo ""
+  echo "❓ $msg"
+  echo "👉 Run command? (y/n, auto-skip in 15s)"
+  echo "   $cmd"
+
+  local ans=""
+  local i=15
+  while [ $i -gt 0 ]; do
+    echo -ne "\r⏳ Waiting ($i s)... "
+    read -t 1 ans
+    if [ "$ans" = "y" ]; then
+      echo ""
+      echo "▶️ Running: $cmd"
+      eval "$cmd"
+      return 0
+    elif [ "$ans" = "n" ]; then
+      echo ""
+      echo "⏩ Skipped."
+      return 0
+    fi
+    i=$((i-1))
+  done
+  echo ""
+  echo "⏩ No response, skipped."
+}
+
+# ---------- Start HTML ----------
 cat > "$REPORT_FILE" <<EOF
 <!DOCTYPE html>
 <html lang="en">
@@ -41,25 +69,22 @@ cat > "$REPORT_FILE" <<EOF
 EOF
 
 # ---------- Node ----------
-NODE_VER="absent"
-if have node; then NODE_VER="$(node -v 2>/dev/null)"
-  NODE_MAJOR="$(node -p 'process.versions.node.split(\".\")[0]')"
-  if [ "$NODE_MAJOR" -lt 18 ]; then
-    row "Node.js ($NODE_VER)" "$(status_warn)" "Use: nvm install 18 && nvm use 18" "https://nodejs.org/"
-  else
-    row "Node.js ($NODE_VER)" "$(status_ok)" "-" "https://nodejs.org/"
-  fi
-else
+NODE_VER="$(node -v 2>/dev/null || echo 'absent')"
+NODE_MAJOR=$(echo "$NODE_VER" | sed 's/v//' | cut -d. -f1)
+if [ "$NODE_VER" = "absent" ]; then
   row "Node.js" "$(status_err)" "Install Node.js >= 18" "https://nodejs.org/"
+elif [ "$NODE_MAJOR" -lt 18 ]; then
+  row "Node.js ($NODE_VER)" "$(status_warn)" "Use: nvm install 18 && nvm use 18" "https://nodejs.org/"
+else
+  row "Node.js ($NODE_VER)" "$(status_ok)" "-" "https://nodejs.org/"
 fi
 
 # ---------- Yarn ----------
-YARN_VER="absent"
-if have yarn; then
-  YARN_VER="$(yarn -v 2>/dev/null)"
-  row "Yarn ($YARN_VER)" "$(status_ok)" "-" "https://yarnpkg.com/"
-else
+YARN_VER="$(yarn -v 2>/dev/null || echo 'absent')"
+if [ "$YARN_VER" = "absent" ]; then
   row "Yarn" "$(status_warn)" "Install with: npm i -g yarn" "https://yarnpkg.com/"
+else
+  row "Yarn ($YARN_VER)" "$(status_ok)" "-" "https://yarnpkg.com/"
 fi
 
 # ---------- Expo CLI ----------
@@ -70,23 +95,25 @@ else
   row "Expo CLI" "$(status_warn)" "Install with: npm i -g expo-cli" "https://docs.expo.dev/"
 fi
 
-# ---------- Expo install check ----------
+# ---------- Expo deps ----------
 if have npx; then
   CI=1 npx expo install --check >/dev/null 2>&1
   if [ $? -ne 0 ]; then
     row "Expo deps" "$(status_warn)" "Run: npx expo install" "https://docs.expo.dev/workflow/expo-cli/"
+    ask_and_run "Expo dependencies mismatch detected." "npx expo install"
   else
     row "Expo deps" "$(status_ok)" "-" "https://docs.expo.dev/workflow/expo-cli/"
   fi
 fi
 
 # ---------- Lockfile ----------
-if have yarn; then
-  YARN_MAJOR="$(echo "$YARN_VER" | cut -d. -f1 2>/dev/null)"
-  if [ -n "$YARN_MAJOR" ] && [ "$YARN_MAJOR" -ge 2 ]; then
-    YARN_ENABLE_INLINE_BUILDS=1 CI=1 yarn install --immutable --mode=skip-build >/dev/null 2>&1
+if [ "$YARN_VER" != "absent" ]; then
+  YARN_MAJOR=$(echo "$YARN_VER" | cut -d. -f1)
+  if [ "$YARN_MAJOR" -ge 2 ]; then
+    CI=1 yarn install --immutable --mode=skip-build >/dev/null 2>&1
     if [ $? -ne 0 ]; then
       row "Yarn Lockfile (Berry)" "$(status_warn)" "Run: yarn install && yarn dedupe" "https://yarnpkg.com/cli/dedupe"
+      ask_and_run "Yarn lockfile drift detected (Berry)." "yarn install && yarn dedupe"
     else
       row "Yarn Lockfile (Berry)" "$(status_ok)" "-" "https://yarnpkg.com/"
     fi
@@ -94,6 +121,7 @@ if have yarn; then
     CI=1 yarn install --frozen-lockfile --ignore-scripts >/dev/null 2>&1
     if [ $? -ne 0 ]; then
       row "Yarn Lockfile (v1)" "$(status_warn)" "Run: yarn install && npx yarn-deduplicate yarn.lock" "https://classic.yarnpkg.com/"
+      ask_and_run "Yarn lockfile drift detected (v1)." "yarn install && npx yarn-deduplicate yarn.lock"
     else
       row "Yarn Lockfile (v1)" "$(status_ok)" "-" "https://classic.yarnpkg.com/"
     fi
@@ -105,21 +133,13 @@ if have npx; then
   npx expo doctor >/dev/null 2>&1
   if [ $? -ne 0 ]; then
     row "Expo Doctor" "$(status_warn)" "Run: npx expo doctor" "https://docs.expo.dev/"
+    ask_and_run "Expo doctor found issues." "npx expo doctor"
   else
     row "Expo Doctor" "$(status_ok)" "-" "https://docs.expo.dev/"
   fi
 fi
 
-# ---------- Java / Android ----------
-if have java; then
-  JAVA_VER="$(java -version 2>&1 | head -n1 | sed 's/\"/ /g')"
-  row "Java" "$(status_ok)" "$JAVA_VER" "https://adoptium.net/"
-fi
-if [ -n "$ANDROID_HOME" ]; then
-  row "Android SDK" "$(status_ok)" "$ANDROID_HOME" "https://developer.android.com/studio"
-fi
-
-# Close HTML
+# ---------- Close HTML ----------
 cat >> "$REPORT_FILE" <<EOF
 </table>
 <p style="margin-top:20px;font-weight:bold;">
@@ -129,18 +149,9 @@ but nothing blocks the push. Use the recommendations above to fix your environme
 </body></html>
 EOF
 
-# Terminal output
 echo ""
 echo "✅ [husky] Pre-push finished. Push allowed."
 echo "👉 You can click on this green link to see the detailed report:"
-echo "\033[32mfile://$REPORT_FILE\033[0m"
+echo "file://$REPORT_FILE"
 echo ""
-
-# Auto open (optional)
-case "$(uname)" in
-  Darwin*) open "$REPORT_FILE" ;;
-  Linux*) xdg-open "$REPORT_FILE" >/dev/null 2>&1 ;;
-  MINGW*|MSYS*|CYGWIN*) start "" "$REPORT_FILE" ;;
-esac
-
 exit 0
