@@ -1,9 +1,22 @@
 #!/bin/sh
-echo "✨ [husky] Prettier+ESLint (non-bloquants) sur fichiers modifiés..."
+. "$(dirname "$0")/_/husky.sh"
 
-# Prettier + ESLint via lint-staged — JAMAIS bloquant
-yarn lint-staged >/dev/null 2>&1 \
-  && echo "✅ Prettier/ESLint OK" \
-  || echo "⚠️ Prettier/ESLint a échoué (commit non bloqué)"
+echo "🧹 [husky] Auto-fix Prettier + ESLint (commit non bloqué)..."
+
+# Tente yarn, sinon npx. Toujours non bloquant.
+if command -v yarn >/dev/null 2>&1; then
+  yarn lint-staged && ok=1 || ok=0
+elif command -v npx >/dev/null 2>&1; then
+  npx lint-staged && ok=1 || ok=0
+else
+  echo "⚠️ Ni yarn ni npx trouvés — skip auto-fix."
+  ok=0
+fi
+
+if [ "$ok" -eq 1 ]; then
+  echo "✅ Fichiers corrigés (lint-staged)"
+else
+  echo "⚠️ Auto-fix terminé avec des erreurs (commit non bloqué)"
+fi
 
 exit 0

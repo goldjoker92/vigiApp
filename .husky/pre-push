@@ -2,77 +2,144 @@
 # Husky shim (peut activer `set -e` en interne)
 . "$(dirname "$0")/_/husky.sh" 2>/dev/null || true
 
-# Désactive l’arrêt sur erreur pour ce hook
+# Toujours non-bloquant (on n'échoue jamais le push)
 set +e
 
 echo ""
-echo "🔎 [husky] Vérification (non-bloquante) des dépendances Expo/Yarn..."
+echo "🚦 [husky] Pré-push — vérifications d'environnement (lecture seule, non bloquant)"
+echo "    - Node/Yarn/Expo présents et versions"
+echo "    - Cohérence des dépendances Expo"
+echo "    - Lockfile/installation probable (sans modifier)"
+echo ""
 
-# 1) Check alignement Expo (info only)
-CI=1 yarn expo install --check >/dev/null 2>&1 || \
-  echo "ℹ️ expo install --check a renvoyé un code ≠ 0 (ignoré)"
+# ---------- Helpers ----------
+have() { command -v "$1" >/dev/null 2>&1; }
 
-# 2) Dedupe (selon Yarn major)
-YARN_VERSION=$(yarn -v 2>/dev/null) || YARN_VERSION=""
-YARN_MAJOR=$(echo "$YARN_VERSION" | cut -d. -f1 2>/dev/null)
+print_kv() { printf "   • %-22s %s\n" "$1" "$2"; }
 
-if [ -n "$YARN_MAJOR" ] && [ "$YARN_MAJOR" -ge 2 ] 2>/dev/null; then
-  yarn dedupe >/dev/null 2>&1 \
-    && echo "🧹 yarn dedupe (Berry) OK" \
-    || echo "ℹ️ Tips Berry: yarn dedupe && yarn install"
-else
-  npx --yes yarn-deduplicate yarn.lock >/dev/null 2>&1 \
-    && echo "🧹 yarn-deduplicate (v1) OK" \
-    || echo "ℹ️ Tips v1: npm i -D yarn-deduplicate && npx yarn-deduplicate yarn.lock && yarn install"
-fi
+# ---------- Versions ----------
+NODE_VER="absent"
+YARN_VER="absent"
+EXPO_VER="absent"
 
-# 3) Détermination des fichiers modifiés du push
-echo "🛠️  ESLint + Prettier (non-bloquant) sur les fichiers modifiés…"
+if have node; then NODE_VER="$(node -v 2>/dev/null)"; fi
+if have yarn; then YARN_VER="$(yarn -v 2>/dev/null)"; fi
+if have expo; then EXPO_VER="$(expo --version 2>/dev/null)"; fi
 
-CHANGED_FILES=""
+echo "🔎 Versions détectées :"
+print_kv "Node" "$NODE_VER"
+print_kv "Yarn" "$YARN_VER"
+print_kv "Expo CLI" "$EXPO_VER"
+echo ""
 
-# Si rien n'arrive sur stdin (cas GUI/PowerShell), on fait un fallback
-if [ -t 0 ]; then
-  # Pas de stdin -> fallback upstream...HEAD, sinon dernier commit
-  upstream=$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null)
-  if [ -n "$upstream" ]; then
-    CHANGED_FILES=$(git diff --name-only --diff-filter=ACMRTUXB "$upstream"...HEAD 2>/dev/null)
-  else
-    CHANGED_FILES=$(git diff --name-only --diff-filter=ACMRTUXB HEAD~1 HEAD 2>/dev/null)
+# ---------- Conseils versions ----------
+# Node recommandé >= 18
+if have node; then
+  NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null)"
+  if [ -n "$NODE_MAJOR" ] && [ "$NODE_MAJOR" -lt 18 ] 2>/dev/null; then
+    echo "⚠️  Node < 18 détecté. Conseillé : Node 18+"
+    echo "    👉 installe via nvm : nvm install 18 && nvm use 18"
+    echo ""
   fi
 else
-  # Lecture des refs envoyées par Git
-  while read -r local_ref local_sha remote_ref remote_sha; do
-    if [ -z "$remote_sha" ] || [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
-      RANGE="${local_sha}~1 ${local_sha}"
-    else
-      RANGE="${remote_sha} ${local_sha}"
-    fi
-    files=$(git diff --name-only --diff-filter=ACMRTUXB $RANGE 2>/dev/null)
-    [ -n "$files" ] && CHANGED_FILES="$CHANGED_FILES
-$files"
-  done || true
+  echo "⚠️  Node non détecté. Installe Node.js (>= 18) : https://nodejs.org/"
+  echo ""
 fi
 
-# Filtre extensions gérées + fichiers formatables
-echo "$CHANGED_FILES" | while read -r f; do
-  case "$f" in
-    *.js|*.jsx|*.ts|*.tsx|*.json|*.md|*.css|*.scss) [ -f "$f" ] && echo "$f";;
-  esac
-done | sort -u > /tmp/changed_files.txt 2>/dev/null
+# ---------- Yarn flavor ----------
+YARN_MAJOR=""
+if [ "$YARN_VER" != "absent" ]; then
+  YARN_MAJOR="$(echo "$YARN_VER" | cut -d. -f1 2>/dev/null)"
+fi
 
-# 4) ESLint --fix (non-bloquant)
-if [ -s /tmp/changed_files.txt ] && command -v npx >/dev/null 2>&1; then
-  echo "🔧 ESLint --fix…"
-  xargs -a /tmp/changed_files.txt -r npx eslint --fix >/dev/null 2>&1 || \
-    echo "ℹ️ ESLint a retourné un code ≠ 0 (ignoré)"
-  # 5) Prettier --write (non-bloquant)
-  echo "🎨 Prettier --write…"
-  xargs -a /tmp/changed_files.txt -r npx prettier --write >/dev/null 2>&1 || \
-    echo "ℹ️ Prettier a retourné un code ≠ 0 (ignoré)"
+if [ -z "$YARN_MAJOR" ]; then
+  echo "ℹ️  Yarn non détecté. Tu peux utiliser npm, mais le projet semble basé sur Yarn."
+  echo "    👉 npm i -g yarn"
+  echo ""
+fi
+
+# ---------- Check Expo deps (lecture seule) ----------
+if have npx; then
+  echo "🧪 Vérification Expo deps (lecture seule)…"
+  CI=1 npx expo install --check >/dev/null 2>&1
+  EXPO_CHECK=$?
+  if [ $EXPO_CHECK -ne 0 ]; then
+    echo "⚠️  Incohérences Expo détectées."
+    echo "    👉 corrige : npx expo install"
+    echo "    (ou : yarn add <pkg>@expo — selon les suggestions de 'expo install')"
+    echo ""
+  else
+    echo "✅ Expo deps OK"
+    echo ""
+  fi
 else
-  echo "ℹ️ Aucun fichier modifié pertinent, ou npx indisponible. Skip ESLint/Prettier."
+  echo "ℹ️  npx non disponible — skip 'expo install --check'."
+  echo ""
 fi
 
-echo "✅ [husky] Non-bloquant. Push autorisé."
+# ---------- Vérification lockfile sans modifier ----------
+# Yarn Berry (>=2) : --immutable ; Yarn v1 : --frozen-lockfile
+if have yarn; then
+  if [ -n "$YARN_MAJOR" ] && [ "$YARN_MAJOR" -ge 2 ] 2>/dev/null; then
+    echo "🧪 Yarn Berry: test lockfile (--immutable, lecture seule)…"
+    YARN_ENABLE_INLINE_BUILDS=1 CI=1 yarn install --immutable --mode=skip-build >/dev/null 2>&1
+    IMM=$?
+    if [ $IMM -ne 0 ]; then
+      echo "⚠️  Dépendances potentiellement non installées / lockfile drift."
+      echo "    👉 corrige : yarn install"
+      echo "    👉 dédupe : yarn dedupe"
+      echo ""
+    else
+      echo "✅ Lockfile OK (Berry)"
+      echo ""
+    fi
+  else
+    echo "🧪 Yarn v1: test lockfile (--frozen-lockfile, lecture seule)…"
+    CI=1 yarn install --frozen-lockfile --ignore-scripts >/dev/null 2>&1
+    FROZ=$?
+    if [ $FROZ -ne 0 ]; then
+      echo "⚠️  Dépendances possiblement out-of-sync."
+      echo "    👉 corrige : yarn install"
+      echo "    👉 dédupe (Yarn v1) : npm i -D yarn-deduplicate && npx yarn-deduplicate yarn.lock && yarn install"
+      echo ""
+    else
+      echo "✅ Lockfile OK (Yarn v1)"
+      echo ""
+    fi
+  fi
+else
+  echo "ℹ️  Yarn non trouvé — skip test lockfile."
+  echo ""
+fi
+
+# ---------- Expo Doctor (lecture seule) ----------
+if have npx; then
+  echo "🩺 expo doctor (lecture seule)…"
+  npx expo doctor >/dev/null 2>&1
+  EXPO_DOC=$?
+  if [ $EXPO_DOC -ne 0 ]; then
+    echo "⚠️  expo doctor signale des problèmes."
+    echo "    👉 lance : npx expo doctor"
+    echo "    👉 puis suis les recommandations (packages, SDK, env)."
+    echo ""
+  else
+    echo "✅ expo doctor OK"
+    echo ""
+  fi
+else
+  echo "ℹ️  npx non disponible — skip expo doctor."
+  echo ""
+fi
+
+# ---------- Java/Android SDK (facultatif, info) ----------
+if have java; then
+  JAVA_VER="$(java -version 2>&1 | head -n1 | sed 's/"/ /g')"
+  print_kv "Java" "$JAVA_VER"
+fi
+if [ -n "$ANDROID_HOME" ]; then
+  print_kv "ANDROID_HOME" "$ANDROID_HOME"
+fi
+echo ""
+
+echo "✅ [husky] Pré-push terminé. Rien n'a été modifié, push autorisé."
 exit 0
