@@ -55,7 +55,7 @@ export function timeLeft(ts) {
 export default function usePublicAlerts24h() {
   const [alerts, setAlerts] = useState(null); // null => loading
   const [, forceTick] = useState(0);
-  const tickRef = (useRef < NodeJS.Timeout) | (null > null);
+  const tickRef = useRef(null);
 
   useEffect(() => {
     const since = Timestamp.fromMillis(Date.now() - ONE_DAY_MS);

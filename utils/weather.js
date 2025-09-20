@@ -215,7 +215,7 @@ export async function resolveCoordsAndLabel({ cep }) {
       console.log('[WEATHER] geoloc=GPS', { coords, label, ms });
       return { coords, ...label, source: 'gps' };
     }
-  } catch (_) {
+  } catch {
     /* silent */
   }
 
@@ -262,14 +262,14 @@ export async function getWeatherNowWithFallback(coords) {
   try {
     const g = await googleCurrent(coords);
     // Si Google n'a pas de temp, ou description vide → on tente d'enrichir via OpenWeather
-    if (g?.tempC == null || g?.tempC !== g?.tempC || !normalizeConditionText(g?.text, g?.code)) {
+    if (g?.tempC === null || g?.tempC !== g?.tempC || !normalizeConditionText(g?.text, g?.code)) {
       try {
         const o = await openWeatherCurrent(coords);
         return {
           tempC: o?.tempC ?? g?.tempC ?? null,
           code: g?.code || o?.code || '',
           text: normalizeConditionText(g?.text, g?.code) || o?.text || '',
-          provider: o?.tempC != null ? 'google+openweather' : 'google',
+          provider: o?.tempC !== null ? 'google+openweather' : 'google',
         };
       } catch {
         return g;

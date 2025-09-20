@@ -118,7 +118,7 @@ function coerceRadiusM(v) {
   return DEFAULT_ALERT_RADIUS_M;
 }
 function resolveRadiusByKind(kind, explicitRadiusM) {
-  if (explicitRadiusM != null) {
+  if (explicitRadiusM !== null) {
     return coerceRadiusM(explicitRadiusM);
   }
   const k = String(kind || '').trim();
