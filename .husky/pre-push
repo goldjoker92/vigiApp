@@ -1,52 +1,119 @@
 #!/bin/sh
+# .husky/pre-push
+# -------------------------------------------------------------
+# - Rapport HTML (table + conclusion dynamique)
+# - Ouverture auto dans Google Chrome (fallback: navigateur par défaut)
+# - Lien cliquable "file://..." dans le terminal
+# - Recos interactives avec question (15s). Rien n'est bloquant.
+# -------------------------------------------------------------
+
 set +e
 
 REPORT_DIR=".husky/logs"
-mkdir -p "$REPORT_DIR"
 REPORT_FILE="$REPORT_DIR/last-prepush-report.html"
+mkdir -p "$REPORT_DIR"
 
-# ---------- Helpers ----------
+# -------- Helpers --------
 have() { command -v "$1" >/dev/null 2>&1; }
-status_ok()   { echo "<td class='ok'>✅ OK</td>"; }
-status_warn() { echo "<td class='warn'>⚠️ Warning</td>"; }
-status_err()  { echo "<td class='err'>❌ Error</td>"; }
-row() { echo "<tr><td>$1</td>$2<td>$3</td><td><a href='$4'>link</a></td></tr>" >> "$REPORT_FILE"; }
 
-ask_and_run() {
-  local msg="$1"
-  local cmd="$2"
+status_cell() {
+  case "$1" in
+    ok)   echo "<td class='ok'>✅ OK</td>";;
+    warn) echo "<td class='warn'>⚠️ Warning</td>";;
+    err)  echo "<td class='err'>❌ Error</td>";;
+    *)    echo "<td>$1</td>";;
+  esac
+}
+
+# row "Check label" ok|warn|err "Recommendation text" "https://doc-or-cmd"
+row() {
+  LABEL="$1"; STATUS="$2"; RECO="$3"; LINK="$4"
+  echo "<tr><td>$LABEL</td>$(status_cell "$STATUS")<td>$RECO</td><td><a href='$LINK' target='_blank'>link</a></td></tr>" >> "$REPORT_FILE"
+  # counters
+  case "$STATUS" in
+    ok)   OK_CNT=$((OK_CNT+1));;
+    warn) WARN_CNT=$((WARN_CNT+1));;
+    err)  ERR_CNT=$((ERR_CNT+1));;
+  esac
+}
+
+ask_and_maybe_run() {
+  MSG="$1"; CMD="$2"
   echo ""
-  echo "❓ $msg"
-  echo "👉 Run command? (y/n, auto-skip in 15s)"
-  echo "   $cmd"
-
-  local ans=""
+  echo "❓ $MSG"
+  echo "👉 Lancer la commande ? (y/n, auto-continuer en 15s)"
+  echo "   $CMD"
+  ANS=""
   for i in $(seq 15 -1 1); do
-    echo "⏳ Waiting... $i s left (press y/n)"
-    read -t 1 ans
-    if [ "$ans" = "y" ]; then
-      echo "▶️ Running: $cmd"
-      eval "$cmd"
+    printf "⏳ Attente… %2ds restantes (y/n): " "$i"
+    read -r -t 1 ANS
+    echo ""
+    if [ "$ANS" = "y" ]; then
+      echo "▶️  Exécution: $CMD"
+      sh -c "$CMD"
       return 0
-    elif [ "$ans" = "n" ]; then
-      echo "⏩ Skipped."
+    elif [ "$ANS" = "n" ]; then
+      echo "⏩ Ignoré (on continue le push)."
       return 0
     fi
   done
-  echo "⏩ No response after 15s → skipped."
+  echo "⏩ Pas de réponse après 15s → on continue le push."
 }
 
-# ---------- Start HTML ----------
+abs_path() {
+  # Résout un chemin absolu compatible macOS/Linux
+  if have realpath; then realpath "$1"
+  else
+    # fallback
+    (cd "$(dirname "$1")" && pwd)/"$(basename "$1")"
+  fi
+}
+
+open_report() {
+  ABS="$(abs_path "$REPORT_FILE")"
+  FILE_URL="file://$ABS"
+
+  # Tente Chrome d'abord
+  if have open; then
+    # macOS
+    if [ -d "/Applications/Google Chrome.app" ]; then
+      open -a "Google Chrome" "$ABS" >/dev/null 2>&1 || open "$ABS" >/dev/null 2>&1
+    else
+      open "$ABS" >/dev/null 2>&1
+    fi
+  elif have xdg-open; then
+    # Linux
+    if have google-chrome; then
+      google-chrome "$ABS" >/dev/null 2>&1 || xdg-open "$ABS" >/dev/null 2>&1 &
+    elif have chromium; then
+      chromium "$ABS" >/dev/null 2>&1 || xdg-open "$ABS" >/dev/null 2>&1 &
+    else
+      xdg-open "$ABS" >/dev/null 2>&1 &
+    fi
+  elif have start; then
+    # Git Bash Windows (best effort)
+    start "" "$ABS" >/dev/null 2>&1
+  fi
+
+  echo ""
+  echo "👉 Ouvre le rapport dans le navigateur (Chrome si dispo)."
+  echo "🔗 Lien cliquable : \033[32m$FILE_URL\033[0m"
+  echo ""
+}
+
+# -------- HTML start --------
+OK_CNT=0; WARN_CNT=0; ERR_CNT=0
 cat > "$REPORT_FILE" <<EOF
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
 <meta charset="UTF-8">
 <title>Husky Pre-push Report</title>
 <style>
-  body { font-family:sans-serif; background:#181A20; color:#EEE; padding:20px; }
-  h1 { color:#22C55E; }
-  table { width:100%; border-collapse:collapse; margin-top:20px; }
+  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:#181A20; color:#EEE; padding:20px; }
+  h1 { color:#22C55E; margin:0 0 8px; }
+  #subtitle { color:#9aa3b2; margin:0 0 16px; }
+  table { width:100%; border-collapse:collapse; margin-top:12px; }
   th, td { padding:10px; border:1px solid #333; text-align:left; }
   th { background:#222; }
   .ok { color:#22C55E; font-weight:bold; }
@@ -54,31 +121,87 @@ cat > "$REPORT_FILE" <<EOF
   .err { color:#EF4444; font-weight:bold; }
   a { color:#22C55E; font-weight:bold; text-decoration:none; }
   a:hover { text-decoration:underline; }
+  .summary { margin-top:18px; padding:12px; background:#11151c; border:1px solid #2a2f3a; border-radius:8px; }
 </style>
 </head>
 <body>
 <h1>🚦 Husky Pre-push Report</h1>
-<p>You can click on the green link to see documentation or run recommended fixes.</p>
+<p id="subtitle">Résumé des vérifications locales avant push.</p>
 <table>
-<tr><th>Check</th><th>Status</th><th>Recommendation</th><th>Docs</th></tr>
+<tr><th>Vérification</th><th>Statut</th><th>Recommandation</th><th>Docs</th></tr>
 EOF
 
-# (… ici tes checks Node/Yarn/Expo/Lockfile/Doctor …)
+# =======================
+# VÉRIFS EXEMPLE (modifie/complète à ta guise)
+# =======================
 
-# ---------- Close HTML ----------
+# Node
+if have node; then
+  NODE_V="$(node -v 2>/dev/null)"
+  row "Node présent ($NODE_V)" ok "OK" "https://nodejs.org"
+else
+  row "Node non trouvé" err "Installer Node (>=18)" "https://nodejs.org/en/download"
+  ask_and_maybe_run "Installer Node via nvm ?" "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash"
+fi
+
+# Package manager (pnpm > yarn > npm)
+if have pnpm; then
+  PM="pnpm"
+elif have yarn; then
+  PM="yarn"
+else
+  PM="npm"
+fi
+row "Package manager détecté" ok "Utilisation de $PM" "https://pnpm.io / https://yarnpkg.com / https://docs.npmjs.com"
+
+# Lint (interactif, jamais bloquant)
+if [ -f package.json ]; then
+  ask_and_maybe_run "Exécuter le lint maintenant ?" "$PM run lint"
+  if [ $? -eq 0 ]; then
+    row "Lint" ok "OK ou ignoré" "cmd:$PM run lint"
+  else
+    row "Lint" warn "Des avertissements/erreurs possibles (push non bloqué)" "cmd:$PM run lint"
+  fi
+else
+  row "package.json absent" warn "Projet non JS/TS ? Ignoré." "#"
+fi
+
+# Expo Doctor (si expo dispo)
+if have expo; then
+  ask_and_maybe_run "Exécuter expo doctor ?" "expo doctor --fix"
+  if [ $? -eq 0 ]; then
+    row "Expo doctor" ok "OK ou ignoré" "cmd:expo doctor --fix"
+  else
+    row "Expo doctor" warn "Corrige via 'expo doctor --fix' si besoin" "cmd:expo doctor --fix"
+  fi
+fi
+
+# Lockfile check (exemple)
+if [ -f pnpm-lock.yaml ] || [ -f yarn.lock ] || [ -f package-lock.json ]; then
+  row "Lockfile présent" ok "OK" "#"
+else
+  row "Lockfile absent" warn "Génère un lockfile pour des builds reproductibles" "https://classic.yarnpkg.com/lang/en/docs/yarn-lock"
+fi
+
+# -------- HTML end (conclusion dynamique) --------
+CONCLUSION="✅ Conclusion : push autorisé."
+if [ "$ERR_CNT" -gt 0 ]; then
+  CONCLUSION="✅ Conclusion : push autorisé. Des erreurs ont été détectées mais n'empêchent pas le push."
+elif [ "$WARN_CNT" -gt 0 ]; then
+  CONCLUSION="✅ Conclusion : push autorisé. Quelques avertissements sont à considérer."
+fi
+
 cat >> "$REPORT_FILE" <<EOF
 </table>
-<p style="margin-top:20px;font-weight:bold;">
-✅ Conclusion: Your push is allowed. Some checks may need attention (⚠️),
-but nothing blocks the push. Use the recommendations above to fix your environment.
-</p>
+<div class="summary">
+  <div><strong>OK:</strong> $OK_CNT &nbsp;&nbsp; <strong>Warnings:</strong> $WARN_CNT &nbsp;&nbsp; <strong>Errors:</strong> $ERR_CNT</div>
+  <p style="margin:10px 0 0;">$CONCLUSION</p>
+</div>
 </body></html>
 EOF
 
-echo ""
-echo "✅ [husky] Pre-push finished. Push allowed."
-echo "👉 You can click on this green link to see the detailed report:"
-echo -e "\033[32m$REPORT_FILE\033[0m"
-echo ""
+# Ouvre & imprime le lien cliquable
+open_report
 
+echo "✅ [husky] Pre-push terminé. Le push continue."
 exit 0
