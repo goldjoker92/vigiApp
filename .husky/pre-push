@@ -1,11 +1,11 @@
-#!/usr/bin/env bash
-# .husky/pre-push — NON BLOQUANT / ZERO INTERACTION
-# - Génère un rapport HTML local
-# - Ouvre le rapport dans le navigateur (en arrière-plan si possible)
-# - NE BLOQUE JAMAIS le push (exit 0 inconditionnel)
+#!/usr/bin/env sh
+# .husky/pre-push — NON BLOQUANT / ZERO INTERACTION / POSIX sh
+# - Génère un petit rapport HTML local
+# - Essaie d’ouvrir le rapport en arrière-plan (Chrome si possible)
+# - NE BLOQUE JAMAIS le push (exit 0 quoi qu’il arrive)
 
+# Ne jamais stopper sur erreur
 set +e
-set +o pipefail
 
 REPORT_DIR=".husky/logs"
 REPORT_FILE="$REPORT_DIR/last-prepush-report.html"
@@ -15,27 +15,35 @@ have() { command -v "$1" >/dev/null 2>&1; }
 
 status_cell() {
   case "$1" in
-    ok)   echo "<td class='ok'>✅ OK</td>";;
-    warn) echo "<td class='warn'>⚠️ Warning</td>";;
-    err)  echo "<td class='err'>❌ Error</td>";;
-    *)    echo "<td>$1</td>";;
+    ok)   printf "<td class='ok'>✅ OK</td>";;
+    warn) printf "<td class='warn'>⚠️ Warning</td>";;
+    err)  printf "<td class='err'>❌ Error</td>";;
+    *)    printf "<td>%s</td>" "$1";;
   esac
 }
 
 row() {
-  local LABEL="$1" STATUS="$2" RECO="$3" LINK="$4"
-  echo "<tr><td>$LABEL</td>$(status_cell "$STATUS")<td>$RECO</td><td><a href='$LINK' target='_blank'>link</a></td></tr>" >> "$REPORT_FILE"
+  LABEL="$1"; STATUS="$2"; RECO="$3"; LINK="$4"
+  printf "<tr><td>%s</td>%s<td>%s</td><td><a href='%s' target='_blank'>link</a></td></tr>\n" \
+    "$LABEL" "$(status_cell "$STATUS")" "$RECO" "$LINK" >> "$REPORT_FILE"
 }
 
+# Chemin absolu POSIX-safe (compatible Git Bash)
 abs_path() {
-  if have realpath; then realpath "$1"
-  else (cd "$(dirname "$1")" && pwd)/"$(basename "$1")"; fi
+  # 1) si realpath existe, on l'utilise
+  if have realpath; then
+    realpath "$1"
+    return
+  fi
+  # 2) fallback POSIX : cd dans le dossier puis concat basename
+  d="$(dirname -- "$1" 2>/dev/null)"
+  b="$(basename -- "$1" 2>/dev/null)"
+  # shellcheck disable=SC2164
+  (cd "$d" 2>/dev/null && pwd -P)/"$b"
 }
 
 open_report_bg() {
-  local ABS FILE_URL
   ABS="$(abs_path "$REPORT_FILE")"
-  FILE_URL="file://$ABS"
 
   # macOS
   if have open; then
@@ -49,16 +57,17 @@ open_report_bg() {
     if have google-chrome; then
       nohup google-chrome "$ABS" >/dev/null 2>&1 &
     elif have chromium; then
-      nohup chromium "$ABS" >/dev/null 2>&1 &
+      nohup chromium "$ABS" >/devnull 2>&1 &
     else
       nohup xdg-open "$ABS" >/dev/null 2>&1 &
     fi
-  # Git Bash/Windows (best effort)
-  elif have start; then
-    start "" "$ABS" >/dev/null 2>&1
+  # Git Bash / Windows
+  elif have cmd.exe; then
+    # Ouvre avec le navigateur par défaut
+    cmd.exe /C start "" "$(echo "$ABS" | sed 's#/#\\#g')" >/dev/null 2>&1
   fi
 
-  echo "🔗 Rapport: file://$ABS"
+  printf "🔗 Rapport: %s\n" "file://$ABS"
 }
 
 # ---------- Génération HTML ----------
@@ -90,11 +99,12 @@ cat > "$REPORT_FILE" <<'EOF'
 <tr><th>Vérification</th><th>Statut</th><th>Recommandation</th><th>Docs</th></tr>
 EOF
 
-# Checks légers (détection uniquement, pas d’exécution)
-NODE_V="$(node -v 2>/dev/null)"; if [ -n "$NODE_V" ]; then
+# Détections légères (aucune commande lourde exécutée)
+NODE_V="$(node -v 2>/dev/null)"
+if [ -n "$NODE_V" ]; then
   row "Node présent ($NODE_V)" ok "OK" "https://nodejs.org"
 else
-  row "Node non trouvé" warn "Installer Node (>=18) quand tu peux" "https://nodejs.org/en/download"
+  row "Node non trouvé" warn "Installe Node (>=18) quand tu peux" "https://nodejs.org/en/download"
 fi
 
 if have pnpm; then PM="pnpm"
@@ -127,7 +137,7 @@ cat >> "$REPORT_FILE" <<'EOF'
 </body></html>
 EOF
 
-# Ouvre en arrière-plan sans bloquer
+# Ouvre le rapport en arrière-plan (sans bloquer le push)
 open_report_bg || true
 
 echo "✅ [husky] Pre-push non-bloquant exécuté. Le push continue."
