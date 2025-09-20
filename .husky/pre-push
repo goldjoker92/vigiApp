@@ -1,10 +1,13 @@
 #!/usr/bin/env sh
-# .husky/pre-push — NON BLOQUANT / ZERO INTERACTION / POSIX sh
-# - Génère un petit rapport HTML local
-# - Essaie d’ouvrir le rapport en arrière-plan (Chrome si possible)
-# - NE BLOQUE JAMAIS le push (exit 0 quoi qu’il arrive)
+# .husky/pre-push — NON BLOQUANT / ZERO INTERACTION / WINDOWS-FRIENDLY
+# - Génère un rapport HTML local
+# - Essaie d’ouvrir le rapport :
+#     * Windows: PowerShell Start-Process
+#     * macOS:   open (Chrome si présent)
+#     * Linux:   xdg-open/chrome/chromium
+# - NE BLOQUE JAMAIS le push (exit 0 inconditionnel)
 
-# Ne jamais stopper sur erreur
+# Ne jamais stopper sur erreurs
 set +e
 
 REPORT_DIR=".husky/logs"
@@ -28,45 +31,41 @@ row() {
     "$LABEL" "$(status_cell "$STATUS")" "$RECO" "$LINK" >> "$REPORT_FILE"
 }
 
-# Chemin absolu POSIX-safe (compatible Git Bash)
-abs_path() {
-  # 1) si realpath existe, on l'utilise
-  if have realpath; then
-    realpath "$1"
-    return
-  fi
-  # 2) fallback POSIX : cd dans le dossier puis concat basename
-  d="$(dirname -- "$1" 2>/dev/null)"
-  b="$(basename -- "$1" 2>/dev/null)"
-  # shellcheck disable=SC2164
-  (cd "$d" 2>/dev/null && pwd -P)/"$b"
+# Résolution de chemin ABSOLU sûre pour Windows via PowerShell si possible
+abs_path_win() {
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "(Resolve-Path '$1').Path" 2>/dev/null | tr -d '\r'
 }
 
+# Ouvre le fichier rapport en arrière-plan sans jamais bloquer
 open_report_bg() {
-  ABS="$(abs_path "$REPORT_FILE")"
+  ABS=""
 
-  # macOS
-  if have open; then
+  if have powershell.exe; then
+    ABS="$(abs_path_win "$REPORT_FILE")"
+    [ -z "$ABS" ] && ABS="$PWD/$REPORT_FILE"
+    # Ouvre dans le navigateur par défaut
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Start-Process '$ABS'" >/dev/null 2>&1
+  elif have open; then
+    ABS="$PWD/$REPORT_FILE"
     if [ -d "/Applications/Google Chrome.app" ]; then
       nohup open -a "Google Chrome" "$ABS" >/dev/null 2>&1 &
     else
       nohup open "$ABS" >/dev/null 2>&1 &
     fi
-  # Linux
   elif have xdg-open; then
+    ABS="$PWD/$REPORT_FILE"
     if have google-chrome; then
       nohup google-chrome "$ABS" >/dev/null 2>&1 &
     elif have chromium; then
-      nohup chromium "$ABS" >/devnull 2>&1 &
+      nohup chromium "$ABS" >/dev/null 2>&1 &
     else
       nohup xdg-open "$ABS" >/dev/null 2>&1 &
     fi
-  # Git Bash / Windows
-  elif have cmd.exe; then
-    # Ouvre avec le navigateur par défaut
-    cmd.exe /C start "" "$(echo "$ABS" | sed 's#/#\\#g')" >/dev/null 2>&1
+  else
+    ABS="$PWD/$REPORT_FILE"
   fi
 
+  # Affiche un lien file:// cliquable dans beaucoup de terminaux
   printf "🔗 Rapport: %s\n" "file://$ABS"
 }
 
@@ -124,7 +123,7 @@ else
 fi
 
 if [ -f package.json ]; then
-  row "Lint" warn "Tu peux lancer '$PM run lint' plus tard si besoin" "cmd:$PM run lint"
+  row "Lint" warn "Lance '$PM run lint' quand tu veux" "cmd:$PM run lint"
 else
   row "package.json" ok "Projet non JS/TS : rien à faire" "#"
 fi
