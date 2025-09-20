@@ -1,13 +1,11 @@
 #!/usr/bin/env sh
-# .husky/pre-push — NON BLOQUANT / ZERO INTERACTION / WINDOWS-FRIENDLY
-# - Génère un rapport HTML local
-# - Essaie d’ouvrir le rapport :
-#     * Windows: PowerShell Start-Process
-#     * macOS:   open (Chrome si présent)
-#     * Linux:   xdg-open/chrome/chromium
-# - NE BLOQUE JAMAIS le push (exit 0 inconditionnel)
+# .husky/pre-push — NON BLOQUANT / WINDOWS-FRIENDLY / 15s PROMPT
+# - Génère un rapport HTML
+# - Ouvre en arrière-plan (PowerShell/open/xdg-open)
+# - Propose des corrections (y/n, 15s). Aucune action n’empêche le push.
+# - Retourne TOUJOURS 0
 
-# Ne jamais stopper sur erreurs
+# Ne jamais stopper sur erreur
 set +e
 
 REPORT_DIR=".husky/logs"
@@ -31,45 +29,73 @@ row() {
     "$LABEL" "$(status_cell "$STATUS")" "$RECO" "$LINK" >> "$REPORT_FILE"
 }
 
-# Résolution de chemin ABSOLU sûre pour Windows via PowerShell si possible
-abs_path_win() {
-  powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "(Resolve-Path '$1').Path" 2>/dev/null | tr -d '\r'
+# ---------- PROMPT 15s : renvoie 'y', 'n' ou chaîne vide ----------
+prompt_yn_15s() {
+  # 1) Windows/PowerShell (fiable dans VS Code et Git Bash)
+  if have powershell.exe; then
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "
+      \$deadline=(Get-Date).AddSeconds(15);
+      Write-Host '❓ $1';
+      Write-Host '👉 Répondre y/n (auto-continue dans 15s)...';
+      while((Get-Date) -lt \$deadline){
+        if(\$Host.UI.RawUI.KeyAvailable){
+          \$k=\$Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown');
+          \$c=\$k.Character.ToString().ToLower();
+          if(\$c -eq 'y' -or \$c -eq 'n'){ Write-Output \$c; break }
+        }
+        Start-Sleep -Milliseconds 200
+      }
+    " 2>/dev/null | tr -d '\r'
+    return 0
+  fi
+  # 2) POSIX : boucle read -t
+  i=15; ans=""
+  echo "❓ $1"
+  echo "👉 Répondre y/n (auto-continue dans 15s)..."
+  while [ $i -gt 0 ]; do
+    printf "⏳ %2ds restantes : " "$i"
+    if read -r -t 1 ans 2>/dev/null; then
+      echo ""
+      printf "%s" "$ans"
+      return 0
+    fi
+    echo ""
+    i=$((i-1))
+  done
+  printf ""
 }
 
-# Ouvre le fichier rapport en arrière-plan sans jamais bloquer
-open_report_bg() {
-  ABS=""
-
+# ---------- EXEC EN ARRIÈRE-PLAN (n’attend pas, ne bloque pas) ----------
+bg_run() {
+  CMD="$1"
   if have powershell.exe; then
-    ABS="$(abs_path_win "$REPORT_FILE")"
-    [ -z "$ABS" ] && ABS="$PWD/$REPORT_FILE"
-    # Ouvre dans le navigateur par défaut
+    # Essaie avec élévation minimale si nécessaire
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -WindowStyle Hidden -Verb Open -FilePath 'cmd.exe' -ArgumentList '/c $CMD'" >/dev/null 2>&1
+  elif have nohup; then
+    nohup sh -lc "$CMD" >/dev/null 2>&1 &
+  else
+    (sh -lc "$CMD" >/dev/null 2>&1 &)
+  fi
+}
+
+# ---------- OUVERTURE RAPPORT (background) ----------
+open_report_bg() {
+  ABS="$PWD/$REPORT_FILE"
+  if have powershell.exe; then
     powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Start-Process '$ABS'" >/dev/null 2>&1
   elif have open; then
-    ABS="$PWD/$REPORT_FILE"
     if [ -d "/Applications/Google Chrome.app" ]; then
-      nohup open -a "Google Chrome" "$ABS" >/dev/null 2>&1 &
+      open -a "Google Chrome" "$ABS" >/dev/null 2>&1
     else
-      nohup open "$ABS" >/dev/null 2>&1 &
+      open "$ABS" >/dev/null 2>&1
     fi
   elif have xdg-open; then
-    ABS="$PWD/$REPORT_FILE"
-    if have google-chrome; then
-      nohup google-chrome "$ABS" >/dev/null 2>&1 &
-    elif have chromium; then
-      nohup chromium "$ABS" >/dev/null 2>&1 &
-    else
-      nohup xdg-open "$ABS" >/dev/null 2>&1 &
-    fi
-  else
-    ABS="$PWD/$REPORT_FILE"
+    xdg-open "$ABS" >/dev/null 2>&1
   fi
-
-  # Affiche un lien file:// cliquable dans beaucoup de terminaux
-  printf "🔗 Rapport: %s\n" "file://$ABS"
+  printf "🔗 Rapport: file://%s\n" "$ABS"
 }
 
-# ---------- Génération HTML ----------
+# ---------- HTML START ----------
 cat > "$REPORT_FILE" <<'EOF'
 <!DOCTYPE html>
 <html lang="fr">
@@ -93,17 +119,19 @@ cat > "$REPORT_FILE" <<'EOF'
 </head>
 <body>
 <h1>🚦 Husky Pre-push Report</h1>
-<p id="subtitle">Résumé ultra-rapide (non bloquant).</p>
+<p id="subtitle">Vérifications rapides (non bloquantes). Les éventuelles corrections peuvent être lancées en arrière-plan.</p>
 <table>
 <tr><th>Vérification</th><th>Statut</th><th>Recommandation</th><th>Docs</th></tr>
 EOF
 
-# Détections légères (aucune commande lourde exécutée)
+# ---------- CHECKS LÉGERS ----------
 NODE_V="$(node -v 2>/dev/null)"
 if [ -n "$NODE_V" ]; then
   row "Node présent ($NODE_V)" ok "OK" "https://nodejs.org"
 else
-  row "Node non trouvé" warn "Installe Node (>=18) quand tu peux" "https://nodejs.org/en/download"
+  row "Node" err "Installer Node LTS (>=18)" "https://nodejs.org/en/download"
+  ANS="$(prompt_yn_15s "Installer Node LTS maintenant (Windows: winget) ?")"
+  [ "$ANS" = "y" ] && bg_run "winget install -e --id OpenJS.NodeJS.LTS -s winget || choco install nodejs-lts -y"
 fi
 
 if have pnpm; then PM="pnpm"
@@ -116,6 +144,25 @@ else
   row "Package manager détecté" ok "Utilisation de $PM" "#"
 fi
 
+EXPO_OK="0"
+if have expo; then
+  EXPO_OK="1"
+else
+  # npx expo fonctionne sans install globale, mais on propose l’install globale pour le confort
+  row "Expo CLI" warn "Utilise 'npx expo' ou installe expo-cli globalement" "https://docs.expo.dev"
+  ANS="$(prompt_yn_15s "Installer Expo CLI globalement (npm i -g expo-cli) ?")"
+  [ "$ANS" = "y" ] && bg_run "npm i -g expo-cli"
+fi
+[ "$EXPO_OK" = "1" ] && row "Expo CLI" ok "OK" "https://docs.expo.dev"
+
+if have firebase; then
+  row "Firebase Tools" ok "OK" "https://firebase.google.com/docs/cli"
+else
+  row "Firebase Tools" warn "Installe firebase-tools (ou utilise npx firebase)" "https://firebase.google.com/docs/cli"
+  ANS="$(prompt_yn_15s "Installer Firebase Tools (npm i -g firebase-tools) ?")"
+  [ "$ANS" = "y" ] && bg_run "npm i -g firebase-tools"
+fi
+
 if [ -f pnpm-lock.yaml ] || [ -f yarn.lock ] || [ -f package-lock.json ]; then
   row "Lockfile" ok "OK" "#"
 else
@@ -123,20 +170,21 @@ else
 fi
 
 if [ -f package.json ]; then
-  row "Lint" warn "Lance '$PM run lint' quand tu veux" "cmd:$PM run lint"
+  row "Lint" warn "Tu peux lancer '$PM run lint' plus tard si besoin" "cmd:$PM run lint"
 else
   row "package.json" ok "Projet non JS/TS : rien à faire" "#"
 fi
 
+# ---------- HTML END ----------
 cat >> "$REPORT_FILE" <<'EOF'
 </table>
 <div class="summary">
-  <p>✅ Conclusion : push autorisé. Ce hook n'est jamais bloquant.</p>
+  <p>✅ Conclusion : le push continue. Ce hook est non bloquant.</p>
 </div>
 </body></html>
 EOF
 
-# Ouvre le rapport en arrière-plan (sans bloquer le push)
+# Ouvre le rapport en ARRIÈRE-PLAN et imprime un lien cliquable
 open_report_bg || true
 
 echo "✅ [husky] Pre-push non-bloquant exécuté. Le push continue."
