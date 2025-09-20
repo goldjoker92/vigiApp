@@ -5,7 +5,7 @@
 // - Tap = navigate vers le détail `/public-alerts/[id]`
 // - SANS régression: mêmes champs consommés (descricao, ruaNumero, cidade/estado, color…)
 // - Fallbacks sûrs: utilise titulo si descricao absente, kind/categoria si dispo
-// - Petites améliorations: renderItem mémo, keyExtractor stable, états vides propres
+// - PATCHS: keyExtractor durci + fallback explicite pour timeLeft vide + logs en DEV
 // -----------------------------------------------------------------------------
 
 import React, { useCallback } from 'react';
@@ -26,7 +26,7 @@ import usePublicAlerts24h, { timeLeft, timeAgo } from './usePublicAlerts24h';
  * @property {string=} cidade
  * @property {string=} estado
  * @property {string=} uf
- * @property {*} [createdAt]
+ * @property {*} [createdAt] // Firestore Timestamp ou number (ms)
  */
 
 export default function PublicAlertsFeedCore() {
@@ -34,10 +34,27 @@ export default function PublicAlertsFeedCore() {
   const { alerts, loading } = usePublicAlerts24h();
 
   // ----------- Hooks (must be before any early return) -----------
-  const keyExtractor = useCallback((i) => i.id, []);
+
+  // keyExtractor durci: id si présent, sinon une clé stable “composite”
+  // (pas parfait mais suffisant si id manquant exceptionnel)
+  const keyExtractor = useCallback((i) => {
+    if (i?.id) return String(i.id);
+    const ts =
+      (typeof i?.createdAt === 'number'
+        ? i.createdAt
+        : i?.createdAt?.toMillis?.?.() ?? 0) || 0;
+    const loc = `${i?.cidade || 'x'}-${i?.estado || i?.uf || 'y'}-${i?.ruaNumero || 'z'}`;
+    return `alert-${loc}-${ts}`;
+  }, []);
+
   const onPressItem = useCallback(
     (id) => {
       // route standard (garde la compat avec ta page détail)
+      if (__DEV__) {
+        // log discret en dev
+        // eslint-disable-next-line no-console
+        console.log('[PublicAlertsFeedCore] press item →', id);
+      }
       router.push(`/public-alerts/${id}`);
     },
     [router]
@@ -45,13 +62,33 @@ export default function PublicAlertsFeedCore() {
 
   const renderItem = useCallback(
     ({ item }) => {
-      // Fallbacks sûrs
+      // Fallbacks sûrs pour catégorie/description
       const cat = item.categoria || item.kind || 'Alerta público';
       const desc = item.descricao || item.titulo || 'Alerta público';
+
+      // UF/estado compatibles legacy
       const uf = item.estado || item.uf || '';
+
+      // Localisation affichée: "ruaNumero — cidade/UF" si on a une adresse précise
       const loc = item.ruaNumero
         ? `${item.ruaNumero} — ${item.cidade || ''}${uf ? `/${uf}` : ''}`
         : item.cidade || (uf ? `/${uf}` : '') || '';
+
+      // Fallback explicite pour l’échéance si helper renvoie vide
+      const left = timeLeft(item.createdAt) || '--';
+      const ago = timeAgo(item.createdAt);
+
+      if (__DEV__) {
+        // eslint-disable-next-line no-console
+        console.log('[PublicAlertsFeedCore] render item', {
+          id: item?.id,
+          cat,
+          hasDesc: !!desc,
+          loc,
+          left,
+          ago,
+        });
+      }
 
       return (
         <TouchableOpacity
@@ -93,18 +130,17 @@ export default function PublicAlertsFeedCore() {
                 {loc || 'sua região'}
               </Text>
             </View>
+
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Clock size={14} color="#8fa0b3" />
-              <Text style={{ color: '#8fa0b3', fontSize: 12, marginLeft: 6 }}>
-                {timeLeft(item.createdAt)}
-              </Text>
+              <Text style={{ color: '#8fa0b3', fontSize: 12, marginLeft: 6 }}>{left}</Text>
             </View>
           </View>
 
           {/* time ago */}
-          <Text style={{ color: '#8fa0b3', fontSize: 12, marginTop: 6 }}>
-            {timeAgo(item.createdAt)}
-          </Text>
+          {!!ago && (
+            <Text style={{ color: '#8fa0b3', fontSize: 12, marginTop: 6 }}>{ago}</Text>
+          )}
         </TouchableOpacity>
       );
     },
@@ -128,6 +164,10 @@ export default function PublicAlertsFeedCore() {
   }
 
   if (!alerts || alerts.length === 0) {
+    if (__DEV__) {
+      // eslint-disable-next-line no-console
+      console.log('[PublicAlertsFeedCore] empty state');
+    }
     return (
       <View
         style={{
@@ -156,6 +196,16 @@ export default function PublicAlertsFeedCore() {
       initialNumToRender={8}
       windowSize={10}
       removeClippedSubviews
+      // logs discrets pour mesurer la perf de rendu
+      onEndReachedThreshold={0.4}
+      onScrollBeginDrag={
+        __DEV__
+          ? () => {
+              // eslint-disable-next-line no-console
+              console.log('[PublicAlertsFeedCore] scroll start');
+            }
+          : undefined
+      }
     />
   );
 }

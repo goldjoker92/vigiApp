@@ -2,17 +2,19 @@
   "compilerOptions": {
     "strict": true,
     "module": "ESNext",
+    "target": "ES2020",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
     "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "baseUrl": ".",
     "paths": {
-      "@/*": ["./*"]
-    }
+      "@/*": ["./", "app/*"]
+    },
+    "allowJs": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true
   },
-  "include": [
-    "**/*.ts",
-    "**/*.tsx",
-    "app/(tabs)/_layout.jsx",
-    "app/(tabs)/index.jsx",
-    "app/chats/[chatId].jsx"
-  ],
+  "include": ["**/*.ts", "**/*.tsx", "app/**/*.jsx", "app/**/*.js"],
   "extends": "expo/tsconfig.base"
 }

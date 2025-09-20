@@ -4,6 +4,7 @@
 // - Abonnement Firestore temps réel (onSnapshot)
 // - Tick local 1/min pour rafraîchir timeAgo() / timeLeft() sans requery
 // - TTL robuste (re-filtre côté client au cas où) + tri desc
+// - PATCHS: logs conditionnels (__DEV__) + gestion stricte Timestamp | number
 // -----------------------------------------------------------------------------
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -12,50 +13,40 @@ import { collection, onSnapshot, orderBy, query, where, Timestamp } from 'fireba
 
 export const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
-export function timeAgo(ts) {
-  if (!ts) {
-    return '';
-  }
-  const created = typeof ts === 'number' ? ts : (ts.toMillis?.() ?? 0);
-  if (!created) {
-    return '';
-  }
+/** Normalise Firestore.Timestamp ou number(ms) vers un nombre de ms fiable. */
+function getMillis(ts: any): number {
+  if (!ts) return 0;
+  if (typeof ts === 'number') return ts > 0 ? ts : 0;
+  const maybe = ts?.toMillis?.();
+  return typeof maybe === 'number' && maybe > 0 ? maybe : 0;
+}
+
+export function timeAgo(ts: any) {
+  const created = getMillis(ts);
+  if (!created) return '';
   const m = Math.max(0, Math.floor((Date.now() - created) / 60000));
-  if (m < 1) {
-    return 'agora';
-  }
-  if (m < 60) {
-    return `${m} min atrás`;
-  }
+  if (m < 1) return 'agora';
+  if (m < 60) return `${m} min atrás`;
   const h = Math.floor(m / 60);
   return `${h} h atrás`;
 }
 
-export function timeLeft(ts) {
-  if (!ts) {
-    return '';
-  }
-  const created = typeof ts === 'number' ? ts : (ts.toMillis?.() ?? 0);
-  if (!created) {
-    return '';
-  }
+export function timeLeft(ts: any) {
+  const created = getMillis(ts);
+  if (!created) return '';
   const leftMs = created + ONE_DAY_MS - Date.now();
-  if (leftMs <= 0) {
-    return 'expirada';
-  }
+  if (leftMs <= 0) return 'expirada';
   const mins = Math.floor(leftMs / 60000);
-  if (mins < 60) {
-    return `${mins} min restantes`;
-  }
+  if (mins < 60) return `${mins} min restantes`;
   const h = Math.floor(mins / 60);
   const r = mins % 60;
   return `${h} h ${r} min restantes`;
 }
 
 export default function usePublicAlerts24h() {
-  const [alerts, setAlerts] = useState(null); // null => loading
+  const [alerts, setAlerts] = useState<any[] | null>(null); // null => loading
   const [, forceTick] = useState(0);
-  const tickRef = useRef(null);
+  const tickRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const since = Timestamp.fromMillis(Date.now() - ONE_DAY_MS);
@@ -65,17 +56,27 @@ export default function usePublicAlerts24h() {
       orderBy('createdAt', 'desc')
     );
 
-    console.log('[usePublicAlerts24h] subscribe 24h window');
+    if (__DEV__) {
+      // eslint-disable-next-line no-console
+      console.log('[usePublicAlerts24h] subscribe 24h window');
+    }
+
     const unsub = onSnapshot(
       q,
       (snap) => {
-        const items = [];
+        const items: any[] = [];
         snap.forEach((d) => items.push({ id: d.id, ...d.data() }));
         setAlerts(items);
-        console.log('[usePublicAlerts24h] received', items.length, 'items');
+        if (__DEV__) {
+          // eslint-disable-next-line no-console
+          console.log('[usePublicAlerts24h] received', items.length, 'items');
+        }
       },
       (err) => {
-        console.log('[usePublicAlerts24h] onSnapshot error:', err?.message || err);
+        if (__DEV__) {
+          // eslint-disable-next-line no-console
+          console.log('[usePublicAlerts24h] onSnapshot error:', err?.message || err);
+        }
         setAlerts([]);
       }
     );
@@ -85,25 +86,30 @@ export default function usePublicAlerts24h() {
 
     return () => {
       unsub();
-      if (tickRef.current) {
-        clearInterval(tickRef.current);
-      }
+      if (tickRef.current) clearInterval(tickRef.current);
     };
   }, []);
 
-  // TTL robuste: re-filtrage client 24h + tri desc si jamais l'ordre bouge
+  // TTL robuste: re-filtrage client ≤ 24h + tri desc (au cas où l’ordre bouge)
   const visible = useMemo(() => {
-    if (!alerts) {
-      return null;
-    }
+    if (!alerts) return null;
     const now = Date.now();
-    return alerts
-      .filter((a) => {
-        const ms = a.createdAt?.toMillis?.() ?? 0;
-        return ms > 0 && now - ms < ONE_DAY_MS;
-      })
-      .sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0));
+
+    const filtered = alerts.filter((a) => {
+      const ms = getMillis(a?.createdAt);
+      return ms > 0 && now - ms < ONE_DAY_MS;
+    });
+
+    filtered.sort((a, b) => getMillis(b?.createdAt) - getMillis(a?.createdAt));
+
+    if (__DEV__) {
+      // eslint-disable-next-line no-console
+      console.log('[usePublicAlerts24h] visible count', filtered.length);
+    }
+
+    return filtered;
   }, [alerts]);
 
   return { alerts: visible, loading: visible === null };
 }
+// ============================================================================

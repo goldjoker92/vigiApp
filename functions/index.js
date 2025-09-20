@@ -2,12 +2,12 @@
  * functions/index.js
  * -------------------------------------------------------------
  * Point d’entrée Functions (v2) — CommonJS
- * - Garde tous les exports existants (compatibilité)
+ * - Conserve la compat (exports existants)
  * - Init Firebase Admin (idempotent)
  * - Options globales (région, ressources)
- * - Expose un /ping de santé
- * - Lazy-load des handlers (HTTP/Firestore) pour éviter les cold starts lourds
- * - NEW: expose le trigger Firestore fanoutPublicAlert (onCreate publicAlerts)
+ * - /ping de santé
+ * - Lazy-load HTTP handlers (réduit le cold start)
+ * - IMPORTANT: export direct des TRIGGERS (pas de lazy wrapper)
  * -------------------------------------------------------------
  */
 
@@ -54,13 +54,13 @@ console.log('[BOOT] Functions v2 configurées', {
 });
 
 // ============================================================================
-// L A Z Y   E X P O R T S
+// L A Z Y   E X P O R T S  (HTTP UNIQUEMENT)
 // ----------------------------------------------------------------------------
-// Chaque export est une petite fonction qui require le module au moment du call.
+// Chaque export HTTP est un petit wrapper qui require le module au moment du call.
 // Avantages :
 //  - Cold start plus léger (pas de chargement massif au boot).
-//  - Moins de timeouts Node 20 lors du chargement.
 //  - Isolation claire des responsabilités (src/*).
+// NB: Ne PAS utiliser ce pattern pour les triggers event-driven.
 // ============================================================================
 
 // ---------- Maintenance / purge ----------
@@ -105,20 +105,31 @@ exports.sendPublicAlert = (...args) => {
   return sendPublicAlert(...args);
 };
 
+// ---------- NEW: Footprints (HTTP) ----------
+exports.getAlertFootprints = (...args) => {
+  console.log('[LAZY-LOAD] ./src/footprints -> getAlertFootprints');
+  const { getAlertFootprints } = require('./src/footprints');
+  return getAlertFootprints(...args);
+};
+
+// ============================================================================
+// T R I G G E R S   (E X P O R T   D I R E C T)
+// ----------------------------------------------------------------------------
+// IMPORTANT: Les triggers doivent être exportés DIRECTEMENT pour que la
+// plateforme puisse les enregistrer au chargement du module.
+// Pas de lazy wrapper ici.
+// ============================================================================
+
 // ---------- NEW: Trigger Firestore (fan-out 1 km) ----------
 // - onDocumentCreated('publicAlerts/{alertId}')
 // - Sélection ≤ 1 km (geohash bbox + Haversine)
 // - Envoi FCM multicast
 // - Log de diffusion -> collection alertDeliveries
-// NB: Le code du trigger est dans ./src/alerts (pour rester léger ici)
-exports.fanoutPublicAlert = (...args) => {
-  console.log('[LAZY-LOAD] ./src/alerts -> fanoutPublicAlert');
-  const { fanoutPublicAlert } = require('./src/alerts');
-  return fanoutPublicAlert(...args);
-};
+// NB: Le trigger est créé dans ./src/alerts et exporté tel quel ici.
+exports.fanoutPublicAlert = require('./src/alerts').fanoutPublicAlert;
 
 // ---------- Fin de déclaration ----------
-console.log('[BOOT] Endpoints déclarés (lazy mode):', {
+console.log('[BOOT] Endpoints déclarés:', {
   ping: true,
   purgeAndArchiveOldRequestsAndChats: true,
   sendPublicAlertByCEP: true,
@@ -126,5 +137,6 @@ console.log('[BOOT] Endpoints déclarés (lazy mode):', {
   testFCM: true,
   sendPublicAlertByAddress: true,
   sendPublicAlert: true,
-  fanoutPublicAlert: true, // le trigger 1 km
+  getAlertFootprints: true,
+  fanoutPublicAlert: true, // trigger Firestore (export direct)
 });
