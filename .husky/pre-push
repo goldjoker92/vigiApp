@@ -1,19 +1,18 @@
-#!/bin/sh
-# .husky/pre-push
-# -------------------------------------------------------------
-# - Rapport HTML (table + conclusion dynamique)
-# - Ouverture auto dans Google Chrome (fallback: navigateur par défaut)
-# - Lien cliquable "file://..." dans le terminal
-# - Recos interactives avec question (15s). Rien n'est bloquant.
-# -------------------------------------------------------------
+#!/usr/bin/env bash
+# .husky/pre-push  —  NON BLOQUANT
+# - Ouvre un rapport HTML (Chrome si possible, sinon navigateur par défaut)
+# - Affiche un lien file:// cliquable
+# - Pose des questions (15s) mais NE BLOQUE JAMAIS le push
+# - Tolère les erreurs (retourne toujours 0)
 
-set +e
+set +e  # ne pas stopper sur erreurs
+# pipefail off pour éviter des exits non voulus
+set +o pipefail
 
 REPORT_DIR=".husky/logs"
 REPORT_FILE="$REPORT_DIR/last-prepush-report.html"
-mkdir -p "$REPORT_DIR"
+mkdir -p "$REPORT_DIR" 2>/dev/null || true
 
-# -------- Helpers --------
 have() { command -v "$1" >/dev/null 2>&1; }
 
 status_cell() {
@@ -25,11 +24,9 @@ status_cell() {
   esac
 }
 
-# row "Check label" ok|warn|err "Recommendation text" "https://doc-or-cmd"
 row() {
-  LABEL="$1"; STATUS="$2"; RECO="$3"; LINK="$4"
+  local LABEL="$1" STATUS="$2" RECO="$3" LINK="$4"
   echo "<tr><td>$LABEL</td>$(status_cell "$STATUS")<td>$RECO</td><td><a href='$LINK' target='_blank'>link</a></td></tr>" >> "$REPORT_FILE"
-  # counters
   case "$STATUS" in
     ok)   OK_CNT=$((OK_CNT+1));;
     warn) WARN_CNT=$((WARN_CNT+1));;
@@ -37,73 +34,78 @@ row() {
   esac
 }
 
+# Question 15s — robuste même si la lecture échoue
 ask_and_maybe_run() {
-  MSG="$1"; CMD="$2"
+  local MSG="$1" CMD="$2"
   echo ""
   echo "❓ $MSG"
   echo "👉 Lancer la commande ? (y/n, auto-continuer en 15s)"
   echo "   $CMD"
-  ANS=""
+
+  local ANS=""
   for i in $(seq 15 -1 1); do
     printf "⏳ Attente… %2ds restantes (y/n): " "$i"
-    read -r -t 1 ANS
-    echo ""
-    if [ "$ANS" = "y" ]; then
-      echo "▶️  Exécution: $CMD"
-      sh -c "$CMD"
-      return 0
-    elif [ "$ANS" = "n" ]; then
-      echo "⏩ Ignoré (on continue le push)."
-      return 0
+    # read -t fonctionne en bash; si ça échoue, on considère "pas de réponse"
+    if read -r -t 1 ANS 2>/dev/null; then
+      echo ""
+      if [ "$ANS" = "y" ]; then
+        echo "▶️  Exécution: $CMD"
+        # on ignore l’issue de la commande (jamais bloquant)
+        bash -lc "$CMD" || true
+        return 0
+      elif [ "$ANS" = "n" ]; then
+        echo "⏩ Ignoré (on continue le push)."
+        return 0
+      fi
+    else
+      echo "" >/dev/null
     fi
   done
-  echo "⏩ Pas de réponse après 15s → on continue le push."
+  echo "⏩ Pas de réponse → on continue le push."
 }
 
 abs_path() {
-  # Résout un chemin absolu compatible macOS/Linux
   if have realpath; then realpath "$1"
   else
-    # fallback
     (cd "$(dirname "$1")" && pwd)/"$(basename "$1")"
   fi
 }
 
 open_report() {
+  local ABS FILE_URL
   ABS="$(abs_path "$REPORT_FILE")"
   FILE_URL="file://$ABS"
 
-  # Tente Chrome d'abord
+  # macOS
   if have open; then
-    # macOS
     if [ -d "/Applications/Google Chrome.app" ]; then
-      open -a "Google Chrome" "$ABS" >/dev/null 2>&1 || open "$ABS" >/dev/null 2>&1
+      open -a "Google Chrome" "$ABS" >/dev/null 2>&1 || open "$ABS" >/dev/null 2>&1 || true
     else
-      open "$ABS" >/dev/null 2>&1
+      open "$ABS" >/dev/null 2>&1 || true
     fi
+  # Linux
   elif have xdg-open; then
-    # Linux
     if have google-chrome; then
-      google-chrome "$ABS" >/dev/null 2>&1 || xdg-open "$ABS" >/dev/null 2>&1 &
+      (google-chrome "$ABS" >/dev/null 2>&1 || xdg-open "$ABS" >/dev/null 2>&1) || true
     elif have chromium; then
-      chromium "$ABS" >/dev/null 2>&1 || xdg-open "$ABS" >/dev/null 2>&1 &
+      (chromium "$ABS" >/dev/null 2>&1 || xdg-open "$ABS" >/dev/null 2>&1) || true
     else
-      xdg-open "$ABS" >/dev/null 2>&1 &
+      xdg-open "$ABS" >/dev/null 2>&1 || true
     fi
+  # Git Bash/Windows (best effort)
   elif have start; then
-    # Git Bash Windows (best effort)
-    start "" "$ABS" >/dev/null 2>&1
+    start "" "$ABS" >/dev/null 2>&1 || true
   fi
 
   echo ""
-  echo "👉 Ouvre le rapport dans le navigateur (Chrome si dispo)."
-  echo "🔗 Lien cliquable : \033[32m$FILE_URL\033[0m"
+  echo "👉 Rapport ouvert dans le navigateur (si possible)."
+  echo "🔗 Lien: \033[32mfile://$ABS\033[0m"
   echo ""
 }
 
-# -------- HTML start --------
+# ---------- Génération HTML ----------
 OK_CNT=0; WARN_CNT=0; ERR_CNT=0
-cat > "$REPORT_FILE" <<EOF
+cat > "$REPORT_FILE" <<'EOF'
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -131,42 +133,34 @@ cat > "$REPORT_FILE" <<EOF
 <tr><th>Vérification</th><th>Statut</th><th>Recommandation</th><th>Docs</th></tr>
 EOF
 
-# =======================
-# VÉRIFS EXEMPLE (modifie/complète à ta guise)
-# =======================
-
-# Node
+# ---------- Checks exemple (ajuste librement) ----------
 if have node; then
   NODE_V="$(node -v 2>/dev/null)"
   row "Node présent ($NODE_V)" ok "OK" "https://nodejs.org"
 else
   row "Node non trouvé" err "Installer Node (>=18)" "https://nodejs.org/en/download"
-  ask_and_maybe_run "Installer Node via nvm ?" "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash"
+  ask_and_maybe_run "Installer Node via nvm ?" "curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash"
 fi
 
-# Package manager (pnpm > yarn > npm)
-if have pnpm; then
-  PM="pnpm"
-elif have yarn; then
-  PM="yarn"
-else
-  PM="npm"
-fi
+# package manager
+if have pnpm; then PM="pnpm"
+elif have yarn; then PM="yarn"
+else PM="npm"; fi
 row "Package manager détecté" ok "Utilisation de $PM" "https://pnpm.io / https://yarnpkg.com / https://docs.npmjs.com"
 
-# Lint (interactif, jamais bloquant)
+# lint (jamais bloquant)
 if [ -f package.json ]; then
   ask_and_maybe_run "Exécuter le lint maintenant ?" "$PM run lint"
   if [ $? -eq 0 ]; then
     row "Lint" ok "OK ou ignoré" "cmd:$PM run lint"
   else
-    row "Lint" warn "Des avertissements/erreurs possibles (push non bloqué)" "cmd:$PM run lint"
+    row "Lint" warn "Des avertissements possibles (push non bloqué)" "cmd:$PM run lint"
   fi
 else
   row "package.json absent" warn "Projet non JS/TS ? Ignoré." "#"
 fi
 
-# Expo Doctor (si expo dispo)
+# expo doctor (optionnel)
 if have expo; then
   ask_and_maybe_run "Exécuter expo doctor ?" "expo doctor --fix"
   if [ $? -eq 0 ]; then
@@ -176,14 +170,14 @@ if have expo; then
   fi
 fi
 
-# Lockfile check (exemple)
+# lockfile
 if [ -f pnpm-lock.yaml ] || [ -f yarn.lock ] || [ -f package-lock.json ]; then
   row "Lockfile présent" ok "OK" "#"
 else
-  row "Lockfile absent" warn "Génère un lockfile pour des builds reproductibles" "https://classic.yarnpkg.com/lang/en/docs/yarn-lock"
+  row "Lockfile absent" warn "Génère un lockfile pour builds reproductibles" "https://classic.yarnpkg.com/lang/en/docs/yarn-lock"
 fi
 
-# -------- HTML end (conclusion dynamique) --------
+# ---------- Conclusion ----------
 CONCLUSION="✅ Conclusion : push autorisé."
 if [ "$ERR_CNT" -gt 0 ]; then
   CONCLUSION="✅ Conclusion : push autorisé. Des erreurs ont été détectées mais n'empêchent pas le push."
@@ -200,8 +194,9 @@ cat >> "$REPORT_FILE" <<EOF
 </body></html>
 EOF
 
-# Ouvre & imprime le lien cliquable
-open_report
+# Ouvrir le rapport (et ne jamais échouer si l'ouverture rate)
+open_report || true
 
 echo "✅ [husky] Pre-push terminé. Le push continue."
+# >>>> GARANTIE NON-BLOQUANTE <<<<
 exit 0
