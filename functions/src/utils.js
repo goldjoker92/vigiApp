@@ -1,12 +1,19 @@
 /**
- * utils.js (VERBOSE + CLEAN)
- * - Init ADMIN (idempotent)
- * - Firestore handle
- * - Logs & helpers génériques
- * - Expo push (tes fonctions existantes, inchangées)
- * - Helpers “Public Alerts”
+ * utils.js (VERBOSE + CLEAN, NO REGRESSION)
+ * ----------------------------------------------------------------------
+ * - Init ADMIN (idempotent) + Firestore handle
+ * - Logs formatés (exportés) + helpers génériques
+ * - Helpers “Public Alerts” (labels, couleurs, distances…)
+ * - Rayon de propagation par type d’incident (kind) -> garantit la sélection
+ *   des destinataires dans le rayon (par défaut 1 km), extensible 3 km.
+ * - Expo push (inchangé) + variantes avec mapping des réponses
  * - FCM wrapper (sendToToken) ✅ channelId + sound corrigés
- * - upsertPublicAlertDoc (merge idempotent)
+ * - upsertPublicAlertDoc (merge idempotent) -> applique le bon radius
+ * - Delivery logs & tokens helpers
+ * - Error wrapper
+ * - NEW: helpers retries (classification des erreurs FCM) + job builder (optionnel)
+ *   => pour pipeline “presque 100%” via pushQueue (sans casser l’existant)
+ * ----------------------------------------------------------------------
  */
 
 /* eslint-env node */
@@ -16,16 +23,21 @@ const functions = require('firebase-functions');
 const v1functions = require('firebase-functions/v1');
 const admin = require('firebase-admin');
 
-// ---- Init admin — idempotent
+// ======================================================================
+// Init admin — idempotent
+// ======================================================================
 if (admin.apps.length === 0) {
   admin.initializeApp();
 }
 const db = admin.firestore();
 
-// ---- Logs formatés
+// ======================================================================
+// Logs formatés (exportés)
+// ======================================================================
 const APP_TAG = 'VigiApp';
 const LIB_TAG = 'FnsUtils';
 const nowIso = () => new Date().toISOString();
+
 const log = (...a) => console.log(`[${APP_TAG}][${LIB_TAG}][${nowIso()}]`, ...a);
 const warn = (...a) => console.warn(`[${APP_TAG}][${LIB_TAG}][${nowIso()}]`, ...a);
 const err = (...a) => console.error(`[${APP_TAG}][${LIB_TAG}][${nowIso()}]`, ...a);
@@ -60,7 +72,7 @@ function dedupe(arr) {
   return Array.from(new Set(arr));
 }
 
-// ---- Auth guard (conserve le comportement)
+// ---- Auth guard (inchangé)
 function assertRole(context, allowed = ['admin', 'moderator']) {
   const role = context?.auth?.token?.role;
   if (!role || !allowed.includes(role)) {
@@ -73,26 +85,54 @@ function assertRole(context, allowed = ['admin', 'moderator']) {
 }
 
 // ======================================================================
-// Helpers “Public Alerts”
+// Helpers “Public Alerts” — sélection & UI
 // ======================================================================
-// --- Portée V1 (incident public) ---
+// Défaut historique (incident public) : 1 km
 const DEFAULT_ALERT_RADIUS_M = 1000;
 
-const toDigits = (v = '') => String(v).replace(/\D/g, '');
-const isHexColor = (c) => /^#?[0-9A-Fa-f]{6}$/.test(String(c || ''));
-const normColor = (c) => (String(c || '').startsWith('#') ? String(c) : `#${c}`);
+// Rayon de propagation par type d’incident (m)
+// -> Permet d’étendre facilement à 3000 m pour enfant/animal/objet perdu
+const PROPAGATION_RADIUS_BY_KIND_M = Object.freeze({
+  publicIncident: 1000, // incident public (actuel)
+  missingChild: 3000, // enfant (à venir)
+  missingAnimal: 3000, // animal (à venir)
+  lostObject: 3000, // objet perdu (à venir)
+});
 
-/**
- * Force un rayon valide en mètres. Log un WARN si fallback.
- */
+// Style par défaut du cercle (front). L’user est le centre visuel.
+// NB: côté back, on utilise ce même radius pour la sélection.
+const CIRCLE_STYLE_DEFAULT = Object.freeze({
+  radiusM: DEFAULT_ALERT_RADIUS_M,
+  strokeColor: '#ef4444',
+  strokeWeight: 5,
+  fill: false,
+});
+
+// Résout le rayon selon kind + override éventuel depuis la payload
 function coerceRadiusM(v) {
   const n = Number(v);
   if (Number.isFinite(n) && n > 0) {
     return n;
   }
-  warn(`[coerceRadiusM] valeur invalide "${v}" → fallback ${DEFAULT_ALERT_RADIUS_M}m`);
+  warn(`[coerceRadiusM] valeur invalide "${v}" -> fallback ${DEFAULT_ALERT_RADIUS_M}m`);
   return DEFAULT_ALERT_RADIUS_M;
 }
+function resolveRadiusByKind(kind, explicitRadiusM) {
+  if (explicitRadiusM != null) {
+    return coerceRadiusM(explicitRadiusM);
+  }
+  const k = String(kind || '').trim();
+  const mapped = PROPAGATION_RADIUS_BY_KIND_M[k];
+  return Number.isFinite(mapped) ? mapped : DEFAULT_ALERT_RADIUS_M;
+}
+function getCircleStyleForKind(kind) {
+  const r = resolveRadiusByKind(kind, null);
+  return { ...CIRCLE_STYLE_DEFAULT, radiusM: r };
+}
+
+const toDigits = (v = '') => String(v).replace(/\D/g, '');
+const isHexColor = (c) => /^#?[0-9A-Fa-f]{6}$/.test(String(c || ''));
+const normColor = (c) => (String(c || '').startsWith('#') ? String(c) : `#${c}`);
 
 const coerceBool = (v) => {
   if (typeof v === 'boolean') {
@@ -107,16 +147,15 @@ function resolveAccentColor({ severity, formColor }) {
   }
   if (severity === 'high' || severity === 'grave') {
     return '#FF3B30';
-  } // rouge
+  }
   if (severity === 'low' || severity === 'minor') {
     return '#FFE600';
-  } // jaune
+  }
   if (severity === 'medium') {
     return '#FFA500';
-  } // orange
-  return '#0A84FF'; // bleu par défaut
+  }
+  return '#0A84FF';
 }
-
 function localLabel({ endereco, bairro, cidade, uf }) {
   if (endereco) {
     return endereco;
@@ -132,7 +171,6 @@ function localLabel({ endereco, bairro, cidade, uf }) {
   }
   return 'sua região';
 }
-
 function textsBySeverity(sev, local, distText) {
   const sfx = distText
     ? ` (a ${distText}). Abra para mais detalhes.`
@@ -150,7 +188,7 @@ function textsBySeverity(sev, local, distText) {
   }
 }
 
-// (utiles pour l’endpoint “adresse”)
+// Distance Haversine (m) — utile pour filtrage précis (post-geohash)
 function distanceMeters(lat1, lon1, lat2, lon2) {
   const R = 6371000;
   const toRad = (x) => (x * Math.PI) / 180;
@@ -164,7 +202,7 @@ function distanceMeters(lat1, lon1, lat2, lon2) {
 const fmtDist = (m) => (m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`);
 
 // ======================================================================
-// Expo Push — (inchangé, juste comments + logs)
+// Expo Push — (inchangé, robuste, loggé)
 // ======================================================================
 async function expoPushSend(tokens, title, body, data = {}) {
   if (!Array.isArray(tokens) || tokens.length === 0) {
@@ -398,10 +436,10 @@ async function cleanInvalidTokens(expoResults, tokenMap) {
 // FCM wrapper — ✅ canal & son corrigés + data stringifiée
 // ======================================================================
 function stringifyDataValues(obj) {
-  // FCM data = { [key: string]: string }; on évite undefined/null
+  // FCM data = { [key: string]: string } ; éviter undefined/null → ''
   const out = {};
   for (const [k, v] of Object.entries(obj || {})) {
-    out[k] = v === null ? '' : String(v);
+    out[k] = v === undefined || v === null ? '' : String(v);
   }
   return out;
 }
@@ -419,11 +457,11 @@ async function sendToToken({ token, title, body, image, androidColor, data = {} 
     },
     android: {
       priority: 'high', // delivery prioritaire
-      collapseKey: 'vigiapp-public-alert', // facultatif: regroupe
+      collapseKey: 'vigiapp-public-alert',
       notification: {
         channelId: 'alerts-high', // ✅ BON CANAL (heads-up)
         color: androidColor || '#FFA500',
-        sound: 'default', // ✅ CORRECT (pas defaultSound)
+        sound: 'default', // ✅ CORRECT
         visibility: 'PUBLIC',
         tag: 'vigiapp-public-alert',
         // Certains OEM lisent encore ces champs:
@@ -445,6 +483,7 @@ async function sendToToken({ token, title, body, image, androidColor, data = {} 
 
 // ======================================================================
 // Firestore — upsert publicAlerts/{alertId} (merge idempotent)
+// -> GARANTIT que le doc possède le radius correct (kind-aware)
 // ======================================================================
 async function upsertPublicAlertDoc({
   alertId,
@@ -456,16 +495,17 @@ async function upsertPublicAlertDoc({
   cep,
   lat,
   lng,
-  radius_m,
+  radius_m, // optionnel : si absent, résolu via `kind`
   severity,
   accent,
   image,
   expiresAt,
+  kind, // publicIncident (default) / missingChild / missingAnimal / lostObject
 }) {
   const ref = db.collection('publicAlerts').doc(alertId);
 
   const payload = {
-    // --- Schéma standard pour le front ---
+    // Schéma front
     titulo: titulo || descricao || 'Alerta público',
     descricao: descricao || 'Alerta público',
     endereco: endereco || null,
@@ -474,32 +514,38 @@ async function upsertPublicAlertDoc({
     cep: cep || null,
     lat: Number.isFinite(lat) ? lat : null,
     lng: Number.isFinite(lng) ? lng : null,
-    radius_m: coerceRadiusM(radius_m),
+
+    // ✅ Radius appliqué côté back (override si fourni)
+    radius_m: resolveRadiusByKind(kind, radius_m),
+
     status: 'active',
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    expiresAt, // clé pour gérer l’expiration côté app
+    expiresAt,
 
-    // --- Meta UI ---
+    // Meta UI
     gravidade: severity || 'medium',
     color: accent || null,
     image: image || null,
 
-    // --- Compat legacy (ne rien casser)
+    // Compat legacy (ne rien casser)
     ruaNumero: endereco || null,
     estado: uf || null,
     location: {
       latitude: Number.isFinite(lat) ? lat : null,
       longitude: Number.isFinite(lng) ? lng : null,
     },
+
+    // Info
+    kind: kind || 'publicIncident',
   };
 
-  log('[upsertPublicAlertDoc] publicAlerts/%s ←', alertId, safeJson(payload, 400));
+  log('[upsertPublicAlertDoc] publicAlerts/%s ←', alertId, safeJson(payload, 500));
   await ref.set(payload, { merge: true }); // idempotent
   return { id: alertId };
 }
 
 // ======================================================================
-// Logs de delivery & fetch tokens (préservé)
+// Delivery & tokens
 // ======================================================================
 async function createDeliveryLog(kind, meta) {
   const ref = await db.collection('deliveries').add({
@@ -549,7 +595,9 @@ async function getTokensByUserIds(userIds) {
   return tokens;
 }
 
-// ---- Error wrapper (avec durée)
+// ======================================================================
+// Error wrapper (avec durée)
+// ======================================================================
 async function errorHandlingWrapper(functionName, callback) {
   const start = Date.now();
   try {
@@ -570,6 +618,43 @@ async function errorHandlingWrapper(functionName, callback) {
 }
 
 // ======================================================================
+// NEW — Helpers retries (optionnels, pour fan-out + worker sans régression)
+// ======================================================================
+// Classification minimaliste des erreurs FCM
+function isTransientFcmError(code) {
+  // codes “recoverable” connus/équivalents
+  return [
+    'messaging/internal-error',
+    'messaging/server-unavailable',
+    'messaging/unavailable',
+    'messaging/timeout',
+  ].includes(String(code || '').toLowerCase());
+}
+function isFatalFcmError(code) {
+  // tokens invalides/inexistants → à nettoyer
+  return [
+    'messaging/registration-token-not-registered',
+    'messaging/invalid-registration-token',
+  ].includes(String(code || '').toLowerCase());
+}
+
+// Construction d’un job de retry idempotent (alertId+token)
+function buildRetryJob({ alertId, token, payload, attempt = 0 }) {
+  const crypto = require('crypto');
+  const _id = crypto.createHash('sha256').update(`${alertId}:${token}`).digest('hex');
+  return {
+    _id,
+    alertId,
+    token,
+    payload, // { title, body, data, androidColor, image }
+    status: 'pending',
+    attempt,
+    nextRunAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+}
+
+// ======================================================================
 // Exports
 // ======================================================================
 module.exports = {
@@ -579,12 +664,17 @@ module.exports = {
   admin,
   db,
 
+  // Logs & tools
+  log,
+  warn,
+  err,
+  safeJson,
+  maskToken,
+
   // Génériques
   chunk,
   dedupe,
   assertRole,
-  maskToken,
-  safeJson,
 
   // Public Alerts helpers
   toDigits,
@@ -594,7 +684,13 @@ module.exports = {
   textsBySeverity,
   distanceMeters,
   fmtDist,
+
+  // Propagation & cercle (front/back cohérents)
   DEFAULT_ALERT_RADIUS_M,
+  PROPAGATION_RADIUS_BY_KIND_M,
+  CIRCLE_STYLE_DEFAULT,
+  resolveRadiusByKind,
+  getCircleStyleForKind,
   coerceRadiusM,
 
   // Expo push
@@ -612,4 +708,9 @@ module.exports = {
   getTokensByCEP,
   getTokensByUserIds,
   errorHandlingWrapper,
+
+  // Retries (optionnels)
+  isTransientFcmError,
+  isFatalFcmError,
+  buildRetryJob,
 };

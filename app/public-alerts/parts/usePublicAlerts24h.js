@@ -1,7 +1,10 @@
+// app/hooks/usePublicAlerts24h.ts
+// -----------------------------------------------------------------------------
 // Hook unique pour récupérer les alertes publiques des 24 dernières heures
 // - Abonnement Firestore temps réel (onSnapshot)
-// - Tick local 1/min pour rafraîchir les compteurs (sans requery)
-// - Retourne { alerts, loading } déjà filtrés (TTL 24h)
+// - Tick local 1/min pour rafraîchir timeAgo() / timeLeft() sans requery
+// - TTL robuste (re-filtre côté client au cas où) + tri desc
+// -----------------------------------------------------------------------------
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { db } from '@/firebase';
@@ -13,7 +16,10 @@ export function timeAgo(ts) {
   if (!ts) {
     return '';
   }
-  const created = ts.toMillis?.() ?? ts;
+  const created = typeof ts === 'number' ? ts : (ts.toMillis?.() ?? 0);
+  if (!created) {
+    return '';
+  }
   const m = Math.max(0, Math.floor((Date.now() - created) / 60000));
   if (m < 1) {
     return 'agora';
@@ -29,7 +35,10 @@ export function timeLeft(ts) {
   if (!ts) {
     return '';
   }
-  const created = ts.toMillis?.() ?? ts;
+  const created = typeof ts === 'number' ? ts : (ts.toMillis?.() ?? 0);
+  if (!created) {
+    return '';
+  }
   const leftMs = created + ONE_DAY_MS - Date.now();
   if (leftMs <= 0) {
     return 'expirada';
@@ -46,10 +55,9 @@ export function timeLeft(ts) {
 export default function usePublicAlerts24h() {
   const [alerts, setAlerts] = useState(null); // null => loading
   const [, forceTick] = useState(0);
-  const tickRef = useRef(null);
+  const tickRef = (useRef < NodeJS.Timeout) | (null > null);
 
   useEffect(() => {
-    // Fenêtre des 24h (filtrage côté serveur + tri desc)
     const since = Timestamp.fromMillis(Date.now() - ONE_DAY_MS);
     const q = query(
       collection(db, 'publicAlerts'),
@@ -72,7 +80,7 @@ export default function usePublicAlerts24h() {
       }
     );
 
-    // Tick local pour timeLeft()/timeAgo() → 0 surcharge Firestore
+    // Tick local (1/min) pour recalcul des libellés temporels
     tickRef.current = setInterval(() => forceTick((v) => v + 1), 60 * 1000);
 
     return () => {
@@ -83,16 +91,18 @@ export default function usePublicAlerts24h() {
     };
   }, []);
 
-  // Filtrage TTL 24h (robuste si un doc vieux se glisse)
+  // TTL robuste: re-filtrage client 24h + tri desc si jamais l'ordre bouge
   const visible = useMemo(() => {
     if (!alerts) {
       return null;
     }
     const now = Date.now();
-    return alerts.filter((a) => {
-      const ms = a.createdAt?.toMillis?.() ?? 0;
-      return ms > 0 && now - ms < ONE_DAY_MS;
-    });
+    return alerts
+      .filter((a) => {
+        const ms = a.createdAt?.toMillis?.() ?? 0;
+        return ms > 0 && now - ms < ONE_DAY_MS;
+      })
+      .sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0));
   }, [alerts]);
 
   return { alerts: visible, loading: visible === null };
