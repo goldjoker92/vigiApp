@@ -38,11 +38,11 @@ export default function PublicAlertsFeedCore() {
   // keyExtractor durci: id si présent, sinon une clé stable “composite”
   // (pas parfait mais suffisant si id manquant exceptionnel)
   const keyExtractor = useCallback((i) => {
-    if (i?.id) return String(i.id);
+    if (i?.id) {
+      return String(i.id);
+    }
     const ts =
-      (typeof i?.createdAt === 'number'
-        ? i.createdAt
-        : i?.createdAt?.toMillis?.?.() ?? 0) || 0;
+      (typeof i?.createdAt === 'number' ? i.createdAt : (i?.createdAt?.toMillis?.() ?? 0)) || 0;
     const loc = `${i?.cidade || 'x'}-${i?.estado || i?.uf || 'y'}-${i?.ruaNumero || 'z'}`;
     return `alert-${loc}-${ts}`;
   }, []);
@@ -52,7 +52,7 @@ export default function PublicAlertsFeedCore() {
       // route standard (garde la compat avec ta page détail)
       if (__DEV__) {
         // log discret en dev
-        // eslint-disable-next-line no-console
+
         console.log('[PublicAlertsFeedCore] press item →', id);
       }
       router.push(`/public-alerts/${id}`);
@@ -79,7 +79,6 @@ export default function PublicAlertsFeedCore() {
       const ago = timeAgo(item.createdAt);
 
       if (__DEV__) {
-        // eslint-disable-next-line no-console
         console.log('[PublicAlertsFeedCore] render item', {
           id: item?.id,
           cat,
@@ -138,9 +137,7 @@ export default function PublicAlertsFeedCore() {
           </View>
 
           {/* time ago */}
-          {!!ago && (
-            <Text style={{ color: '#8fa0b3', fontSize: 12, marginTop: 6 }}>{ago}</Text>
-          )}
+          {!!ago && <Text style={{ color: '#8fa0b3', fontSize: 12, marginTop: 6 }}>{ago}</Text>}
         </TouchableOpacity>
       );
     },
@@ -165,7 +162,6 @@ export default function PublicAlertsFeedCore() {
 
   if (!alerts || alerts.length === 0) {
     if (__DEV__) {
-      // eslint-disable-next-line no-console
       console.log('[PublicAlertsFeedCore] empty state');
     }
     return (
@@ -201,7 +197,6 @@ export default function PublicAlertsFeedCore() {
       onScrollBeginDrag={
         __DEV__
           ? () => {
-              // eslint-disable-next-line no-console
               console.log('[PublicAlertsFeedCore] scroll start');
             }
           : undefined

@@ -1,5 +1,4 @@
-import { useServerStatus } from '@/hooks/useServerStatus';
-import { usePersistentQueue } from '@/hooks/usePersistentQueue';
+import { useServerStatus, usePersistentQueue } from '@/hooks/useServerStatus';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 
 // ...

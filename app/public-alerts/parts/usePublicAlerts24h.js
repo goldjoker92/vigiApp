@@ -14,39 +14,55 @@ import { collection, onSnapshot, orderBy, query, where, Timestamp } from 'fireba
 export const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Normalise Firestore.Timestamp ou number(ms) vers un nombre de ms fiable. */
-function getMillis(ts: any): number {
-  if (!ts) return 0;
-  if (typeof ts === 'number') return ts > 0 ? ts : 0;
+function getMillis(ts) {
+  if (!ts) {
+    return 0;
+  }
+  if (typeof ts === 'number') {
+    return ts > 0 ? ts : 0;
+  }
   const maybe = ts?.toMillis?.();
   return typeof maybe === 'number' && maybe > 0 ? maybe : 0;
 }
 
-export function timeAgo(ts: any) {
+export function timeAgo(ts) {
   const created = getMillis(ts);
-  if (!created) return '';
+  if (!created) {
+    return '';
+  }
   const m = Math.max(0, Math.floor((Date.now() - created) / 60000));
-  if (m < 1) return 'agora';
-  if (m < 60) return `${m} min atrás`;
+  if (m < 1) {
+    return 'agora';
+  }
+  if (m < 60) {
+    return `${m} min atrás`;
+  }
   const h = Math.floor(m / 60);
   return `${h} h atrás`;
 }
 
-export function timeLeft(ts: any) {
+export function timeLeft(ts) {
   const created = getMillis(ts);
-  if (!created) return '';
+  if (!created) {
+    return '';
+  }
   const leftMs = created + ONE_DAY_MS - Date.now();
-  if (leftMs <= 0) return 'expirada';
+  if (leftMs <= 0) {
+    return 'expirada';
+  }
   const mins = Math.floor(leftMs / 60000);
-  if (mins < 60) return `${mins} min restantes`;
+  if (mins < 60) {
+    return `${mins} min restantes`;
+  }
   const h = Math.floor(mins / 60);
   const r = mins % 60;
   return `${h} h ${r} min restantes`;
 }
 
 export default function usePublicAlerts24h() {
-  const [alerts, setAlerts] = useState<any[] | null>(null); // null => loading
+  const [alerts, setAlerts] = useState(null); // null => loading
   const [, forceTick] = useState(0);
-  const tickRef = useRef<NodeJS.Timeout | null>(null);
+  const tickRef = useRef(null);
 
   useEffect(() => {
     const since = Timestamp.fromMillis(Date.now() - ONE_DAY_MS);
@@ -57,24 +73,21 @@ export default function usePublicAlerts24h() {
     );
 
     if (__DEV__) {
-      // eslint-disable-next-line no-console
       console.log('[usePublicAlerts24h] subscribe 24h window');
     }
 
     const unsub = onSnapshot(
       q,
       (snap) => {
-        const items: any[] = [];
+        const items = [];
         snap.forEach((d) => items.push({ id: d.id, ...d.data() }));
         setAlerts(items);
         if (__DEV__) {
-          // eslint-disable-next-line no-console
           console.log('[usePublicAlerts24h] received', items.length, 'items');
         }
       },
       (err) => {
         if (__DEV__) {
-          // eslint-disable-next-line no-console
           console.log('[usePublicAlerts24h] onSnapshot error:', err?.message || err);
         }
         setAlerts([]);
@@ -86,13 +99,17 @@ export default function usePublicAlerts24h() {
 
     return () => {
       unsub();
-      if (tickRef.current) clearInterval(tickRef.current);
+      if (tickRef.current) {
+        clearInterval(tickRef.current);
+      }
     };
   }, []);
 
   // TTL robuste: re-filtrage client ≤ 24h + tri desc (au cas où l’ordre bouge)
   const visible = useMemo(() => {
-    if (!alerts) return null;
+    if (!alerts) {
+      return null;
+    }
     const now = Date.now();
 
     const filtered = alerts.filter((a) => {
@@ -103,7 +120,6 @@ export default function usePublicAlerts24h() {
     filtered.sort((a, b) => getMillis(b?.createdAt) - getMillis(a?.createdAt));
 
     if (__DEV__) {
-      // eslint-disable-next-line no-console
       console.log('[usePublicAlerts24h] visible count', filtered.length);
     }
 

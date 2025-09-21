@@ -11,7 +11,7 @@ import Constants from 'expo-constants';
 import { Stack } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
-import { Platform, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Provider as PaperProvider } from 'react-native-paper';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -83,7 +83,6 @@ if (typeof global.structuredClone !== 'function') {
 }
 
 if (!__DEV__ && SILENCE_RELEASE) {
-  // eslint-disable-next-line no-console
   console.log = () => {};
   console.warn = () => {};
   console.error = () => {};

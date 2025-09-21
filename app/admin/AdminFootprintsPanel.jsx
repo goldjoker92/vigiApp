@@ -21,7 +21,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import gw, { BRAZIL_BOUNDS } from '@/services/footprintsGateway';
+import gw, { BRAZIL_BOUNDS, renderLeafletCircles } from '@/services/footprintsGateway';
 
 // BBox approximatives des UFs (lat/lng décimaux)
 // NB: ce sont des bornes larges (suffisantes pour stats/heatmap).
@@ -134,7 +134,7 @@ export default function AdminFootprintsPanel({ map, L, apiKey }) {
         return;
       }
       clearLayers();
-      const layers = gw.renderLeafletCircles({
+      const layers = renderLeafletCircles({
         L,
         map,
         items: points,

@@ -126,7 +126,7 @@ function coerceRadiusM(v) {
 
 // ✅ FIX: si radius_m est absent/undefined, on NE court-circuite PAS le mapping par kind
 function resolveRadiusByKind(kind, explicitRadiusM) {
-  if (explicitRadiusM != null) {
+  if (explicitRadiusM !== null && explicitRadiusM !== undefined) {
     // accepte 0/valeurs valides, skip null/undefined
     return coerceRadiusM(explicitRadiusM);
   }

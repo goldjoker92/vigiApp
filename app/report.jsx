@@ -46,8 +46,7 @@ import {
   UserX,
 } from 'lucide-react-native';
 import { useAuthGuard } from '../hooks/useAuthGuard';
-import { resolveExactCepFromCoords } from '@/utils/cep';
-import { GOOGLE_MAPS_KEY } from '@/utils/env';
+import { resolveExactCepFromCoords, GOOGLE_MAPS_KEY } from '@/utils/cep';
 
 // -------------------------------------------------------------
 // Constantes & utilitaires
