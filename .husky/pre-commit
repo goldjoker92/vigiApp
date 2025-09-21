@@ -31,5 +31,10 @@ if [ -n "$FILES" ]; then
 else
   echo "ℹ️ Aucun fichier modifié pertinent — skip ESLint/Prettier."
 fi
+# .husky/pre-commit (bash)
+if git diff --cached --name-only | grep -E '\.json$' | xargs -r grep -l $'\xEF\xBB\xBF'; then
+  echo "❌ BOM détecté dans JSON"; exit 1; fi
+if git diff --cached --name-only | xargs -r grep -P -n '[\x{FEFF}\x{200B}\x{200D}\x{200E}\x{200F}\x{202A}-\x{202E}]'; then
+  echo "❌ Caractères invisibles détectés"; exit 1; fi
 
 exit 0

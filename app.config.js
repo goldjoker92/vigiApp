@@ -3,6 +3,24 @@ import 'dotenv/config';
 export default ({ config }) => ({
   ...config,
 
+  // ✅ PLUGINS AU NIVEAU RACINE
+  plugins: [
+    [
+      'expo-build-properties',
+      {
+        android: {
+          compileSdkVersion: 35,
+          targetSdkVersion: 35,
+          minSdkVersion: 24,
+          gradlePluginVersion: '8.6.0',
+          kotlinVersion: '1.9.24',
+          // packagingOptions si besoin d'éviter certains conflits .proto :
+          // packagingOptions: { pickFirst: ['**/*.proto'] }
+        },
+      },
+    ],
+  ],
+
   android: {
     ...config.android,
     config: {
@@ -18,15 +36,12 @@ export default ({ config }) => ({
       'com.google.android.gms.permission.AD_ID',
       'android.permission.ACCESS_FINE_LOCATION',
       'android.permission.ACCESS_COARSE_LOCATION',
-      // Android 13+ (Wi-Fi scans)
       'android.permission.NEARBY_WIFI_DEVICES',
-      // Pas besoin de plus pour OpenCage/LocationIQ (HTTP only)
     ],
   },
 
   extra: {
     ...config.extra,
-
     // --- Google & Weather ---
     EXPO_PUBLIC_GOOGLE_MAPS_KEY: process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY,
     EXPO_PUBLIC_GOOGLE_WEATHER_KEY: process.env.EXPO_PUBLIC_GOOGLE_WEATHER_KEY,
@@ -50,7 +65,7 @@ export default ({ config }) => ({
 
     // --- EAS ---
     eas: {
-      projectId: process.env.EAS_PROJECT_ID || '38fd672e-850f-436f-84f6-8a1626ed338a', // fallback
+      projectId: process.env.EAS_PROJECT_ID || '38fd672e-850f-436f-84f6-8a1626ed338a',
     },
   },
 });
