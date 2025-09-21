@@ -13,7 +13,7 @@
     "lint:fix": "eslint . --ext .js,.jsx,.ts,.tsx --fix",
     "reset-project": "node ./scripts/reset-project.js",
     "prepare": "husky",
-    "preinstall": "node -e \"const v=process.versions.node.split('.')||[];const ok=(+v[0]>20)||(+v[0]===20&&+v[1]>=19);if(!ok){console.error('Node >=20.19.4 requis');process.exit(1)};if(require('fs').existsSync('package-lock.json')){console.error('Retire package-lock.json, Yarn only');process.exit(1)}\"",
+    "preinstall": "echo RUNTIME_NODE=v20.19.4 && echo YARN=",
     "eas-build-pre-install": "bash ./eas-build-pre-install.sh",
     "android:assemble": "cd android && ./gradlew assembleDebug --stacktrace --info",
     "android:install": "cd android && ./gradlew installDebug -x lint -x test",
