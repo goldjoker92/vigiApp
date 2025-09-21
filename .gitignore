@@ -69,3 +69,5 @@ full-log.txt
 
 full-log.txt
 *.apk
+
+package-lock.json
