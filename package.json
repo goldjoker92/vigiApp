@@ -13,7 +13,7 @@
     "lint:fix": "eslint . --ext .js,.jsx,.ts,.tsx --fix",
     "reset-project": "node ./scripts/reset-project.js",
     "prepare": "husky",
-    "preinstall": "node -e \"const fs=require('fs'),c=require('crypto');const p='package-lock.json';const h=fs.existsSync(p)?c.createHash('sha256').update(fs.readFileSync(p)).digest('hex'):'MISSING';console.log('LOCK SHA256:',h,' SIZE:',fs.existsSync(p)?fs.statSync(p).size:0);\"",
+    "preinstall": "echo RUNTIME_NODE=v20.19.4 && echo YARN=",
     "eas-build-pre-install": "bash ./eas-build-pre-install.sh",
     "android:assemble": "cd android && ./gradlew assembleDebug --stacktrace --info",
     "android:install": "cd android && ./gradlew installDebug -x lint -x test",

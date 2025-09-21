@@ -1,11 +1,17 @@
 {
-  "cli": { "version": ">= 12.0.0", "appVersionSource": "remote" },
+  "cli": {
+    "version": ">= 12.0.0",
+    "appVersionSource": "remote"
+  },
   "build": {
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "android": { "buildType": "apk", "image": "auto" },
-      "node": "20.11.1",
+      "android": {
+        "buildType": "apk",
+        "image": "auto"
+      },
+      "node": "20.19.4",
       "env": {
         "CI": "true",
         "NPM_CONFIG_LEGACY_PEER_DEPS": "true",
@@ -14,7 +20,10 @@
     },
     "preview": {
       "distribution": "internal",
-      "android": { "buildType": "apk", "image": "sdk-53" },
+      "android": {
+        "buildType": "apk",
+        "image": "sdk-53"
+      },
       "node": "20.11.1",
       "env": {
         "CI": "true",
@@ -39,6 +48,10 @@
     }
   },
   "submit": {
-    "production": { "android": { "track": "production" } }
+    "production": {
+      "android": {
+        "track": "production"
+      }
+    }
   }
 }
