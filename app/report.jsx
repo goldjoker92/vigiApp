@@ -46,14 +46,15 @@ import {
   UserX,
 } from 'lucide-react-native';
 import { useAuthGuard } from '../hooks/useAuthGuard';
-import { resolveExactCepFromCoords } from '@/utils/cep';
-import { GOOGLE_MAPS_KEY } from '@/utils/env';
+import { resolveExactCepFromCoords, GOOGLE_MAPS_KEY } from '@/utils/cep';
 
 // -------------------------------------------------------------
 // Constantes & utilitaires
 // -------------------------------------------------------------
 
 const DB_RETENTION_DAYS = 90; // TTL base (analytics)
+// Rayon fixe V1 pour "incident" (danger public)
+const ALERT_RADIUS_M = 1000;
 
 const categories = [
   { label: 'Roubo/Furto', icon: ShieldAlert, severity: 'medium', color: '#FFA500' },
@@ -68,15 +69,15 @@ const categories = [
 const onlyDigits = (v = '') => String(v).replace(/\D/g, '');
 const formatCepDisplay = (digits) => (digits ? digits.replace(/(\d{5})(\d{3})/, '$1-$2') : '');
 
-const severityToColorAndRadius = (sev) => {
+const severityToColor = (sev) => {
   switch (sev) {
     case 'minor':
-      return { color: '#FFE600', radius_m: 500 }; // jaune
+      return '#FFE600'; // jaune
     case 'grave':
-      return { color: '#FF3B30', radius_m: 2000 }; // rouge
+      return '#FF3B30'; // rouge
     case 'medium':
     default:
-      return { color: '#FFA500', radius_m: 1000 }; // orange
+      return '#FFA500'; // orange
   }
 };
 
@@ -508,7 +509,7 @@ export default function ReportScreen() {
     try {
       const expires = new Date(Date.now() + DB_RETENTION_DAYS * 24 * 3600 * 1000);
       const sev = selectedCategory?.severity;
-      const { color: mappedColor, radius_m } = severityToColorAndRadius(sev);
+      const mappedColor = severityToColor(sev);
       const enderecoLabel = buildEnderecoLabel(ruaNumero, cidade, estado.toUpperCase());
 
       const payload = {
@@ -537,8 +538,10 @@ export default function ReportScreen() {
         time: timeBR,
         createdAt: serverTimestamp(),
         expiresAt: Timestamp.fromDate(expires),
-        radius: radius_m,
-        radius_m,
+
+        // ✅ Rayon fixe V1
+        radius: ALERT_RADIUS_M, // compat front si tu lis encore "radius"
+        radius_m: ALERT_RADIUS_M, // clé canonique back
       };
 
       console.log('[REPORT] Firestore payload =', payload);
@@ -557,10 +560,14 @@ export default function ReportScreen() {
             cep: onlyDigits(cep),
             lat: coords.latitude,
             lng: coords.longitude,
-            radius_m,
+
+            // ✅ fixe
+            radius_m: ALERT_RADIUS_M,
+
             severidade: sev || 'medium',
             color: mappedColor,
           };
+
           console.log('[REPORT] Calling sendPublicAlertByAddress with:', body);
           const resp = await fetch(
             'https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/sendPublicAlertByAddress',

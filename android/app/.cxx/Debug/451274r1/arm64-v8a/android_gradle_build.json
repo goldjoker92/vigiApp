@@ -4,7 +4,6 @@
     "C:\\Users\\Oscar\\vigiApp\\node_modules\\@react-native-community\\datetimepicker\\android\\build\\generated\\source\\codegen\\jni\\CMakeLists.txt",
     "C:\\Users\\Oscar\\vigiApp\\node_modules\\@react-native-picker\\picker\\android\\src\\main\\jni\\CMakeLists.txt",
     "C:\\Users\\Oscar\\vigiApp\\node_modules\\@stripe\\stripe-react-native\\android\\build\\generated\\source\\codegen\\jni\\CMakeLists.txt",
-    "C:\\Users\\Oscar\\vigiApp\\node_modules\\react-native-edge-to-edge\\android\\build\\generated\\source\\codegen\\jni\\CMakeLists.txt",
     "C:\\Users\\Oscar\\vigiApp\\node_modules\\react-native-gesture-handler\\android\\build\\generated\\source\\codegen\\jni\\CMakeLists.txt",
     "C:\\Users\\Oscar\\vigiApp\\node_modules\\react-native-google-mobile-ads\\android\\build\\generated\\source\\codegen\\jni\\CMakeLists.txt",
     "C:\\Users\\Oscar\\vigiApp\\node_modules\\react-native-reanimated\\android\\build\\generated\\source\\codegen\\jni\\CMakeLists.txt",
@@ -47,11 +46,6 @@
       "toolchain": "toolchain",
       "abi": "arm64-v8a",
       "artifactName": "react_codegen_RNDateTimePickerCGen"
-    },
-    "react_codegen_RNEdgeToEdge::@668218a48b60eb28aa9e": {
-      "toolchain": "toolchain",
-      "abi": "arm64-v8a",
-      "artifactName": "react_codegen_RNEdgeToEdge"
     },
     "react_codegen_RNGoogleMobileAdsSpec::@c00c605517d10bc7886c": {
       "toolchain": "toolchain",

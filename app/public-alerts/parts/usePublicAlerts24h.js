@@ -1,7 +1,11 @@
+// app/hooks/usePublicAlerts24h.ts
+// -----------------------------------------------------------------------------
 // Hook unique pour récupérer les alertes publiques des 24 dernières heures
 // - Abonnement Firestore temps réel (onSnapshot)
-// - Tick local 1/min pour rafraîchir les compteurs (sans requery)
-// - Retourne { alerts, loading } déjà filtrés (TTL 24h)
+// - Tick local 1/min pour rafraîchir timeAgo() / timeLeft() sans requery
+// - TTL robuste (re-filtre côté client au cas où) + tri desc
+// - PATCHS: logs conditionnels (__DEV__) + gestion stricte Timestamp | number
+// -----------------------------------------------------------------------------
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { db } from '@/firebase';
@@ -9,11 +13,23 @@ import { collection, onSnapshot, orderBy, query, where, Timestamp } from 'fireba
 
 export const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
-export function timeAgo(ts) {
+/** Normalise Firestore.Timestamp ou number(ms) vers un nombre de ms fiable. */
+function getMillis(ts) {
   if (!ts) {
+    return 0;
+  }
+  if (typeof ts === 'number') {
+    return ts > 0 ? ts : 0;
+  }
+  const maybe = ts?.toMillis?.();
+  return typeof maybe === 'number' && maybe > 0 ? maybe : 0;
+}
+
+export function timeAgo(ts) {
+  const created = getMillis(ts);
+  if (!created) {
     return '';
   }
-  const created = ts.toMillis?.() ?? ts;
   const m = Math.max(0, Math.floor((Date.now() - created) / 60000));
   if (m < 1) {
     return 'agora';
@@ -26,10 +42,10 @@ export function timeAgo(ts) {
 }
 
 export function timeLeft(ts) {
-  if (!ts) {
+  const created = getMillis(ts);
+  if (!created) {
     return '';
   }
-  const created = ts.toMillis?.() ?? ts;
   const leftMs = created + ONE_DAY_MS - Date.now();
   if (leftMs <= 0) {
     return 'expirada';
@@ -49,7 +65,6 @@ export default function usePublicAlerts24h() {
   const tickRef = useRef(null);
 
   useEffect(() => {
-    // Fenêtre des 24h (filtrage côté serveur + tri desc)
     const since = Timestamp.fromMillis(Date.now() - ONE_DAY_MS);
     const q = query(
       collection(db, 'publicAlerts'),
@@ -57,22 +72,29 @@ export default function usePublicAlerts24h() {
       orderBy('createdAt', 'desc')
     );
 
-    console.log('[usePublicAlerts24h] subscribe 24h window');
+    if (__DEV__) {
+      console.log('[usePublicAlerts24h] subscribe 24h window');
+    }
+
     const unsub = onSnapshot(
       q,
       (snap) => {
         const items = [];
         snap.forEach((d) => items.push({ id: d.id, ...d.data() }));
         setAlerts(items);
-        console.log('[usePublicAlerts24h] received', items.length, 'items');
+        if (__DEV__) {
+          console.log('[usePublicAlerts24h] received', items.length, 'items');
+        }
       },
       (err) => {
-        console.log('[usePublicAlerts24h] onSnapshot error:', err?.message || err);
+        if (__DEV__) {
+          console.log('[usePublicAlerts24h] onSnapshot error:', err?.message || err);
+        }
         setAlerts([]);
       }
     );
 
-    // Tick local pour timeLeft()/timeAgo() → 0 surcharge Firestore
+    // Tick local (1/min) pour recalcul des libellés temporels
     tickRef.current = setInterval(() => forceTick((v) => v + 1), 60 * 1000);
 
     return () => {
@@ -83,17 +105,27 @@ export default function usePublicAlerts24h() {
     };
   }, []);
 
-  // Filtrage TTL 24h (robuste si un doc vieux se glisse)
+  // TTL robuste: re-filtrage client ≤ 24h + tri desc (au cas où l’ordre bouge)
   const visible = useMemo(() => {
     if (!alerts) {
       return null;
     }
     const now = Date.now();
-    return alerts.filter((a) => {
-      const ms = a.createdAt?.toMillis?.() ?? 0;
+
+    const filtered = alerts.filter((a) => {
+      const ms = getMillis(a?.createdAt);
       return ms > 0 && now - ms < ONE_DAY_MS;
     });
+
+    filtered.sort((a, b) => getMillis(b?.createdAt) - getMillis(a?.createdAt));
+
+    if (__DEV__) {
+      console.log('[usePublicAlerts24h] visible count', filtered.length);
+    }
+
+    return filtered;
   }, [alerts]);
 
   return { alerts: visible, loading: visible === null };
 }
+// ============================================================================

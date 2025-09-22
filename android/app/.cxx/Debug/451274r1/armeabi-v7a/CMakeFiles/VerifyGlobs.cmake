@@ -118,31 +118,6 @@ if(NOT "${NEW_GLOB}" STREQUAL "${OLD_GLOB}")
   file(TOUCH_NOCREATE "C:/Users/Oscar/vigiApp/android/app/.cxx/Debug/451274r1/armeabi-v7a/CMakeFiles/cmake.verify_globs")
 endif()
 
-# react_codegen_SRCS at C:/Users/Oscar/vigiApp/node_modules/react-native-edge-to-edge/android/build/generated/source/codegen/jni/CMakeLists.txt:9 (file)
-file(GLOB NEW_GLOB LIST_DIRECTORIES true "C:/Users/Oscar/vigiApp/node_modules/react-native-edge-to-edge/android/build/generated/source/codegen/jni/*.cpp")
-set(OLD_GLOB
-  "C:/Users/Oscar/vigiApp/node_modules/react-native-edge-to-edge/android/build/generated/source/codegen/jni/RNEdgeToEdge-generated.cpp"
-  )
-if(NOT "${NEW_GLOB}" STREQUAL "${OLD_GLOB}")
-  message("-- GLOB mismatch!")
-  file(TOUCH_NOCREATE "C:/Users/Oscar/vigiApp/android/app/.cxx/Debug/451274r1/armeabi-v7a/CMakeFiles/cmake.verify_globs")
-endif()
-
-# react_codegen_SRCS at C:/Users/Oscar/vigiApp/node_modules/react-native-edge-to-edge/android/build/generated/source/codegen/jni/CMakeLists.txt:9 (file)
-file(GLOB NEW_GLOB LIST_DIRECTORIES true "C:/Users/Oscar/vigiApp/node_modules/react-native-edge-to-edge/android/build/generated/source/codegen/jni/react/renderer/components/RNEdgeToEdge/*.cpp")
-set(OLD_GLOB
-  "C:/Users/Oscar/vigiApp/node_modules/react-native-edge-to-edge/android/build/generated/source/codegen/jni/react/renderer/components/RNEdgeToEdge/ComponentDescriptors.cpp"
-  "C:/Users/Oscar/vigiApp/node_modules/react-native-edge-to-edge/android/build/generated/source/codegen/jni/react/renderer/components/RNEdgeToEdge/EventEmitters.cpp"
-  "C:/Users/Oscar/vigiApp/node_modules/react-native-edge-to-edge/android/build/generated/source/codegen/jni/react/renderer/components/RNEdgeToEdge/Props.cpp"
-  "C:/Users/Oscar/vigiApp/node_modules/react-native-edge-to-edge/android/build/generated/source/codegen/jni/react/renderer/components/RNEdgeToEdge/RNEdgeToEdgeJSI-generated.cpp"
-  "C:/Users/Oscar/vigiApp/node_modules/react-native-edge-to-edge/android/build/generated/source/codegen/jni/react/renderer/components/RNEdgeToEdge/ShadowNodes.cpp"
-  "C:/Users/Oscar/vigiApp/node_modules/react-native-edge-to-edge/android/build/generated/source/codegen/jni/react/renderer/components/RNEdgeToEdge/States.cpp"
-  )
-if(NOT "${NEW_GLOB}" STREQUAL "${OLD_GLOB}")
-  message("-- GLOB mismatch!")
-  file(TOUCH_NOCREATE "C:/Users/Oscar/vigiApp/android/app/.cxx/Debug/451274r1/armeabi-v7a/CMakeFiles/cmake.verify_globs")
-endif()
-
 # react_codegen_SRCS at C:/Users/Oscar/vigiApp/node_modules/react-native-gesture-handler/android/build/generated/source/codegen/jni/CMakeLists.txt:9 (file)
 file(GLOB NEW_GLOB LIST_DIRECTORIES true "C:/Users/Oscar/vigiApp/node_modules/react-native-gesture-handler/android/build/generated/source/codegen/jni/*.cpp")
 set(OLD_GLOB

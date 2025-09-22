@@ -1,9 +1,7 @@
-#!/bin/sh
-echo "✨ [husky] Prettier+ESLint (non-bloquants) sur fichiers modifiés..."
+#!/usr/bin/env sh
+. "$(dirname "$0")/_/husky.sh"
 
-# Prettier + ESLint via lint-staged — JAMAIS bloquant
-yarn lint-staged >/dev/null 2>&1 \
-  && echo "✅ Prettier/ESLint OK" \
-  || echo "⚠️ Prettier/ESLint a échoué (commit non bloqué)"
+echo "?? Husky pre-commit hook : lint + format (non bloquant)"
 
+npx --no-install lint-staged -q || true
 exit 0

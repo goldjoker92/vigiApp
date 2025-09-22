@@ -1,12 +1,21 @@
 /**
- * utils.js (VERBOSE + CLEAN)
- * - Init ADMIN (idempotent)
- * - Firestore handle
- * - Logs & helpers génériques
- * - Expo push (tes fonctions existantes, inchangées)
- * - Helpers “Public Alerts”
- * - FCM wrapper (sendToToken) ✅ channelId + sound corrigés
- * - upsertPublicAlertDoc (merge idempotent)
+ * utils.js (VERBOSE + CLEAN, NO REGRESSION)
+ * ----------------------------------------------------------------------
+ * - Init ADMIN (idempotent) + Firestore handle
+ * - Logs formatés (exportés) + helpers génériques
+ * - Helpers “Public Alerts” (labels, couleurs, distances…)
+ * - Rayon de propagation par type d’incident (kind) -> garantit la sélection
+ *   des destinataires dans le rayon (par défaut 1 km), extensible 3 km.
+ * - Expo push (inchangé) + variantes avec mapping des réponses
+ * - FCM wrapper (sendToToken) ✅ channelId + sound corrigés (+ TTL optionnel)
+ * - upsertPublicAlertDoc (merge idempotent) -> applique le bon radius
+ *   et PRÉSERVE createdAt si le doc existe déjà (pas de casse)
+ * - Delivery logs & tokens helpers (Expo + FCM)
+ * - Error wrapper
+ * - NEW: helpers retries (classification FCM) + job builder (optionnel)
+ *   => pipeline “presque 100%” via pushQueue (sans casser l’existant)
+ * - NEW: Alert footprints 90j (back-only) → heatmap/statistiques
+ * ----------------------------------------------------------------------
  */
 
 /* eslint-env node */
@@ -15,17 +24,23 @@
 const functions = require('firebase-functions');
 const v1functions = require('firebase-functions/v1');
 const admin = require('firebase-admin');
+const geofire = require('geofire-common'); // NEW: geohash pour footprints
 
-// ---- Init admin — idempotent
+// ======================================================================
+// Init admin — idempotent
+// ======================================================================
 if (admin.apps.length === 0) {
   admin.initializeApp();
 }
 const db = admin.firestore();
 
-// ---- Logs formatés
+// ======================================================================
+// Logs formatés (exportés)
+// ======================================================================
 const APP_TAG = 'VigiApp';
 const LIB_TAG = 'FnsUtils';
 const nowIso = () => new Date().toISOString();
+
 const log = (...a) => console.log(`[${APP_TAG}][${LIB_TAG}][${nowIso()}]`, ...a);
 const warn = (...a) => console.warn(`[${APP_TAG}][${LIB_TAG}][${nowIso()}]`, ...a);
 const err = (...a) => console.error(`[${APP_TAG}][${LIB_TAG}][${nowIso()}]`, ...a);
@@ -60,7 +75,7 @@ function dedupe(arr) {
   return Array.from(new Set(arr));
 }
 
-// ---- Auth guard (conserve le comportement)
+// ---- Auth guard (inchangé)
 function assertRole(context, allowed = ['admin', 'moderator']) {
   const role = context?.auth?.token?.role;
   if (!role || !allowed.includes(role)) {
@@ -73,8 +88,58 @@ function assertRole(context, allowed = ['admin', 'moderator']) {
 }
 
 // ======================================================================
-// Helpers “Public Alerts”
+// Helpers “Public Alerts” — sélection & UI
 // ======================================================================
+// Défaut historique (incident public) : 1 km
+const DEFAULT_ALERT_RADIUS_M = 1000;
+
+// Rayon de propagation par type d’incident (m)
+// -> Extensible à 3000 m pour enfant/animal/objet perdu
+const PROPAGATION_RADIUS_BY_KIND_M = Object.freeze({
+  publicIncident: 1000, // incident public (actuel)
+  missingChild: 3000, // enfant (à venir)
+  missingAnimal: 3000, // animal (à venir)
+  lostObject: 3000, // objet perdu (à venir)
+});
+
+// Style par défaut du cercle (front). L’user est le centre visuel.
+// NB: côté back, on utilise ce même radius pour la sélection.
+const CIRCLE_STYLE_DEFAULT = Object.freeze({
+  radiusM: DEFAULT_ALERT_RADIUS_M,
+  strokeColor: '#ef4444',
+  strokeWeight: 5,
+  fill: false,
+});
+
+// Résout le rayon selon kind + override éventuel depuis la payload
+function coerceRadiusM(v) {
+  const n = Number(v);
+  if (Number.isFinite(n) && n > 0) {
+    return n;
+  }
+  // On ne spam pas le warn si v est null/undefined: c’est un cas normal géré par resolveRadiusByKind
+  if (v !== undefined && v !== null) {
+    warn(`[coerceRadiusM] valeur invalide "${v}" -> fallback ${DEFAULT_ALERT_RADIUS_M}m`);
+  }
+  return DEFAULT_ALERT_RADIUS_M;
+}
+
+// ✅ FIX: si radius_m est absent/undefined, on NE court-circuite PAS le mapping par kind
+function resolveRadiusByKind(kind, explicitRadiusM) {
+  if (explicitRadiusM !== null && explicitRadiusM !== undefined) {
+    // accepte 0/valeurs valides, skip null/undefined
+    return coerceRadiusM(explicitRadiusM);
+  }
+  const k = String(kind || '').trim();
+  const mapped = PROPAGATION_RADIUS_BY_KIND_M[k];
+  return Number.isFinite(mapped) ? mapped : DEFAULT_ALERT_RADIUS_M;
+}
+
+function getCircleStyleForKind(kind) {
+  const r = resolveRadiusByKind(kind, null);
+  return { ...CIRCLE_STYLE_DEFAULT, radiusM: r };
+}
+
 const toDigits = (v = '') => String(v).replace(/\D/g, '');
 const isHexColor = (c) => /^#?[0-9A-Fa-f]{6}$/.test(String(c || ''));
 const normColor = (c) => (String(c || '').startsWith('#') ? String(c) : `#${c}`);
@@ -92,14 +157,14 @@ function resolveAccentColor({ severity, formColor }) {
   }
   if (severity === 'high' || severity === 'grave') {
     return '#FF3B30';
-  } // rouge
+  }
   if (severity === 'low' || severity === 'minor') {
     return '#FFE600';
-  } // jaune
+  }
   if (severity === 'medium') {
     return '#FFA500';
-  } // orange
-  return '#0A84FF'; // bleu par défaut
+  }
+  return '#0A84FF';
 }
 
 function localLabel({ endereco, bairro, cidade, uf }) {
@@ -135,7 +200,7 @@ function textsBySeverity(sev, local, distText) {
   }
 }
 
-// (utiles pour l’endpoint “adresse”)
+// Distance Haversine (m) — utile pour filtrage précis (post-geohash)
 function distanceMeters(lat1, lon1, lat2, lon2) {
   const R = 6371000;
   const toRad = (x) => (x * Math.PI) / 180;
@@ -149,7 +214,7 @@ function distanceMeters(lat1, lon1, lat2, lon2) {
 const fmtDist = (m) => (m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`);
 
 // ======================================================================
-// Expo Push — (inchangé, juste comments + logs)
+// Expo Push — (inchangé, robuste, loggé)
 // ======================================================================
 async function expoPushSend(tokens, title, body, data = {}) {
   if (!Array.isArray(tokens) || tokens.length === 0) {
@@ -380,18 +445,24 @@ async function cleanInvalidTokens(expoResults, tokenMap) {
 }
 
 // ======================================================================
-// FCM wrapper — ✅ canal & son corrigés + data stringifiée
+// FCM wrapper — ✅ canal & son corrigés + data stringifiée (+ TTL optionnel)
 // ======================================================================
 function stringifyDataValues(obj) {
-  // FCM data = { [key: string]: string }; on évite undefined/null
+  // FCM data = { [key: string]: string } ; éviter undefined/null → ''
   const out = {};
   for (const [k, v] of Object.entries(obj || {})) {
-    out[k] = v == null ? '' : String(v);
+    out[k] = v === undefined || v === null ? '' : String(v);
   }
   return out;
 }
 
-async function sendToToken({ token, title, body, image, androidColor, data = {} }) {
+/**
+ * Envoi direct FCM vers un device token.
+ * - Conserve la signature (pas de casse).
+ * - Ajoute un TTL optionnel (en secondes) : utile pour alertes périssables.
+ *   -> Si non fourni, pas d'impact.
+ */
+async function sendToToken({ token, title, body, image, androidColor, data = {}, ttlSeconds }) {
   const payloadData = stringifyDataValues(data);
 
   const message = {
@@ -404,11 +475,14 @@ async function sendToToken({ token, title, body, image, androidColor, data = {} 
     },
     android: {
       priority: 'high', // delivery prioritaire
-      collapseKey: 'vigiapp-public-alert', // facultatif: regroupe
+      collapseKey: 'vigiapp-public-alert',
+      ...(Number.isFinite(ttlSeconds) && ttlSeconds > 0
+        ? { ttl: `${Math.floor(ttlSeconds)}s` }
+        : {}),
       notification: {
         channelId: 'alerts-high', // ✅ BON CANAL (heads-up)
         color: androidColor || '#FFA500',
-        sound: 'default', // ✅ CORRECT (pas defaultSound)
+        sound: 'default', // ✅ CORRECT
         visibility: 'PUBLIC',
         tag: 'vigiapp-public-alert',
         // Certains OEM lisent encore ces champs:
@@ -424,12 +498,14 @@ async function sendToToken({ token, title, body, image, androidColor, data = {} 
     data: payloadData, // meta pour deep-link et UI
   };
 
-  log('[sendToToken] →', maskToken(token), { title, hasImage: !!image });
+  log('[sendToToken] →', maskToken(token), { title, hasImage: !!image, ttlSeconds });
   return admin.messaging().send(message);
 }
 
 // ======================================================================
 // Firestore — upsert publicAlerts/{alertId} (merge idempotent)
+// -> GARANTIT que le doc possède le radius correct (kind-aware)
+// -> PRÉSERVE createdAt si le doc existe déjà (sinon on le crée)
 // ======================================================================
 async function upsertPublicAlertDoc({
   alertId,
@@ -441,16 +517,21 @@ async function upsertPublicAlertDoc({
   cep,
   lat,
   lng,
-  radius_m,
+  radius_m, // optionnel : si absent, résolu via `kind`
   severity,
   accent,
   image,
   expiresAt,
+  kind, // publicIncident (default) / missingChild / missingAnimal / lostObject
 }) {
   const ref = db.collection('publicAlerts').doc(alertId);
 
+  // Lecture préalable pour préserver createdAt si déjà présent (no regression)
+  const prev = await ref.get();
+  const prevCreatedAt = prev.exists ? prev.get('createdAt') || null : null;
+
   const payload = {
-    // --- Schéma standard pour le front ---
+    // Schéma front
     titulo: titulo || descricao || 'Alerta público',
     descricao: descricao || 'Alerta público',
     endereco: endereco || null,
@@ -459,32 +540,38 @@ async function upsertPublicAlertDoc({
     cep: cep || null,
     lat: Number.isFinite(lat) ? lat : null,
     lng: Number.isFinite(lng) ? lng : null,
-    radius_m: Number(radius_m) || 1000,
-    status: 'active',
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    expiresAt, // clé pour gérer l’expiration côté app
 
-    // --- Meta UI ---
+    // ✅ Radius appliqué côté back (override si fourni)
+    radius_m: resolveRadiusByKind(kind, radius_m),
+
+    status: 'active',
+    createdAt: prevCreatedAt || admin.firestore.FieldValue.serverTimestamp(), // préserve si existe
+    expiresAt,
+
+    // Meta UI
     gravidade: severity || 'medium',
     color: accent || null,
     image: image || null,
 
-    // --- Compat legacy (ne rien casser)
+    // Compat legacy (ne rien casser)
     ruaNumero: endereco || null,
     estado: uf || null,
     location: {
       latitude: Number.isFinite(lat) ? lat : null,
       longitude: Number.isFinite(lng) ? lng : null,
     },
+
+    // Info
+    kind: kind || 'publicIncident',
   };
 
-  log('[upsertPublicAlertDoc] publicAlerts/%s ←', alertId, safeJson(payload, 400));
+  log('[upsertPublicAlertDoc] publicAlerts/%s ←', alertId, safeJson(payload, 500));
   await ref.set(payload, { merge: true }); // idempotent
   return { id: alertId };
 }
 
 // ======================================================================
-// Logs de delivery & fetch tokens (préservé)
+// Delivery & tokens
 // ======================================================================
 async function createDeliveryLog(kind, meta) {
   const ref = await db.collection('deliveries').add({
@@ -496,6 +583,7 @@ async function createDeliveryLog(kind, meta) {
   return ref;
 }
 
+// ---- EXPO TOKENS (inchangé)
 async function getTokensByCEP(cep) {
   log('[getTokensByCEP] cep=', cep);
   const snap = await db.collection('devices').where('cep', '==', cep).get();
@@ -534,7 +622,48 @@ async function getTokensByUserIds(userIds) {
   return tokens;
 }
 
-// ---- Error wrapper (avec durée)
+// ---- FCM TOKENS (nouveaux helpers — reco prod Android)
+async function getFcmTokensByCEP(cep) {
+  log('[getFcmTokensByCEP] cep=', cep);
+  const snap = await db.collection('devices').where('cep', '==', cep).get();
+  const tokens = [];
+  snap.forEach((doc) => {
+    const t = doc.get('fcmToken');
+    if (t) {
+      tokens.push(t);
+    }
+  });
+  log('[getFcmTokensByCEP] found=', tokens.length, 'sample=', tokens.slice(0, 3).map(maskToken));
+  return tokens;
+}
+
+async function getFcmTokensByUserIds(userIds) {
+  log('[getFcmTokensByUserIds] input length=', userIds?.length || 0);
+  if (!Array.isArray(userIds) || userIds.length === 0) {
+    return [];
+  }
+  const tokens = [];
+  for (const ids of chunk(userIds, 10)) {
+    const snap = await db.collection('devices').where('userId', 'in', ids).get();
+    snap.forEach((doc) => {
+      const t = doc.get('fcmToken');
+      if (t) {
+        tokens.push(t);
+      }
+    });
+  }
+  log(
+    '[getFcmTokensByUserIds] total tokens=',
+    tokens.length,
+    'sample=',
+    tokens.slice(0, 3).map(maskToken)
+  );
+  return tokens;
+}
+
+// ======================================================================
+// Error wrapper (avec durée)
+// ======================================================================
 async function errorHandlingWrapper(functionName, callback) {
   const start = Date.now();
   try {
@@ -555,6 +684,98 @@ async function errorHandlingWrapper(functionName, callback) {
 }
 
 // ======================================================================
+// NEW — Helpers retries (optionnels, pour fan-out + worker sans régression)
+// ======================================================================
+// Classification minimaliste des erreurs FCM
+function isTransientFcmError(code) {
+  // codes “recoverable” connus/équivalents
+  return [
+    'messaging/internal-error',
+    'messaging/server-unavailable',
+    'messaging/unavailable',
+    'messaging/timeout',
+    'messaging/quota-exceeded', // throttling possible → retry
+  ].includes(String(code || '').toLowerCase());
+}
+function isFatalFcmError(code) {
+  // tokens invalides/inexistants → à nettoyer
+  return [
+    'messaging/registration-token-not-registered',
+    'messaging/invalid-registration-token',
+  ].includes(String(code || '').toLowerCase());
+}
+
+// Construction d’un job de retry idempotent (alertId+token)
+function buildRetryJob({ alertId, token, payload, attempt = 0 }) {
+  const crypto = require('crypto');
+  const _id = crypto.createHash('sha256').update(`${alertId}:${token}`).digest('hex');
+  return {
+    _id,
+    alertId,
+    token,
+    payload, // { title, body, data, androidColor, image }
+    status: 'pending',
+    attempt,
+    nextRunAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+}
+
+// ======================================================================
+// NEW — Alert footprints (90j) — stats pour heatmap, back-only
+// ======================================================================
+const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
+
+/**
+ * Enregistre une empreinte d'alerte (cercle) pour heatmap/statistiques.
+ * - N'affecte pas le front → purement back “analytics”.
+ * - Prépare TTL via expireAt (+90j) si Firestore TTL est activé.
+ * - Ajoute geohash pour requêtes rapides (bbox/center).
+ */
+async function recordPublicAlertFootprint({
+  alertId,
+  userId = null,
+  kind = 'publicIncident',
+  lat,
+  lng,
+  radius_m,
+  endereco = null,
+  bairro = null,
+  cidade = null,
+  uf = null,
+  createdAt = null, // optionnel (si pas fourni → serverTimestamp)
+}) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(radius_m)) {
+    warn('[recordPublicAlertFootprint] invalid lat/lng/radius', { lat, lng, radius_m });
+    return null;
+  }
+
+  const now = Date.now();
+  const expireAt = new Date(now + NINETY_DAYS_MS);
+  const geohash = geofire.geohashForLocation([lat, lng]);
+
+  const doc = {
+    alertId,
+    userId,
+    kind,
+    lat,
+    lng,
+    radius_m,
+    geohash,
+    endereco: endereco || null,
+    bairro: bairro || null,
+    cidade: cidade || null,
+    uf: uf || null,
+    createdAt: createdAt || admin.firestore.FieldValue.serverTimestamp(),
+    expireAt, // ← pour TTL Firestore (si activé)
+  };
+
+  const ref = await db.collection('alertFootprints').add(doc);
+  log('[recordPublicAlertFootprint] add alertFootprints/%s ← %s', ref.id, safeJson(doc, 400));
+  return { id: ref.id };
+}
+
+// ======================================================================
 // Exports
 // ======================================================================
 module.exports = {
@@ -564,12 +785,17 @@ module.exports = {
   admin,
   db,
 
+  // Logs & tools
+  log,
+  warn,
+  err,
+  safeJson,
+  maskToken,
+
   // Génériques
   chunk,
   dedupe,
   assertRole,
-  maskToken,
-  safeJson,
 
   // Public Alerts helpers
   toDigits,
@@ -579,6 +805,14 @@ module.exports = {
   textsBySeverity,
   distanceMeters,
   fmtDist,
+
+  // Propagation & cercle (front/back cohérents)
+  DEFAULT_ALERT_RADIUS_M,
+  PROPAGATION_RADIUS_BY_KIND_M,
+  CIRCLE_STYLE_DEFAULT,
+  resolveRadiusByKind,
+  getCircleStyleForKind,
+  coerceRadiusM,
 
   // Expo push
   expoPushSend,
@@ -590,9 +824,23 @@ module.exports = {
   sendToToken,
   upsertPublicAlertDoc,
 
-  // Logs & tokens utilitaires
+  // Logs & tokens utilitaires — Expo
   createDeliveryLog,
   getTokensByCEP,
   getTokensByUserIds,
+
+  // Logs & tokens utilitaires — FCM (nouveaux)
+  getFcmTokensByCEP,
+  getFcmTokensByUserIds,
+
   errorHandlingWrapper,
+
+  // Retries (optionnels)
+  isTransientFcmError,
+  isFatalFcmError,
+  buildRetryJob,
+
+  // NEW — Heatmap footprints
+  NINETY_DAYS_MS,
+  recordPublicAlertFootprint,
 };

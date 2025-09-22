@@ -4,20 +4,22 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "android": { "buildType": "apk", "image": "auto" },
-      "node": "20.11.1",
+      "channel": "dev",
+      "android": { "buildType": "apk", "image": "sdk-53" },
+      "node": "20.19.4",
       "env": {
-        "CI": "true",
+        "NODE_VERSION": "20.19.4",
         "NPM_CONFIG_LEGACY_PEER_DEPS": "true",
         "EXPO_NO_TELEMETRY": "1"
       }
     },
     "preview": {
       "distribution": "internal",
+      "channel": "preview",
       "android": { "buildType": "apk", "image": "sdk-53" },
-      "node": "20.11.1",
+      "node": "20.19.4",
       "env": {
-        "CI": "true",
+        "NODE_VERSION": "20.19.4",
         "NPM_CONFIG_LEGACY_PEER_DEPS": "true",
         "EXPO_NO_TELEMETRY": "1"
       }
@@ -25,14 +27,14 @@
     "production": {
       "autoIncrement": true,
       "distribution": "store",
+      "channel": "production",
       "android": {
         "buildType": "app-bundle",
-        "image": "sdk-53",
-        "gradleCommand": ":app:bundleRelease"
+        "image": "sdk-53"
       },
-      "node": "20.11.1",
+      "node": "20.19.4",
       "env": {
-        "CI": "true",
+        "NODE_VERSION": "20.19.4",
         "NPM_CONFIG_LEGACY_PEER_DEPS": "true",
         "EXPO_NO_TELEMETRY": "1"
       }

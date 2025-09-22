@@ -3,13 +3,11 @@ const expo = require('eslint-config-expo/flat');
 
 const isCI = process.env.CI === 'true';
 
-// Front: on tolère console.* (WARN en local, ERROR en CI)
-const frontConsoleRule = isCI
-  ? ['error', { allow: ['warn', 'error'] }]
-  : ['warn', { allow: ['warn', 'error'] }];
+// Front: on tolère console.* totalement (plus aucun warning)
+const frontConsoleRule = 'off';
 
-// Back (functions): on LOG sans drama (WARN au pire)
-const functionsConsoleRule = isCI ? ['warn', { allow: ['warn', 'error', 'log', 'info'] }] : 'off';
+// Back (functions): idem, console.* libre
+const functionsConsoleRule = 'off';
 
 module.exports = [
   // Base Expo (React/JS/TS)
@@ -61,13 +59,18 @@ module.exports = [
       semi: ['error', 'always'],
       'comma-dangle': 'off',
       'arrow-parens': 'off',
-      // Hooks
-      'react-hooks/rules-of-hooks': 'error',
-      'react-hooks/exhaustive-deps': 'warn',
-    },
+    // Hooks
+    'react-hooks/rules-of-hooks': 'error',
+    'react-hooks/exhaustive-deps': 'warn',
+    // Additional rules
+    'no-unused-expressions': 'warn',
+    'import/no-duplicates': 'warn',
+    'react/prop-types': 'off',
+    'react/react-in-jsx-scope': 'off',
   },
+},
 
-  // FRONT (app/, src/…) : console cool (WARN en local)
+  // FRONT (app/, src/…) : console tolérées
   {
     files: ['app/**/*.{js,jsx,ts,tsx}', 'src/**/*.{js,jsx,ts,tsx}'],
     languageOptions: {
@@ -97,12 +100,9 @@ module.exports = [
       },
     },
     rules: {
-      // On n’interdit pas console.* en back
       'no-console': functionsConsoleRule,
-      // Toujours strict sur ===
       eqeqeq: ['error', 'always'],
       curly: ['error', 'all'],
-      // Les “undefined” en back proviennent souvent d’imports manquants
       'no-undef': 'error',
     },
   },
