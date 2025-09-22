@@ -1,50 +1,45 @@
 // screens/GrupoSinalizarScreen.jsx
 // -------------------------------------------------------------
 // Flux "Sinalizar" blindé :
-// 1) Permissions + GPS avec retry court
+// 1) Permissions + GPS (retry court)
 // 2) Reverse geocode (Google-first), normalisation CEP
-// 3) Résolution du groupId (ordre):
-//    a) route params → b) user.groupId → c) membership Firestore (membersIds)
+// 3) Résolution du groupId (route → user → membership Firestore)
 // 4) Si pas de groupe → public (toast + /report)
-// 5) Si groupe & "chez soi" (même zone) → modale (groupe / public / annuler)
+// 5) Si groupe & “chez soi” → modale (groupe / public / annuler)
 // 6) Si groupe & hors zone → public (toast + /report)
-// 7) Watchdog après coords (timeout geocode/signal)
+// 7) Watchdog après coords (timeout geocode/signaux)
+// 8) Signals intégrés (NetInfo / Expo Network / Expo Device) → logs détaillés
 // -------------------------------------------------------------
 
-import * as Location from 'expo-location';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback, memo } from 'react';
 import {
-  Alert,
-  Animated,
-  Dimensions,
-  Easing,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
   View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Animated,
+  Easing,
+  Dimensions,
+  Alert,
 } from 'react-native';
+import * as Location from 'expo-location';
+import NetInfo from '@react-native-community/netinfo';
+import * as Network from 'expo-network';
+import * as Device from 'expo-device';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuthGuard } from '../hooks/useAuthGuard';
 import CustomTopToast from './components/CustomTopToast';
 
 // CEP utils (Google-first avec cascades internes)
-import { GOOGLE_MAPS_KEY, hasGoogleKey, resolveExactCepFromCoords } from '../utils/cep';
+import { resolveExactCepFromCoords, hasGoogleKey, GOOGLE_MAPS_KEY } from '@/utils/cep';
 
 // Firestore
+import { collection, query, where, limit, getDocs } from 'firebase/firestore';
 import { db } from '@/firebase';
-import { collection, getDocs, limit, query, where } from 'firebase/firestore';
 
 // --- OPTION: selon ton schéma groupe ---
 const GROUPS_USE_ARRAY_OF_CEPS = true; // true si { ceps: string[] }, false si { cep: string }
 const ONLY_ACTIVE_GROUPS = true;
-
-// Signals (optionnels)
-let getWifiSnapshot, getRadioSnapshot;
-try {
-  ({ getWifiSnapshot, getRadioSnapshot } = require('@/signals/androidSignals'));
-} catch {
-  /* no-op */
-}
 
 // ---------------- Loader téléphone ↔ satellite ----------------
 const PhoneSatelliteLoader = memo(function PhoneSatelliteLoader() {
@@ -54,27 +49,12 @@ const PhoneSatelliteLoader = memo(function PhoneSatelliteLoader() {
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
-        Animated.timing(pulse, {
-          toValue: 1,
-          duration: 1000,
-          easing: Easing.out(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulse, {
-          toValue: 0,
-          duration: 1000,
-          easing: Easing.in(Easing.quad),
-          useNativeDriver: true,
-        }),
+        Animated.timing(pulse, { toValue: 1, duration: 1000, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0, duration: 1000, easing: Easing.in(Easing.quad), useNativeDriver: true }),
       ])
     ).start();
     Animated.loop(
-      Animated.timing(orbit, {
-        toValue: 1,
-        duration: 2600,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      })
+      Animated.timing(orbit, { toValue: 1, duration: 2600, easing: Easing.linear, useNativeDriver: true })
     ).start();
   }, [pulse, orbit]);
 
@@ -96,15 +76,8 @@ const PhoneSatelliteLoader = memo(function PhoneSatelliteLoader() {
       <Animated.View style={[styles.phone, { transform: [{ scale: pulseScale }] }]}>
         <View style={styles.phoneScreen} />
       </Animated.View>
-      <Animated.View
-        style={[styles.wave, { opacity: ringOpacity, transform: [{ scale: pulseScale }] }]}
-      />
-      <Animated.View
-        style={[
-          styles.wave,
-          { opacity: ringOpacity, transform: [{ scale: Animated.add(0.6, pulse) }] },
-        ]}
-      />
+      <Animated.View style={[styles.wave, { opacity: ringOpacity, transform: [{ scale: pulseScale }] }]} />
+      <Animated.View style={[styles.wave, { opacity: ringOpacity, transform: [{ scale: Animated.add(0.6, pulse) }] }]} />
       <Text style={[styles.loaderText, isSmall && { fontSize: 14 }]}>Detectando localização…</Text>
     </View>
   );
@@ -112,9 +85,7 @@ const PhoneSatelliteLoader = memo(function PhoneSatelliteLoader() {
 
 // ----------------------- Helpers ----------------------
 function normalizeCep(v) {
-  if (!v) {
-    return null;
-  }
+  if (!v) return null;
   const clean = String(v).replace(/\D/g, '');
   return clean.length === 8 ? clean : null;
 }
@@ -128,71 +99,16 @@ function toUF(s) {
     .toUpperCase()
     .trim();
   const map = {
-    AC: 'AC',
-    AL: 'AL',
-    AP: 'AP',
-    AM: 'AM',
-    BA: 'BA',
-    CE: 'CE',
-    DF: 'DF',
-    ES: 'ES',
-    GO: 'GO',
-    MA: 'MA',
-    MT: 'MT',
-    MS: 'MS',
-    MG: 'MG',
-    PA: 'PA',
-    PB: 'PB',
-    PR: 'PR',
-    PE: 'PE',
-    PI: 'PI',
-    RJ: 'RJ',
-    RN: 'RN',
-    RS: 'RS',
-    RO: 'RO',
-    RR: 'RR',
-    SC: 'SC',
-    SP: 'SP',
-    SE: 'SE',
-    TO: 'TO',
-    ACRE: 'AC',
-    ALAGOAS: 'AL',
-    AMAPA: 'AP',
-    AMAPÁ: 'AP',
-    AMAZONAS: 'AM',
-    BAHIA: 'BA',
-    CEARA: 'CE',
-    CEARÁ: 'CE',
-    'DISTRITO FEDERAL': 'DF',
-    'ESPIRITO SANTO': 'ES',
-    'ESPÍRITO SANTO': 'ES',
-    GOIAS: 'GO',
-    GOIÁS: 'GO',
-    MARANHAO: 'MA',
-    MARANHÃO: 'MA',
-    'MATO GROSSO': 'MT',
-    'MATO GROSSO DO SUL': 'MS',
-    'MINAS GERAIS': 'MG',
-    PARA: 'PA',
-    PARÁ: 'PA',
-    PARAIBA: 'PB',
-    PARAÍBA: 'PB',
-    PARANA: 'PR',
-    PARANÁ: 'PR',
-    PERNAMBUCO: 'PE',
-    PIAUI: 'PI',
-    PIAUÍ: 'PI',
-    'RIO DE JANEIRO': 'RJ',
-    'RIO GRANDE DO NORTE': 'RN',
-    'RIO GRANDE DO SUL': 'RS',
-    RONDONIA: 'RO',
-    RONDÔNIA: 'RO',
-    RORAIMA: 'RR',
-    'SANTA CATARINA': 'SC',
-    'SAO PAULO': 'SP',
-    'SÃO PAULO': 'SP',
-    SERGIPE: 'SE',
-    TOCANTINS: 'TO',
+    AC:'AC',AL:'AL',AP:'AP',AM:'AM',BA:'BA',CE:'CE',DF:'DF',ES:'ES',GO:'GO',MA:'MA',
+    MT:'MT',MS:'MS',MG:'MG',PA:'PA',PB:'PB',PR:'PR',PE:'PE',PI:'PI',RJ:'RJ',RN:'RN',
+    RS:'RS',RO:'RO',RR:'RR',SC:'SC',SP:'SP',SE:'SE',TO:'TO',
+    ACRE:'AC',ALAGOAS:'AL',AMAPA:'AP',AMAPÁ:'AP',AMAZONAS:'AM',BAHIA:'BA',
+    CEARA:'CE',CEARÁ:'CE','DISTRITO FEDERAL':'DF','ESPIRITO SANTO':'ES','ESPÍRITO SANTO':'ES',
+    GOIAS:'GO',GOIÁS:'GO',MARANHAO:'MA',MARANHÃO:'MA','MATO GROSSO':'MT','MATO GROSSO DO SUL':'MS',
+    'MINAS GERAIS':'MG',PARA:'PA',PARÁ:'PA',PARAIBA:'PB',PARAÍBA:'PB',PARANA:'PR',PARANÁ:'PR',
+    PERNAMBUCO:'PE',PIAUI:'PI',PIAUÍ:'PI','RIO DE JANEIRO':'RJ','RIO GRANDE DO NORTE':'RN',
+    'RIO GRANDE DO SUL':'RS',RONDONIA:'RO',RONDÔNIA:'RO',RORAIMA:'RR','SANTA CATARINA':'SC',
+    'SAO PAULO':'SP','SÃO PAULO':'SP',SERGIPE:'SE',TOCANTINS:'TO',
   };
   return map[up] || (/^[A-Z]{2}$/.test(up) ? up : '');
 }
@@ -209,22 +125,10 @@ function sameZone(currentCep8, userCep8, addrCidade, addrUF, userCidade, userUF)
     console.log('[SINALIZAR] sameZone = true (CEP strict)');
     return true;
   }
-  const villeOk =
-    !!addrCidade && !!userCidade && normalizeTxt(addrCidade) === normalizeTxt(userCidade);
+  const villeOk = !!addrCidade && !!userCidade && normalizeTxt(addrCidade) === normalizeTxt(userCidade);
   const ufOk = !!addrUF && !!userUF && toUF(addrUF) === toUF(userUF);
-  const cepAmbigu =
-    !currentCep8 || !userCep8 || isGenericCep(currentCep8) || isGenericCep(userCep8);
-  console.log('[SINALIZAR] sameZone check:', {
-    villeOk,
-    ufOk,
-    cepAmbigu,
-    addrCidade,
-    userCidade,
-    addrUF,
-    userUF,
-    currentCep8,
-    userCep8,
-  });
+  const cepAmbigu = !currentCep8 || !userCep8 || isGenericCep(currentCep8) || isGenericCep(userCep8);
+  console.log('[SINALIZAR] sameZone check:', { villeOk, ufOk, cepAmbigu, addrCidade, userCidade, addrUF, userUF, currentCep8, userCep8 });
   return villeOk && ufOk && cepAmbigu;
 }
 function withTimeout(p, ms = 9000, tag = 'TIMEOUT') {
@@ -244,19 +148,9 @@ function withTimeout(p, ms = 9000, tag = 'TIMEOUT') {
 
 // --- Firestore: lookups ---
 async function lookupGroupByMembership(uid) {
-  if (!uid) {
-    return undefined;
-  }
-  console.log('[SINALIZAR][GROUP][FS] query', {
-    field: 'membersIds',
-    op: 'array-contains',
-    value: uid,
-  });
-  const q = query(
-    collection(db, 'groups'),
-    where('membersIds', 'array-contains', uid), // ✅ correct op
-    limit(1)
-  );
+  if (!uid) return undefined;
+  console.log('[SINALIZAR][GROUP][FS] query', { field: 'membersIds', op: 'array-contains', value: uid });
+  const q = query(collection(db, 'groups'), where('membersIds', 'array-contains', uid), limit(1));
   const snap = await getDocs(q);
   if (!snap.empty) {
     const d0 = snap.docs[0];
@@ -267,15 +161,11 @@ async function lookupGroupByMembership(uid) {
 }
 
 async function lookupGroupByCep(cep8) {
-  if (!cep8) {
-    return null;
-  }
+  if (!cep8) return null;
   const clauses = GROUPS_USE_ARRAY_OF_CEPS
     ? [where('ceps', 'array-contains', cep8)]
     : [where('cep', '==', cep8)];
-  if (ONLY_ACTIVE_GROUPS) {
-    clauses.push(where('isActive', '==', true));
-  }
+  if (ONLY_ACTIVE_GROUPS) clauses.push(where('isActive', '==', true));
   console.log('[SINALIZAR][GROUP][FS] query', {
     field: GROUPS_USE_ARRAY_OF_CEPS ? 'ceps' : 'cep',
     op: GROUPS_USE_ARRAY_OF_CEPS ? 'array-contains' : '==',
@@ -283,17 +173,96 @@ async function lookupGroupByCep(cep8) {
   });
   const q = query(collection(db, 'groups'), ...clauses, limit(1));
   const snap = await getDocs(q);
-  if (snap.empty) {
-    return null;
-  }
+  if (snap.empty) return null;
   const doc0 = snap.docs[0];
   return { id: doc0.id, data: doc0.data() };
+}
+
+// ----------------------- Signals intégrés ----------------------
+async function getWifiSnapshot() {
+  const ts = new Date().toISOString();
+  try {
+    const [net, ip, netState] = await Promise.all([
+      NetInfo.fetch(),
+      safe(Network.getIpAddressAsync()),
+      safe(Network.getNetworkStateAsync()),
+    ]);
+    const isWifi = net.type === 'wifi';
+    // SSID souvent null (Android 10+ privacy / iOS entitlement)
+    const ssid = net?.details?.ssid ?? null;
+    const snap = {
+      ssid,
+      isWifi,
+      strength: null,
+      frequency: null,
+      ipv4: ip ?? null,
+      dns: null, // Expo Network ne renvoie pas les DNS
+      ts,
+    };
+    if (!ssid && isWifi) snap.note = 'SSID indisponible (Android 10+ ou permissions/location OFF)';
+    if (netState?.isInternetReachable === false) snap.note = 'Internet non joignable';
+    return snap;
+  } catch (e) {
+    return {
+      ssid: null,
+      isWifi: false,
+      strength: null,
+      frequency: null,
+      ipv4: null,
+      dns: null,
+      ts,
+      note: `wifi snapshot fail: ${e?.message || String(e)}`,
+    };
+  }
+}
+
+async function getRadioSnapshot() {
+  const ts = new Date().toISOString();
+  try {
+    const net = await NetInfo.fetch();
+    const apiLevel = await safe(Device.getApiLevelAsync());
+    const brand = Device.brand ?? null;
+    const model = Device.modelName ?? null;
+    return {
+      carrier: null, // non dispo via Expo
+      type: net.type ?? 'unknown',
+      cellularGeneration: net.details?.cellularGeneration ?? null,
+      isConnected: net.isConnected ?? null,
+      isInternetReachable: net.isInternetReachable ?? null,
+      apiLevel: apiLevel ?? null,
+      brand,
+      model,
+      ts,
+      note: !net.isConnected ? 'Device non connecté' : undefined,
+    };
+  } catch (e) {
+    return {
+      carrier: null,
+      type: 'unknown',
+      cellularGeneration: null,
+      isConnected: null,
+      isInternetReachable: null,
+      apiLevel: null,
+      brand: Device.brand ?? null,
+      model: Device.modelName ?? null,
+      ts,
+      note: `radio snapshot fail: ${e?.message || String(e)}`,
+    };
+  }
+}
+
+async function safe(promise) {
+  try {
+    return await promise;
+  } catch {
+    return null;
+  }
 }
 
 // ----------------------- Écran principal ----------------------
 export default function GrupoSinalizarScreen() {
   const router = useRouter();
-  const routeParamsRaw = useLocalSearchParams?.();
+  const routeParams = useLocalSearchParams?.() || {};
   const user = useAuthGuard();
 
   const [toastVisible, setToastVisible] = useState(false);
@@ -333,11 +302,7 @@ export default function GrupoSinalizarScreen() {
       const timer = setTimeout(() => {
         try {
           if (unsub) {
-            if (typeof unsub.remove === 'function') {
-              unsub.remove();
-            } else {
-              unsub();
-            }
+            typeof unsub.remove === 'function' ? unsub.remove() : unsub();
           }
         } catch {}
         if (best) {
@@ -353,9 +318,7 @@ export default function GrupoSinalizarScreen() {
         unsub = await Location.watchPositionAsync(
           { accuracy: Location.Accuracy.BestForNavigation, timeInterval: 500, distanceInterval: 0 },
           (loc) => {
-            if (loc?.coords) {
-              best = loc.coords;
-            }
+            if (loc?.coords) best = loc.coords;
           }
         );
       } catch (e) {
@@ -368,13 +331,9 @@ export default function GrupoSinalizarScreen() {
 
   // Résolution du groupId (route → user → Firestore membersIds)
   const fetchEffectiveGroupId = useCallback(async (u, rp) => {
-    if (rp?.groupId) {
-      return String(rp.groupId);
-    }
+    if (rp?.groupId) return String(rp.groupId);
     const direct = u?.groupId || u?.grupoId;
-    if (direct) {
-      return String(direct);
-    }
+    if (direct) return String(direct);
 
     try {
       const uid = (u?.id ?? u?.uid ?? '').toString().trim();
@@ -401,10 +360,12 @@ export default function GrupoSinalizarScreen() {
       hk = hasGoogleKey();
     } catch {}
 
+    const signalsBound = true; // intégré localement
+
     console.log('[SINALIZAR][PHASE] START', {
       hasGoogleKey: hk,
       utilsBound: typeof resolveExactCepFromCoords === 'function',
-      signalsBound: typeof getWifiSnapshot === 'function' && typeof getRadioSnapshot === 'function',
+      signalsBound,
       userPreview: {
         cep: user?.cep,
         cidade: user?.cidade,
@@ -416,19 +377,11 @@ export default function GrupoSinalizarScreen() {
     try {
       // Permissions
       console.log('[SINALIZAR][PHASE] permissions.getForeground');
-      let { status } = await withTimeout(
-        Location.getForegroundPermissionsAsync(),
-        4000,
-        'PERM_TIMEOUT_1'
-      );
+      let { status } = await withTimeout(Location.getForegroundPermissionsAsync(), 4000, 'PERM_TIMEOUT_1');
       console.log('[SINALIZAR] Permission status =', status);
       if (status !== 'granted') {
         console.log('[SINALIZAR][PHASE] permissions.request');
-        const ask = await withTimeout(
-          Location.requestForegroundPermissionsAsync(),
-          6000,
-          'PERM_TIMEOUT_2'
-        );
+        const ask = await withTimeout(Location.requestForegroundPermissionsAsync(), 6000, 'PERM_TIMEOUT_2');
         status = ask.status;
         console.log('[SINALIZAR] Permission asked →', status);
       }
@@ -444,9 +397,7 @@ export default function GrupoSinalizarScreen() {
       console.log('[SINALIZAR] Coords finales =', coords);
 
       // Watchdog après coords
-      if (watchdogRef.current) {
-        clearTimeout(watchdogRef.current);
-      }
+      if (watchdogRef.current) clearTimeout(watchdogRef.current);
       watchdogRef.current = setTimeout(() => {
         if (isRunningRef.current) {
           console.log('[SINALIZAR][WATCHDOG] timeout après coords → toast + /report');
@@ -461,24 +412,20 @@ export default function GrupoSinalizarScreen() {
         }
       }, WATCHDOG_AFTER_COORDS_MS);
 
-      // Signals (non bloquants)
+      // --------- Signals (non bloquants) ----------
       try {
         console.log('[SINALIZAR][PHASE] signals');
-        if (typeof getWifiSnapshot === 'function' && typeof getRadioSnapshot === 'function') {
-          await withTimeout(
-            Promise.all([getWifiSnapshot(), getRadioSnapshot()]).then(([wifi, radio]) => {
-              console.log('[SINALIZAR][WIFI]', wifi);
-              console.log('[SINALIZAR][RADIO]', radio);
-            }),
-            2500,
-            'SIGNALS_TIMEOUT'
-          );
-        } else {
-          console.log('[SINALIZAR][SIGNALS] not bound (skipped)');
-        }
+        const [wifi, radio] = await withTimeout(
+          Promise.all([getWifiSnapshot(), getRadioSnapshot()]),
+          2500,
+          'SIGNALS_TIMEOUT'
+        );
+        console.log('[SINALIZAR][SIGNALS][WIFI]', wifi);
+        console.log('[SINALIZAR][SIGNALS][RADIO]', radio);
       } catch (e) {
         console.log('[SINALIZAR][SIGNALS] FAIL/Timeout', e?.message || e);
       }
+      // --------------------------------------------
 
       // User refs
       const userCepRef = normalizeCep(user?.cep ?? user?.cepRef);
@@ -515,26 +462,19 @@ export default function GrupoSinalizarScreen() {
       });
 
       // Hydrate groupId (route → user → Firestore membership)
-      const effectiveGroupId = await fetchEffectiveGroupId(user, routeParamsRaw);
+      const effectiveGroupId = await fetchEffectiveGroupId(user, routeParams);
       console.log('[SINALIZAR][GROUP] effectiveGroupId =', effectiveGroupId || '∅');
 
-      // Décision “comme avant” (simple, lisible) :
-      // 1) Si pas de groupe → on tente de trouver par CEP (profil puis géoloc)
+      // “Comme avant” : si pas de group → essai par CEP (profil → géoloc)
       let finalGroupId = effectiveGroupId;
       if (!finalGroupId) {
-        // a) Profil
         if (userCepRef) {
           const g1 = await lookupGroupByCep(userCepRef);
-          if (g1) {
-            finalGroupId = g1.id;
-          }
+          if (g1) finalGroupId = g1.id;
         }
-        // b) Géoloc si rien
         if (!finalGroupId && currentCep8) {
           const g2 = await lookupGroupByCep(currentCep8);
-          if (g2) {
-            finalGroupId = g2.id;
-          }
+          if (g2) finalGroupId = g2.id;
         }
       }
 
@@ -614,16 +554,12 @@ export default function GrupoSinalizarScreen() {
       Alert.alert('Erro', 'Não foi possível obter sua localização.');
       router.replace('/(tabs)/home');
     } finally {
-      if (watchdogRef.current) {
-        clearTimeout(watchdogRef.current);
-      }
-      if (toastTimerRef.current) {
-        clearTimeout(toastTimerRef.current);
-      }
+      if (watchdogRef.current) clearTimeout(watchdogRef.current);
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
       isRunningRef.current = false;
       console.log('[SINALIZAR][PHASE] END');
     }
-  }, [router, routeParamsRaw, user, getBestCoordsRetry, fetchEffectiveGroupId]);
+  }, [router, routeParams, user, getBestCoordsRetry]);
 
   useEffect(() => {
     if (user) {
@@ -662,12 +598,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
   },
-  loaderWrap: {
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 30,
-  },
+  loaderWrap: { width: '100%', alignItems: 'center', justifyContent: 'center', paddingVertical: 30 },
   loaderText: { color: '#D0D7DE', marginTop: 18, fontSize: 16 },
   phone: {
     width: 84,
@@ -707,14 +638,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.5,
     shadowRadius: 6,
   },
-  satPanel: {
-    position: 'absolute',
-    left: -14,
-    width: 12,
-    height: 18,
-    borderRadius: 2,
-    backgroundColor: '#1F6FEB',
-  },
+  satPanel: { position: 'absolute', left: -14, width: 12, height: 18, borderRadius: 2, backgroundColor: '#1F6FEB' },
   wave: {
     position: 'absolute',
     width: 260,

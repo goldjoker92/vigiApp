@@ -59,11 +59,16 @@ module.exports = [
       semi: ['error', 'always'],
       'comma-dangle': 'off',
       'arrow-parens': 'off',
-      // Hooks
-      'react-hooks/rules-of-hooks': 'error',
-      'react-hooks/exhaustive-deps': 'warn',
-    },
+    // Hooks
+    'react-hooks/rules-of-hooks': 'error',
+    'react-hooks/exhaustive-deps': 'warn',
+    // Additional rules
+    'no-unused-expressions': 'warn',
+    'import/no-duplicates': 'warn',
+    'react/prop-types': 'off',
+    'react/react-in-jsx-scope': 'off',
   },
+},
 
   // FRONT (app/, src/…) : console tolérées
   {

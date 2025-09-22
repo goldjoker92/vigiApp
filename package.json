@@ -26,7 +26,8 @@
     "test:related": "jest --bail --findRelatedTests",
     "husky:report": "node scripts/husky-report-single.js",
     "deps:check": "expo install --check",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "precommit:fix": "lint-staged -q || true"
   },
   "engines": {
     "node": ">=20.19.4",
@@ -36,7 +37,11 @@
     "*.{js,jsx,ts,tsx,json,md,css,scss}": [
       "prettier --write",
       "eslint --fix"
-    ]
+    ],
+    "*": {
+      "{js,jsx,ts,tsx}": "[eslint --cache --fix --no-error-on-unmatched-pattern || true,prettier --write]",
+      "{json,md,mdx,css,scss,html,yml,yaml}": "[prettier --write]"
+    }
   },
   "jest": {
     "preset": "jest-expo",
@@ -154,10 +159,10 @@
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.4",
     "expo-build-properties": "~0.14.8",
-    "husky": "^9.1.7",
+    "husky": "9.1.7",
     "jest": "~29.7.0",
     "jest-expo": "~53.0.10",
-    "lint-staged": "^16.1.6",
+    "lint-staged": "16.1.6",
     "postcss": "8.5.6",
     "prettier": "^3.6.2",
     "react-dom": "19.0.0",
