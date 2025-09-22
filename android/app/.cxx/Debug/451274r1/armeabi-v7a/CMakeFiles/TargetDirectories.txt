@@ -31,6 +31,3 @@ C:/Users/Oscar/vigiApp/android/app/.cxx/Debug/451274r1/armeabi-v7a/rnscreens_aut
 C:/Users/Oscar/vigiApp/android/app/.cxx/Debug/451274r1/armeabi-v7a/rnsvg_autolinked_build/CMakeFiles/react_codegen_rnsvg.dir
 C:/Users/Oscar/vigiApp/android/app/.cxx/Debug/451274r1/armeabi-v7a/rnsvg_autolinked_build/CMakeFiles/edit_cache.dir
 C:/Users/Oscar/vigiApp/android/app/.cxx/Debug/451274r1/armeabi-v7a/rnsvg_autolinked_build/CMakeFiles/rebuild_cache.dir
-C:/Users/Oscar/vigiApp/android/app/.cxx/Debug/451274r1/armeabi-v7a/RNEdgeToEdge_autolinked_build/CMakeFiles/react_codegen_RNEdgeToEdge.dir
-C:/Users/Oscar/vigiApp/android/app/.cxx/Debug/451274r1/armeabi-v7a/RNEdgeToEdge_autolinked_build/CMakeFiles/edit_cache.dir
-C:/Users/Oscar/vigiApp/android/app/.cxx/Debug/451274r1/armeabi-v7a/RNEdgeToEdge_autolinked_build/CMakeFiles/rebuild_cache.dir

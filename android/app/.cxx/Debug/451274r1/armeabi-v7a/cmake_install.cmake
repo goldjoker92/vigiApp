@@ -54,7 +54,6 @@ if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   include("C:/Users/Oscar/vigiApp/android/app/.cxx/Debug/451274r1/armeabi-v7a/safeareacontext_autolinked_build/cmake_install.cmake")
   include("C:/Users/Oscar/vigiApp/android/app/.cxx/Debug/451274r1/armeabi-v7a/rnscreens_autolinked_build/cmake_install.cmake")
   include("C:/Users/Oscar/vigiApp/android/app/.cxx/Debug/451274r1/armeabi-v7a/rnsvg_autolinked_build/cmake_install.cmake")
-  include("C:/Users/Oscar/vigiApp/android/app/.cxx/Debug/451274r1/armeabi-v7a/RNEdgeToEdge_autolinked_build/cmake_install.cmake")
 
 endif()
 

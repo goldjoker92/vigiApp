@@ -375,17 +375,15 @@ module.exports.sendPublicAlertByAddress = onRequest(
       if (recipients.length === 0) {
         warn('[PUBLIC ALERT] No recipients in area.');
         const ms0 = Date.now() - start;
-        return res
-          .status(200)
-          .json({
-            ok: true,
-            sent: 0,
-            transient: 0,
-            fatal: 0,
-            otherErr: 0,
-            ms: ms0,
-            note: 'Aucun destinataire',
-          });
+        return res.status(200).json({
+          ok: true,
+          sent: 0,
+          transient: 0,
+          fatal: 0,
+          otherErr: 0,
+          ms: ms0,
+          note: 'Aucun destinataire',
+        });
       }
 
       // ----- Envoi (POOL 20) -----

@@ -4,22 +4,22 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "channel": "dev",
       "android": { "buildType": "apk", "image": "sdk-53" },
       "node": "20.19.4",
       "env": {
         "NODE_VERSION": "20.19.4",
-        "CI": "true",
         "NPM_CONFIG_LEGACY_PEER_DEPS": "true",
         "EXPO_NO_TELEMETRY": "1"
       }
     },
     "preview": {
       "distribution": "internal",
+      "channel": "preview",
       "android": { "buildType": "apk", "image": "sdk-53" },
       "node": "20.19.4",
       "env": {
         "NODE_VERSION": "20.19.4",
-        "CI": "true",
         "NPM_CONFIG_LEGACY_PEER_DEPS": "true",
         "EXPO_NO_TELEMETRY": "1"
       }
@@ -27,15 +27,20 @@
     "production": {
       "autoIncrement": true,
       "distribution": "store",
-      "android": { "buildType": "app-bundle", "image": "sdk-53", "gradleCommand": ":app:bundleRelease" },
+      "channel": "production",
+      "android": {
+        "buildType": "app-bundle",
+        "image": "sdk-53"
+      },
       "node": "20.19.4",
       "env": {
         "NODE_VERSION": "20.19.4",
-        "CI": "true",
         "NPM_CONFIG_LEGACY_PEER_DEPS": "true",
         "EXPO_NO_TELEMETRY": "1"
       }
     }
   },
-  "submit": { "production": { "android": { "track": "production" } } }
+  "submit": {
+    "production": { "android": { "track": "production" } }
+  }
 }
