@@ -2,14 +2,12 @@
 // -------------------------------------------------------------
 // Rôle : création d’un signalement PUBLIC dans /publicAlerts
 // - Localisation (GPS) -> adresse + CEP (Google-first via utils/cep)
+// - Autocomplétion d’adresse Google Places **sous le champ** (pas de modal)
 // - Sauvegarde Firestore avec createdAt + expiresAt = now + 90j (TTL)
-// - Logs [REPORT] pour tout suivre (diagnostic production-friendly)
+// - Logs [REPORT] pour diagnostic
 // - Déclenchement non-bloquant de la Cloud Function d’alerte publique
-// - ✅ Toasters UX (queue) : positifs/info/erreur, 4s, barre de temps, non-collés aux bords
-// - ✅ Flux MANUEL **ou** AUTO : bouton actif sans GPS si champs requis OK ; géocodage si nécessaire à l’envoi
-// - ✅ Séquencement toasts :
-//      • AUTO: toasts de localisation d’abord, puis le vert “prêt” si formulaire complet
-//      • MANUEL: le vert “prêt” sort auto quand tous les champs requis sont OK
+// - ✅ Toasters UX (queue) : positifs/info/erreur, 4s
+// - ✅ Flux MANUEL **ou** AUTO : bouton actif sans GPS si champs requis OK
 // -------------------------------------------------------------
 
 import React, { useMemo, useRef, useState, useEffect } from 'react';
@@ -29,6 +27,7 @@ import {
 } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import * as Location from 'expo-location';
+import Constants from 'expo-constants';
 import { db, auth } from '../firebase';
 import { collection, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { useRouter } from 'expo-router';
@@ -53,8 +52,7 @@ import { resolveExactCepFromCoords, GOOGLE_MAPS_KEY } from '@/utils/cep';
 // -------------------------------------------------------------
 
 const DB_RETENTION_DAYS = 90; // TTL base (analytics)
-// Rayon fixe V1 pour "incident" (danger public)
-const ALERT_RADIUS_M = 1000;
+const ALERT_RADIUS_M = 1000; // V1 publicIncident = 1km
 
 const categories = [
   { label: 'Roubo/Furto', icon: ShieldAlert, severity: 'medium', color: '#FFA500' },
@@ -72,12 +70,12 @@ const formatCepDisplay = (digits) => (digits ? digits.replace(/(\d{5})(\d{3})/, 
 const severityToColor = (sev) => {
   switch (sev) {
     case 'minor':
-      return '#FFE600'; // jaune
+      return '#FFE600';
     case 'grave':
-      return '#FF3B30'; // rouge
+      return '#FF3B30';
     case 'medium':
     default:
-      return '#FFA500'; // orange
+      return '#FFA500';
   }
 };
 
@@ -89,11 +87,11 @@ const buildEnderecoLabel = (ruaNumero, cidade, estado) =>
 // (CEP optionnel ; si fourni, doit matcher le format)
 // -------------------------------------------------------------
 const isValidUF = (uf) => /^[A-Z]{2}$/.test(String(uf || '').trim());
-const hasStreetNumber = (ruaNumero) => /\d+/.test(String(ruaNumero || '')); // au moins un numéro
+const hasStreetNumber = (ruaNumero) => /\d+/.test(String(ruaNumero || ''));
 const isValidCidade = (cidade) => /^[\p{L}\s'.-]+$/u.test(String(cidade || '').trim());
 const isValidCepIfPresent = (cep) => {
   const d = onlyDigits(cep || '');
-  return !d || /^\d{8}$/.test(d); // ok vide OU 8 chiffres
+  return !d || /^\d{8}$/.test(d);
 };
 
 function validateBrazilianManualAddress({ ruaNumero, cidade, estado, cep }) {
@@ -129,7 +127,6 @@ async function geocodeAddressToCoords({ ruaNumero, cidade, estado, cep, googleKe
       const loc = first.geometry?.location;
       if (loc?.lat && loc?.lng) {
         console.log('[REPORT][MANUAL][GEO] OK lat/lng =', loc);
-        // Tentative d’extraire un CEP si pas fourni
         let cepOut = cep || '';
         const postal = first.address_components?.find((c) => c.types?.includes('postal_code'));
         if (!cepOut && postal?.long_name) {
@@ -154,42 +151,28 @@ async function geocodeAddressToCoords({ ruaNumero, cidade, estado, cep, googleKe
 // -------------------------------------------------------------
 // Toast léger avec **QUEUE** (pas de chevauchement)
 // -------------------------------------------------------------
-const TOAST_DURATION_MS = 4000; // ≈ 4s
+const TOAST_DURATION_MS = 4000;
 
 function useToastQueue() {
-  const [current, setCurrent] = useState(null); // { type, text }
+  const [current, setCurrent] = useState(null);
   const queueRef = useRef([]);
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(-20)).current;
-  const progress = useRef(new Animated.Value(1)).current; // 1 -> 0
+  const progress = useRef(new Animated.Value(1)).current;
   const timerRef = useRef(null);
   const activeRef = useRef(false);
 
   const play = () => {
-    if (activeRef.current) {
-      return;
-    } // déjà en cours
+    if (activeRef.current) { return; }
     const next = queueRef.current.shift();
-    if (!next) {
-      return;
-    }
+    if (!next) { return; }
     activeRef.current = true;
     setCurrent(next);
     progress.setValue(1);
 
     Animated.parallel([
-      Animated.timing(opacity, {
-        toValue: 1,
-        duration: 140,
-        useNativeDriver: true,
-        easing: Easing.out(Easing.ease),
-      }),
-      Animated.timing(translateY, {
-        toValue: 0,
-        duration: 140,
-        useNativeDriver: true,
-        easing: Easing.out(Easing.ease),
-      }),
+      Animated.timing(opacity, { toValue: 1, duration: 140, useNativeDriver: true, easing: Easing.out(Easing.ease) }),
+      Animated.timing(translateY, { toValue: 0, duration: 140, useNativeDriver: true, easing: Easing.out(Easing.ease) }),
     ]).start();
 
     Animated.timing(progress, {
@@ -206,7 +189,7 @@ function useToastQueue() {
       ]).start(() => {
         setCurrent(null);
         activeRef.current = false;
-        play(); // lance le toast suivant
+        play();
       });
     }, TOAST_DURATION_MS);
   };
@@ -222,18 +205,10 @@ function useToastQueue() {
     if (!current) {
       return null;
     }
-    const bg =
-      current.type === 'success' ? '#0ea15f' : current.type === 'error' ? '#b91c1c' : '#2b2e36';
-    const border =
-      current.type === 'success' ? '#22c55e' : current.type === 'error' ? '#ef4444' : '#3a3f4b';
+    const bg = current.type === 'success' ? '#0ea15f' : current.type === 'error' ? '#b91c1c' : '#2b2e36';
+    const border = current.type === 'success' ? '#22c55e' : current.type === 'error' ? '#ef4444' : '#3a3f4b';
     return (
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          styles.toast,
-          { opacity, transform: [{ translateY }], backgroundColor: bg, borderColor: border },
-        ]}
-      >
+      <Animated.View pointerEvents="none" style={[styles.toast, { opacity, transform: [{ translateY }], backgroundColor: bg, borderColor: border }]}>
         <Text style={styles.toastText}>{current.text}</Text>
         <View style={styles.toastProgressTrack}>
           <Animated.View
@@ -252,33 +227,73 @@ function useToastQueue() {
   return { show, ToastOverlay };
 }
 
-function getMissingFields({ categoria, descricao, ruaNumero, cidade, estado }) {
-  const missing = [];
-  if (!categoria) {
-    missing.push('• categoria');
+// -------------------------------------------------------------
+// Google Places Autocomplete (sous le champ)
+// -------------------------------------------------------------
+const PLACES_ENDPOINT = 'https://maps.googleapis.com/maps/api/place';
+
+async function fetchPlacePredictions({ input, session, key, cidade, uf }) {
+  try {
+    if (!key || !input?.trim()) { return []; }
+    // On biaise vers le Brésil + ville/uf si présents
+    const locationBias = [cidade, uf, 'Brasil'].filter(Boolean).join(', ');
+    const url = `${PLACES_ENDPOINT}/autocomplete/json?input=${encodeURIComponent(
+      input + (locationBias ? `, ${locationBias}` : '')
+    )}&language=pt-BR&components=country:br&sessiontoken=${encodeURIComponent(session)}&key=${key}`;
+
+    const r = await fetch(url);
+    const j = await r.json();
+    if (j.status !== 'OK' || !Array.isArray(j.predictions)) {
+      console.log('[REPORT][PLACES] autocomplete status=', j.status, j.error_message);
+      return [];
+    }
+    return j.predictions.slice(0, 5).map((p) => ({
+      id: p.place_id,
+      main: p.structured_formatting?.main_text || p.description,
+      secondary: p.structured_formatting?.secondary_text || '',
+      description: p.description,
+    }));
+  } catch (e) {
+    console.log('[REPORT][PLACES] autocomplete ERROR:', e?.message || String(e));
+    return [];
   }
-  if (!String(descricao || '').trim()) {
-    missing.push('• descrição');
-  }
-  if (!String(ruaNumero || '').trim()) {
-    missing.push('• rua e número');
-  }
-  if (!String(cidade || '').trim()) {
-    missing.push('• cidade');
-  }
-  if (!String(estado || '').trim()) {
-    missing.push('• estado/UF');
-  }
-  return missing;
 }
 
-function showDisabledGuideToast(show, fields) {
-  if (!fields.length) {
-    return;
+async function fetchPlaceDetails({ placeId, session, key }) {
+  try {
+    if (!key || !placeId) { return null; }
+    const fields = ['geometry/location', 'address_components', 'formatted_address'].join(',');
+    const url = `${PLACES_ENDPOINT}/details/json?place_id=${encodeURIComponent(placeId)}&fields=${fields}&language=pt-BR&sessiontoken=${encodeURIComponent(session)}&key=${key}`;
+    const r = await fetch(url);
+    const j = await r.json();
+    if (j.status !== 'OK' || !j.result) {
+      console.log('[REPORT][PLACES] details status=', j.status, j.error_message);
+      return null;
+    }
+    const comp = j.result.address_components || [];
+    const find = (t) => comp.find((c) => (c.types || []).includes(t));
+    const street = find('route')?.long_name || '';
+    const number = find('street_number')?.long_name || '';
+    const city = find('administrative_area_level_2')?.long_name || find('locality')?.long_name || '';
+    const state = find('administrative_area_level_1')?.short_name || '';
+    const cep = find('postal_code')?.long_name || '';
+
+    const ruaNumero = [street, number].filter(Boolean).join(', ');
+    const lat = j.result.geometry?.location?.lat;
+    const lng = j.result.geometry?.location?.lng;
+
+    return {
+      ruaNumero,
+      cidade: city,
+      estado: state,
+      cep,
+      coords: Number.isFinite(lat) && Number.isFinite(lng) ? { latitude: lat, longitude: lng } : null,
+      formatted: j.result.formatted_address || '',
+    };
+  } catch (e) {
+    console.log('[REPORT][PLACES] details ERROR:', e?.message || String(e));
+    return null;
   }
-  const text = `⚠️ Campos obrigatórios faltando:\n${fields.join('\n')}`;
-  console.log('[REPORT][TOAST][GUIDE] missing =', fields);
-  show({ type: 'error', text });
 }
 
 // -------------------------------------------------------------
@@ -294,7 +309,7 @@ export default function ReportScreen() {
   // État formulaire
   const [categoria, setCategoria] = useState(null);
   const [descricao, setDescricao] = useState('');
-  const [local, setLocal] = useState(null); // { latitude, longitude, ... } — GPS **ou** géocodage lors de l’envoi
+  const [local, setLocal] = useState(null); // { latitude, longitude, ... }
   const [ruaNumero, setRuaNumero] = useState('');
   const [cidade, setCidade] = useState('');
   const [estado, setEstado] = useState('');
@@ -302,7 +317,14 @@ export default function ReportScreen() {
   const [loadingLoc, setLoadingLoc] = useState(false);
   const [cepPrecision, setCepPrecision] = useState('none');
 
-  // Garde-fou pour le séquencement AUTO: on retarde le "prêt" pendant l'auto
+  // Autocomplete
+  const [placePredictions, setPlacePredictions] = useState([]);
+  const [placesSession, setPlacesSession] = useState(String(Date.now()));
+  const API_AUTOCOMP_KEY =
+    process.env?.api_auto_completion ||
+    Constants?.expoConfig?.extra?.api_auto_completion;
+
+  // Garde-fou pour le séquencement AUTO
   const autoFlowActiveRef = useRef(false);
 
   const now = new Date();
@@ -321,14 +343,10 @@ export default function ReportScreen() {
     estado.trim().length > 0
   );
 
-  // -----------------------------------------------------------
-  // Toast "prêt" auto — en MANUEL uniquement (ou quand l'AUTO est fini)
-  // -----------------------------------------------------------
+  // Toast "prêt" auto sur MANUEL
   const readyToastShownRef = useRef(false);
   useEffect(() => {
-    // on n'affiche pas le toast "prêt" si on est en plein flux AUTO
     if (isBtnActive && !readyToastShownRef.current && !autoFlowActiveRef.current) {
-      console.log('[REPORT][TOAST] ready-toast (form complet, MANUAL or POST-AUTO)');
       show({ type: 'success', text: '🛩️ Pronto pra enviar!' });
       readyToastShownRef.current = true;
     } else if (!isBtnActive) {
@@ -336,9 +354,7 @@ export default function ReportScreen() {
     }
   }, [isBtnActive, show]);
 
-  // -----------------------------------------------------------
-  // AUTO: Localisation -> reverse + CEP (flux AUTO)
-  // -----------------------------------------------------------
+  // AUTO: Localisation -> reverse + CEP
   const handleLocationAutoFlow = async () => {
     console.log('[REPORT][AUTO] handleLocation START');
     setLoadingLoc(true);
@@ -379,7 +395,6 @@ export default function ReportScreen() {
       if (res.cep) {
         setCep(res.cep);
         setCepPrecision('exact');
-        // AUTO: localisation d’abord
         show({ type: 'info', text: '📍 Localização atualizada. CEP detectado.' });
       } else if (Array.isArray(res.candidates) && res.candidates.length > 0) {
         setCep('');
@@ -391,18 +406,11 @@ export default function ReportScreen() {
         show({ type: 'info', text: '🔎 CEP exato não encontrado — pode inserir manualmente.' });
       }
 
-      // Ensuite, si le formulaire est complet -> toast "prêt"
-      // (on le pousse APRÈS les toasts de localisation)
       const formNowComplete =
-        categoria &&
-        descricao.trim() &&
-        ruaNumeroVal &&
-        (res.address?.cidade || cidade).trim() &&
-        (uf || estado).trim();
+        categoria && descricao.trim() && ruaNumeroVal && (res.address?.cidade || cidade).trim() && (uf || estado).trim();
       if (formNowComplete) {
-        console.log('[REPORT][AUTO] Form complete post-geo → enqueue ready toast');
         show({ type: 'success', text: '🛩️ Pronto pra enviar!' });
-        readyToastShownRef.current = true; // évite un doublon via useEffect
+        readyToastShownRef.current = true;
       }
     } catch (e) {
       console.log('[REPORT][AUTO] ERREUR =', e?.message || e);
@@ -414,21 +422,24 @@ export default function ReportScreen() {
     }
   };
 
-  // -----------------------------------------------------------
-  // Validation légère (toasts rouges si incomplet) — pour SEND
-  // -----------------------------------------------------------
+  // Validation légère (toasts rouges si incomplet)
   const validateForSendCommon = () => {
-    const missing = getMissingFields({ categoria, descricao, ruaNumero, cidade, estado });
+    const missing = [];
+    if (!categoria) { missing.push('• categoria'); }
+    if (!descricao.trim()) { missing.push('• descrição'); }
+    if (!ruaNumero.trim()) { missing.push('• rua e número'); }
+    if (!cidade.trim()) { missing.push('• cidade'); }
+    if (!estado.trim()) { missing.push('• estado/UF'); }
     if (missing.length) {
-      showDisabledGuideToast(show, missing);
+      const text = `⚠️ Campos obrigatórios faltando:\n${missing.join('\n')}`;
+      show({ type: 'error', text });
+      console.log('[REPORT][TOAST][GUIDE] missing =', missing);
       return false;
     }
     return true;
   };
 
-  // -----------------------------------------------------------
   // MANUEL: envoi -> géocode si pas de coords ; vérif format BR
-  // -----------------------------------------------------------
   const handleSendManualFlow = async () => {
     console.log('[REPORT][MANUAL] handleSendManualFlow');
     const fmt = validateBrazilianManualAddress({
@@ -459,20 +470,14 @@ export default function ReportScreen() {
         return null;
       }
       coords = { latitude: g.latitude, longitude: g.longitude };
-      if (!cep && g.cep) {
-        setCep(g.cep);
-      }
-      if (cepPrecision === 'none') {
-        setCepPrecision('general');
-      }
+      if (!cep && g.cep) { setCep(g.cep); }
+      if (cepPrecision === 'none') { setCepPrecision('general'); }
     }
 
     return coords;
   };
 
-  // -----------------------------------------------------------
-  // AUTO: envoi — coords déjà présents via handleLocationAutoFlow
-  // -----------------------------------------------------------
+  // AUTO: envoi
   const handleSendAutoFlow = async () => {
     console.log('[REPORT][AUTO] handleSendAutoFlow');
     if (local?.latitude && local?.longitude) {
@@ -480,32 +485,26 @@ export default function ReportScreen() {
     }
     console.log('[REPORT][AUTO] Missing coords unexpectedly — fallback MANUAL geocode');
     return await handleSendManualFlow();
-  };
+    };
 
-  // -----------------------------------------------------------
   // Envoi du report (orchestrateur)
-  // -----------------------------------------------------------
   const handleSend = async () => {
     console.log('[REPORT] handleSend START');
 
-    // 1) Champs requis ?
     if (!validateForSendCommon()) {
       console.log('[REPORT] handleSend ABORT: missing required fields');
       return;
     }
 
-    // 2) Flux MANUEL ou AUTO suivant présence coords
     const isAuto = !!(local?.latitude && local?.longitude);
     console.log('[REPORT] flow =', isAuto ? 'AUTO' : 'MANUAL');
 
-    let coords = null;
-    coords = isAuto ? await handleSendAutoFlow() : await handleSendManualFlow();
+    let coords = isAuto ? await handleSendAutoFlow() : await handleSendManualFlow();
     if (!coords) {
       console.log('[REPORT] handleSend ABORT: coords unavailable');
       return;
     }
 
-    // 3) Persist & Propagate
     try {
       const expires = new Date(Date.now() + DB_RETENTION_DAYS * 24 * 3600 * 1000);
       const sev = selectedCategory?.severity;
@@ -538,39 +537,39 @@ export default function ReportScreen() {
         time: timeBR,
         createdAt: serverTimestamp(),
         expiresAt: Timestamp.fromDate(expires),
-
-        // ✅ Rayon fixe V1
-        radius: ALERT_RADIUS_M, // compat front si tu lis encore "radius"
-        radius_m: ALERT_RADIUS_M, // clé canonique back
+        radius: ALERT_RADIUS_M,
+        radius_m: ALERT_RADIUS_M,
       };
 
       console.log('[REPORT] Firestore payload =', payload);
       const docRef = await addDoc(collection(db, 'publicAlerts'), payload);
       console.log('[REPORT] addDoc OK => id:', docRef.id);
 
-      // Cloud Function (non-bloquant)
+      // Cloud Function (non-bloquant) — NOUVEL ENDPOINT
       (async () => {
         try {
           const body = {
             alertId: docRef.id,
-            endereco: enderecoLabel,
-            bairro: '',
+            // on garde la compat de body comme convenu
+            endereco: enderecoLabel,      // lisible
+            address: enderecoLabel,       // pour la résolution côté back si besoin
             cidade,
             uf: estado.toUpperCase(),
             cep: onlyDigits(cep),
-            lat: coords.latitude,
-            lng: coords.longitude,
+            // **centre** = coords du report (AUTO ou MANUEL) → DECISIF
+            center: { lat: coords.latitude, lng: coords.longitude },
 
-            // ✅ fixe
+            // rayon = V1 1000 m ; futures features 3000 m pour "missing*"
             radius_m: ALERT_RADIUS_M,
 
             severidade: sev || 'medium',
             color: mappedColor,
+            kind: 'publicIncident',
           };
 
-          console.log('[REPORT] Calling sendPublicAlertByAddress with:', body);
+          console.log('[REPORT] Calling sendPublicAlertByCenterUser with:', body);
           const resp = await fetch(
-            'https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/sendPublicAlertByAddress',
+            'https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/sendPublicAlertByCenterUser',
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -578,17 +577,16 @@ export default function ReportScreen() {
             }
           );
           const json = await resp.json().catch(() => null);
-          console.log('[REPORT] sendPublicAlertByAddress response:', {
+          console.log('[REPORT] sendPublicAlertByCenterUser response:', {
             status: resp.status,
             ok: resp.ok,
             json,
           });
         } catch (err) {
-          console.log('[REPORT] sendPublicAlertByAddress ERROR:', err?.message || String(err));
+          console.log('[REPORT] sendPublicAlertByCenterUser ERROR:', err?.message || String(err));
         }
       })();
 
-      // Confirmation + retour
       Alert.alert('Alerta enviado!', 'Seu alerta foi registrado.');
       console.log('[REPORT] handleSend SUCCESS → navigate home');
       router.replace('/(tabs)/home');
@@ -601,7 +599,48 @@ export default function ReportScreen() {
   };
 
   // -----------------------------------------------------------
-  // RENDER (ordre de hooks stable; gating d’UI)
+  // Handlers Autocomplete sous le champ (pas de modal)
+  // -----------------------------------------------------------
+  const onRuaNumeroChange = async (text) => {
+    setRuaNumero(text);
+    // throttle léger: on laisse Google gérer la session
+    if (!text || text.length < 3) {
+      setPlacePredictions([]);
+      return;
+    }
+    const preds = await fetchPlacePredictions({
+      input: text,
+      session: placesSession,
+      key: API_AUTOCOMP_KEY,
+      cidade,
+      uf: estado,
+    });
+    setPlacePredictions(preds);
+  };
+
+  const onPickPrediction = async (pred) => {
+    console.log('[REPORT][PLACES] pick', pred);
+    const details = await fetchPlaceDetails({
+      placeId: pred.id,
+      session: placesSession,
+      key: API_AUTOCOMP_KEY,
+    });
+    if (details) {
+      if (details.ruaNumero) { setRuaNumero(details.ruaNumero); }
+      if (details.cidade) { setCidade(details.cidade); }
+      if (details.estado) { setEstado(details.estado.toUpperCase()); }
+      if (details.cep) { setCep(details.cep); }
+      if (details.coords) { setLocal(details.coords); }
+      setCepPrecision(details.cep ? 'exact' : 'general');
+      // reset session pour Google
+      setPlacesSession(String(Date.now()));
+      setPlacePredictions([]);
+      show({ type: 'info', text: '📍 Endereço sugerido aplicado. Valide antes de enviar.' });
+    }
+  };
+
+  // -----------------------------------------------------------
+  // RENDER
   // -----------------------------------------------------------
   return (
     <View style={{ flex: 1, backgroundColor: '#181A20' }}>
@@ -693,8 +732,21 @@ export default function ReportScreen() {
               style={styles.input}
               placeholder="Rua e número (obrigatório)"
               value={ruaNumero}
-              onChangeText={setRuaNumero}
+              onChangeText={onRuaNumeroChange}
             />
+
+            {/* Liste d’autocomplétion SOUS le champ (propositions cliquables) */}
+            {placePredictions.length > 0 && (
+              <View style={styles.predictionsBox}>
+                {placePredictions.map((p) => (
+                  <Pressable key={p.id} onPress={() => onPickPrediction(p)} style={styles.predItem}>
+                    <Text style={styles.predMain}>{p.main}</Text>
+                    {!!p.secondary && <Text style={styles.predSecondary}>{p.secondary}</Text>}
+                  </Pressable>
+                ))}
+              </View>
+            )}
+
             <TextInput
               style={styles.input}
               placeholder="Cidade (obrigatório)"
@@ -754,21 +806,17 @@ export default function ReportScreen() {
 
             <Pressable
               accessibilityRole="button"
-              // Ripple uniquement quand actif (Android). iOS ignore.
-              android_ripple={
-                isBtnActive ? { color: 'rgba(255,255,255,0.2)', borderless: false } : null
-              }
+              android_ripple={isBtnActive ? { color: 'rgba(255,255,255,0.2)', borderless: false } : null}
               onPress={() => {
                 if (!isBtnActive) {
-                  // Pas d'effet visuel, mais on guide immédiatement
-                  const missing = getMissingFields({
-                    categoria,
-                    descricao,
-                    ruaNumero,
-                    cidade,
-                    estado,
-                  });
-                  showDisabledGuideToast(show, missing);
+                  const missing = [];
+                  if (!categoria) { missing.push('• categoria'); }
+                  if (!descricao.trim()) { missing.push('• descrição'); }
+                  if (!ruaNumero.trim()) { missing.push('• rua e número'); }
+                  if (!cidade.trim()) { missing.push('• cidade'); }
+                  if (!estado.trim()) { missing.push('• estado/UF'); }
+                  const text = `⚠️ Campos obrigatórios faltando:\n${missing.join('\n')}`;
+                  show({ type: 'error', text });
                   return;
                 }
                 handleSend();
@@ -777,7 +825,6 @@ export default function ReportScreen() {
                 styles.sendBtn,
                 {
                   backgroundColor: isBtnActive ? severityColorUI : '#aaa',
-                  // Quand inactif => aucun feedback "pressed"
                   opacity: isBtnActive ? (pressed ? 0.9 : 1) : 1,
                 },
               ]}
@@ -845,6 +892,20 @@ const styles = StyleSheet.create({
     borderRadius: 7,
     marginBottom: 10,
   },
+  // Autocomplete list
+  predictionsBox: {
+    backgroundColor: '#1f232b',
+    borderColor: '#2a2f39',
+    borderWidth: 1,
+    borderRadius: 8,
+    marginTop: -6,
+    marginBottom: 10,
+    overflow: 'hidden',
+  },
+  predItem: { paddingVertical: 10, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: '#2a2f39' },
+  predMain: { color: '#fff', fontWeight: '600' },
+  predSecondary: { color: '#a9b0bf', fontSize: 12, marginTop: 2 },
+
   row: { flexDirection: 'row', gap: 10, marginBottom: 7 },
   readonlyField: {
     flex: 1,
@@ -878,9 +939,9 @@ const styles = StyleSheet.create({
   // Toast styles
   toast: {
     position: 'absolute',
-    top: Platform.select({ ios: 84, android: 56, default: 64 }), // un peu plus bas
-    left: 8, // plus large
-    right: 8, // plus large
+    top: Platform.select({ ios: 84, android: 56, default: 64 }),
+    left: 8,
+    right: 8,
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 12,

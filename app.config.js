@@ -3,6 +3,8 @@ import 'dotenv/config';
 export default ({ config }) => ({
   ...config,
 
+  scheme: 'vigiapp',
+
   plugins: [
     [
       'expo-build-properties',
@@ -15,6 +17,7 @@ export default ({ config }) => ({
         },
       },
     ],
+    'expo-notifications',
   ],
 
   updates: {
@@ -26,12 +29,21 @@ export default ({ config }) => ({
     package: 'com.guigui92.vigiapp',
     runtimeVersion: '1.0.0',
     googleServicesFile: './credentials/google-services.json',
+    intentFilters: [
+      {
+        action: 'VIEW',
+        category: ['BROWSABLE', 'DEFAULT'],
+        data: [{ scheme: 'vigiapp' }],
+      },
+    ],
     config: {
       ...(config.android?.config || {}),
       googleMaps: {
-        apiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY || process.env.ANDROID_MAPS_API_KEY || '',
+        apiKey:
+          process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY ||
+          process.env.ANDROID_MAPS_API_KEY ||
+          '',
       },
-      // ID de test AdMob injecté par Expo (pas de <meta-data> dans les manifests)
       googleMobileAdsAppId: 'ca-app-pub-3940256099942544~3347511713',
     },
     permissions: [
@@ -48,7 +60,6 @@ export default ({ config }) => ({
   ios: {
     ...config.ios,
     runtimeVersion: { policy: 'appVersion' },
-    // (pour plus tard) googleServicesFile: './credentials/GoogleService-Info.plist',
   },
 
   extra: {
@@ -66,8 +77,11 @@ export default ({ config }) => ({
     EXPO_PUBLIC_OPENCAGE_KEY: process.env.EXPO_PUBLIC_OPENCAGE_KEY,
     EXPO_PUBLIC_LOCATIONIQ_KEY: process.env.EXPO_PUBLIC_LOCATIONIQ_KEY,
     EXPO_PUBLIC_CONTACT_EMAIL: process.env.EXPO_PUBLIC_CONTACT_EMAIL,
+    api_auto_completion: process.env.api_auto_completion,
     eas: {
-      projectId: process.env.EAS_PROJECT_ID || '38fd672e-850f-436f-84f6-8a1626ed338a',
+      projectId:
+        process.env.EAS_PROJECT_ID ||
+        '38fd672e-850f-436f-84f6-8a1626ed338a',
     },
   },
 });

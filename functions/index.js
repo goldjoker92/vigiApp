@@ -98,6 +98,14 @@ exports.sendPublicAlertByAddress = (...args) => {
   return sendPublicAlertByAddress(...args);
 };
 
+// ---------- Public alerts "center user" (HTTP) ----------
+exports.sendPublicAlertByCenterUser = (...args) => {
+  console.log('[LAZY-LOAD] ./src/pushPublic -> sendPublicAlertByCenterUser');
+  const { sendPublicAlertByCenterUser } = require('./src/pushPublic');
+  return sendPublicAlertByCenterUser(...args);
+};
+
+
 // ---------- Public alerts générique (HTTP) ----------
 exports.sendPublicAlert = (...args) => {
   console.log('[LAZY-LOAD] ./src/pushPublic -> sendPublicAlert');
