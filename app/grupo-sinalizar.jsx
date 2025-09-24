@@ -49,12 +49,27 @@ const PhoneSatelliteLoader = memo(function PhoneSatelliteLoader() {
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 1000, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 0, duration: 1000, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 1000,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0,
+          duration: 1000,
+          easing: Easing.in(Easing.quad),
+          useNativeDriver: true,
+        }),
       ])
     ).start();
     Animated.loop(
-      Animated.timing(orbit, { toValue: 1, duration: 2600, easing: Easing.linear, useNativeDriver: true })
+      Animated.timing(orbit, {
+        toValue: 1,
+        duration: 2600,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
     ).start();
   }, [pulse, orbit]);
 
@@ -76,8 +91,15 @@ const PhoneSatelliteLoader = memo(function PhoneSatelliteLoader() {
       <Animated.View style={[styles.phone, { transform: [{ scale: pulseScale }] }]}>
         <View style={styles.phoneScreen} />
       </Animated.View>
-      <Animated.View style={[styles.wave, { opacity: ringOpacity, transform: [{ scale: pulseScale }] }]} />
-      <Animated.View style={[styles.wave, { opacity: ringOpacity, transform: [{ scale: Animated.add(0.6, pulse) }] }]} />
+      <Animated.View
+        style={[styles.wave, { opacity: ringOpacity, transform: [{ scale: pulseScale }] }]}
+      />
+      <Animated.View
+        style={[
+          styles.wave,
+          { opacity: ringOpacity, transform: [{ scale: Animated.add(0.6, pulse) }] },
+        ]}
+      />
       <Text style={[styles.loaderText, isSmall && { fontSize: 14 }]}>Detectando localização…</Text>
     </View>
   );
@@ -85,7 +107,9 @@ const PhoneSatelliteLoader = memo(function PhoneSatelliteLoader() {
 
 // ----------------------- Helpers ----------------------
 function normalizeCep(v) {
-  if (!v) return null;
+  if (!v) {
+    return null;
+  }
   const clean = String(v).replace(/\D/g, '');
   return clean.length === 8 ? clean : null;
 }
@@ -99,16 +123,71 @@ function toUF(s) {
     .toUpperCase()
     .trim();
   const map = {
-    AC:'AC',AL:'AL',AP:'AP',AM:'AM',BA:'BA',CE:'CE',DF:'DF',ES:'ES',GO:'GO',MA:'MA',
-    MT:'MT',MS:'MS',MG:'MG',PA:'PA',PB:'PB',PR:'PR',PE:'PE',PI:'PI',RJ:'RJ',RN:'RN',
-    RS:'RS',RO:'RO',RR:'RR',SC:'SC',SP:'SP',SE:'SE',TO:'TO',
-    ACRE:'AC',ALAGOAS:'AL',AMAPA:'AP',AMAPÁ:'AP',AMAZONAS:'AM',BAHIA:'BA',
-    CEARA:'CE',CEARÁ:'CE','DISTRITO FEDERAL':'DF','ESPIRITO SANTO':'ES','ESPÍRITO SANTO':'ES',
-    GOIAS:'GO',GOIÁS:'GO',MARANHAO:'MA',MARANHÃO:'MA','MATO GROSSO':'MT','MATO GROSSO DO SUL':'MS',
-    'MINAS GERAIS':'MG',PARA:'PA',PARÁ:'PA',PARAIBA:'PB',PARAÍBA:'PB',PARANA:'PR',PARANÁ:'PR',
-    PERNAMBUCO:'PE',PIAUI:'PI',PIAUÍ:'PI','RIO DE JANEIRO':'RJ','RIO GRANDE DO NORTE':'RN',
-    'RIO GRANDE DO SUL':'RS',RONDONIA:'RO',RONDÔNIA:'RO',RORAIMA:'RR','SANTA CATARINA':'SC',
-    'SAO PAULO':'SP','SÃO PAULO':'SP',SERGIPE:'SE',TOCANTINS:'TO',
+    AC: 'AC',
+    AL: 'AL',
+    AP: 'AP',
+    AM: 'AM',
+    BA: 'BA',
+    CE: 'CE',
+    DF: 'DF',
+    ES: 'ES',
+    GO: 'GO',
+    MA: 'MA',
+    MT: 'MT',
+    MS: 'MS',
+    MG: 'MG',
+    PA: 'PA',
+    PB: 'PB',
+    PR: 'PR',
+    PE: 'PE',
+    PI: 'PI',
+    RJ: 'RJ',
+    RN: 'RN',
+    RS: 'RS',
+    RO: 'RO',
+    RR: 'RR',
+    SC: 'SC',
+    SP: 'SP',
+    SE: 'SE',
+    TO: 'TO',
+    ACRE: 'AC',
+    ALAGOAS: 'AL',
+    AMAPA: 'AP',
+    AMAPÁ: 'AP',
+    AMAZONAS: 'AM',
+    BAHIA: 'BA',
+    CEARA: 'CE',
+    CEARÁ: 'CE',
+    'DISTRITO FEDERAL': 'DF',
+    'ESPIRITO SANTO': 'ES',
+    'ESPÍRITO SANTO': 'ES',
+    GOIAS: 'GO',
+    GOIÁS: 'GO',
+    MARANHAO: 'MA',
+    MARANHÃO: 'MA',
+    'MATO GROSSO': 'MT',
+    'MATO GROSSO DO SUL': 'MS',
+    'MINAS GERAIS': 'MG',
+    PARA: 'PA',
+    PARÁ: 'PA',
+    PARAIBA: 'PB',
+    PARAÍBA: 'PB',
+    PARANA: 'PR',
+    PARANÁ: 'PR',
+    PERNAMBUCO: 'PE',
+    PIAUI: 'PI',
+    PIAUÍ: 'PI',
+    'RIO DE JANEIRO': 'RJ',
+    'RIO GRANDE DO NORTE': 'RN',
+    'RIO GRANDE DO SUL': 'RS',
+    RONDONIA: 'RO',
+    RONDÔNIA: 'RO',
+    RORAIMA: 'RR',
+    'SANTA CATARINA': 'SC',
+    'SAO PAULO': 'SP',
+    'SÃO PAULO': 'SP',
+    SERGIPE: 'SE',
+    TOCANTINS: 'TO',
   };
   return map[up] || (/^[A-Z]{2}$/.test(up) ? up : '');
 }
@@ -125,10 +204,22 @@ function sameZone(currentCep8, userCep8, addrCidade, addrUF, userCidade, userUF)
     console.log('[SINALIZAR] sameZone = true (CEP strict)');
     return true;
   }
-  const villeOk = !!addrCidade && !!userCidade && normalizeTxt(addrCidade) === normalizeTxt(userCidade);
+  const villeOk =
+    !!addrCidade && !!userCidade && normalizeTxt(addrCidade) === normalizeTxt(userCidade);
   const ufOk = !!addrUF && !!userUF && toUF(addrUF) === toUF(userUF);
-  const cepAmbigu = !currentCep8 || !userCep8 || isGenericCep(currentCep8) || isGenericCep(userCep8);
-  console.log('[SINALIZAR] sameZone check:', { villeOk, ufOk, cepAmbigu, addrCidade, userCidade, addrUF, userUF, currentCep8, userCep8 });
+  const cepAmbigu =
+    !currentCep8 || !userCep8 || isGenericCep(currentCep8) || isGenericCep(userCep8);
+  console.log('[SINALIZAR] sameZone check:', {
+    villeOk,
+    ufOk,
+    cepAmbigu,
+    addrCidade,
+    userCidade,
+    addrUF,
+    userUF,
+    currentCep8,
+    userCep8,
+  });
   return villeOk && ufOk && cepAmbigu;
 }
 function withTimeout(p, ms = 9000, tag = 'TIMEOUT') {
@@ -148,8 +239,14 @@ function withTimeout(p, ms = 9000, tag = 'TIMEOUT') {
 
 // --- Firestore: lookups ---
 async function lookupGroupByMembership(uid) {
-  if (!uid) return undefined;
-  console.log('[SINALIZAR][GROUP][FS] query', { field: 'membersIds', op: 'array-contains', value: uid });
+  if (!uid) {
+    return undefined;
+  }
+  console.log('[SINALIZAR][GROUP][FS] query', {
+    field: 'membersIds',
+    op: 'array-contains',
+    value: uid,
+  });
   const q = query(collection(db, 'groups'), where('membersIds', 'array-contains', uid), limit(1));
   const snap = await getDocs(q);
   if (!snap.empty) {
@@ -161,11 +258,15 @@ async function lookupGroupByMembership(uid) {
 }
 
 async function lookupGroupByCep(cep8) {
-  if (!cep8) return null;
+  if (!cep8) {
+    return null;
+  }
   const clauses = GROUPS_USE_ARRAY_OF_CEPS
     ? [where('ceps', 'array-contains', cep8)]
     : [where('cep', '==', cep8)];
-  if (ONLY_ACTIVE_GROUPS) clauses.push(where('isActive', '==', true));
+  if (ONLY_ACTIVE_GROUPS) {
+    clauses.push(where('isActive', '==', true));
+  }
   console.log('[SINALIZAR][GROUP][FS] query', {
     field: GROUPS_USE_ARRAY_OF_CEPS ? 'ceps' : 'cep',
     op: GROUPS_USE_ARRAY_OF_CEPS ? 'array-contains' : '==',
@@ -173,7 +274,9 @@ async function lookupGroupByCep(cep8) {
   });
   const q = query(collection(db, 'groups'), ...clauses, limit(1));
   const snap = await getDocs(q);
-  if (snap.empty) return null;
+  if (snap.empty) {
+    return null;
+  }
   const doc0 = snap.docs[0];
   return { id: doc0.id, data: doc0.data() };
 }
@@ -199,8 +302,12 @@ async function getWifiSnapshot() {
       dns: null, // Expo Network ne renvoie pas les DNS
       ts,
     };
-    if (!ssid && isWifi) snap.note = 'SSID indisponible (Android 10+ ou permissions/location OFF)';
-    if (netState?.isInternetReachable === false) snap.note = 'Internet non joignable';
+    if (!ssid && isWifi) {
+      snap.note = 'SSID indisponible (Android 10+ ou permissions/location OFF)';
+    }
+    if (netState?.isInternetReachable === false) {
+      snap.note = 'Internet non joignable';
+    }
     return snap;
   } catch (e) {
     return {
@@ -318,7 +425,9 @@ export default function GrupoSinalizarScreen() {
         unsub = await Location.watchPositionAsync(
           { accuracy: Location.Accuracy.BestForNavigation, timeInterval: 500, distanceInterval: 0 },
           (loc) => {
-            if (loc?.coords) best = loc.coords;
+            if (loc?.coords) {
+              best = loc.coords;
+            }
           }
         );
       } catch (e) {
@@ -331,9 +440,13 @@ export default function GrupoSinalizarScreen() {
 
   // Résolution du groupId (route → user → Firestore membersIds)
   const fetchEffectiveGroupId = useCallback(async (u, rp) => {
-    if (rp?.groupId) return String(rp.groupId);
+    if (rp?.groupId) {
+      return String(rp.groupId);
+    }
     const direct = u?.groupId || u?.grupoId;
-    if (direct) return String(direct);
+    if (direct) {
+      return String(direct);
+    }
 
     try {
       const uid = (u?.id ?? u?.uid ?? '').toString().trim();
@@ -377,11 +490,19 @@ export default function GrupoSinalizarScreen() {
     try {
       // Permissions
       console.log('[SINALIZAR][PHASE] permissions.getForeground');
-      let { status } = await withTimeout(Location.getForegroundPermissionsAsync(), 4000, 'PERM_TIMEOUT_1');
+      let { status } = await withTimeout(
+        Location.getForegroundPermissionsAsync(),
+        4000,
+        'PERM_TIMEOUT_1'
+      );
       console.log('[SINALIZAR] Permission status =', status);
       if (status !== 'granted') {
         console.log('[SINALIZAR][PHASE] permissions.request');
-        const ask = await withTimeout(Location.requestForegroundPermissionsAsync(), 6000, 'PERM_TIMEOUT_2');
+        const ask = await withTimeout(
+          Location.requestForegroundPermissionsAsync(),
+          6000,
+          'PERM_TIMEOUT_2'
+        );
         status = ask.status;
         console.log('[SINALIZAR] Permission asked →', status);
       }
@@ -397,7 +518,9 @@ export default function GrupoSinalizarScreen() {
       console.log('[SINALIZAR] Coords finales =', coords);
 
       // Watchdog après coords
-      if (watchdogRef.current) clearTimeout(watchdogRef.current);
+      if (watchdogRef.current) {
+        clearTimeout(watchdogRef.current);
+      }
       watchdogRef.current = setTimeout(() => {
         if (isRunningRef.current) {
           console.log('[SINALIZAR][WATCHDOG] timeout après coords → toast + /report');
@@ -470,11 +593,15 @@ export default function GrupoSinalizarScreen() {
       if (!finalGroupId) {
         if (userCepRef) {
           const g1 = await lookupGroupByCep(userCepRef);
-          if (g1) finalGroupId = g1.id;
+          if (g1) {
+            finalGroupId = g1.id;
+          }
         }
         if (!finalGroupId && currentCep8) {
           const g2 = await lookupGroupByCep(currentCep8);
-          if (g2) finalGroupId = g2.id;
+          if (g2) {
+            finalGroupId = g2.id;
+          }
         }
       }
 
@@ -554,8 +681,12 @@ export default function GrupoSinalizarScreen() {
       Alert.alert('Erro', 'Não foi possível obter sua localização.');
       router.replace('/(tabs)/home');
     } finally {
-      if (watchdogRef.current) clearTimeout(watchdogRef.current);
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      if (watchdogRef.current) {
+        clearTimeout(watchdogRef.current);
+      }
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+      }
       isRunningRef.current = false;
       console.log('[SINALIZAR][PHASE] END');
     }
@@ -598,7 +729,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
   },
-  loaderWrap: { width: '100%', alignItems: 'center', justifyContent: 'center', paddingVertical: 30 },
+  loaderWrap: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 30,
+  },
   loaderText: { color: '#D0D7DE', marginTop: 18, fontSize: 16 },
   phone: {
     width: 84,
@@ -638,7 +774,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.5,
     shadowRadius: 6,
   },
-  satPanel: { position: 'absolute', left: -14, width: 12, height: 18, borderRadius: 2, backgroundColor: '#1F6FEB' },
+  satPanel: {
+    position: 'absolute',
+    left: -14,
+    width: 12,
+    height: 18,
+    borderRadius: 2,
+    backgroundColor: '#1F6FEB',
+  },
   wave: {
     position: 'absolute',
     width: 260,
