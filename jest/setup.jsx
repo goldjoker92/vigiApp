@@ -1,6 +1,7 @@
 import '@testing-library/jest-native/extend-expect';
 
 // Mocks stables pour tests RN/Expo
+/* global jest */
 jest.mock('react-native-reanimated', () => require('react-native-reanimated/mock'));
 
 // Silence quelques warnings bruyants
