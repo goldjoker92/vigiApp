@@ -19,7 +19,6 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
 import UberLogo from '../components/icons/UberLogo';
 
-
 import {
   openGmail,
   openWaze,
