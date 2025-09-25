@@ -1,15 +1,16 @@
 // =============================================================
-// VigiApp — Root layout (Push bootstrap robuste)
-// - Crée le canal Android "alerts-high" (MAX) + vérif perms
-// - Attache listeners (foreground & taps) + deep-link
-// - Garde d’auth → navigation fiable après clic lorsque app fermée
-// - Récupère Expo Push Token & FCM Device Token (+ upsert device)
+// VigiApp — Root layout (Push bootstrap robuste, prod-ready en dev)
+// - Android : ensure channels AVANT demande de permissions
+// - Listeners toujours détachables (fallback no-op)
+// - Ne JAMAIS couper console.error (même en release)
+// - Guards sur Firestore/CEP + masking tokens
+// - ErrorBoundary + logs horodatés
 // =============================================================
 
 import { StripeProvider } from '@stripe/stripe-react-native';
 import Constants from 'expo-constants';
 import { Stack } from 'expo-router';
-import { useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
 import { Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -26,8 +27,8 @@ import {
   getFcmDeviceTokenAsync,
   registerForPushNotificationsAsync,
   ensureAndroidChannels,
-  initNotifications, // ✅
-  wireAuthGateForNotifications, // ✅
+  initNotifications,
+  wireAuthGateForNotifications,
 } from '../libs/notifications';
 
 // Backend device upsert
@@ -46,6 +47,7 @@ const SILENCE_RELEASE = !!extra?.SILENCE_CONSOLE_IN_RELEASE;
 const APP_TAG = 'VigiApp';
 const LAYOUT_TAG = 'PushBootstrap';
 
+// Horodatage compact et safe
 function ts() {
   try {
     return new Date().toISOString();
@@ -53,6 +55,8 @@ function ts() {
     return String(Date.now());
   }
 }
+
+// Logger centralisé (ne coupe pas .error en prod)
 function log(...a) {
   if (__DEV__ || !SILENCE_RELEASE) {
     try {
@@ -68,26 +72,27 @@ function warn(...a) {
   }
 }
 function err(...a) {
-  if (__DEV__ || !SILENCE_RELEASE) {
-    try {
-      console.error(`[${APP_TAG}][${LAYOUT_TAG}][${ts()}]`, ...a);
-    } catch {}
-  }
+  // Toujours actif (même en prod) pour garder la vérité terrain
+  try {
+    console.error(`[${APP_TAG}][${LAYOUT_TAG}][${ts()}]`, ...a);
+  } catch {}
 }
 
-// Polyfill Hermes
+// Polyfill Hermes (shallow clone via JSON — attention aux types non sérialisables)
 if (typeof global.structuredClone !== 'function') {
   // @ts-ignore
   global.structuredClone = (obj) => JSON.parse(JSON.stringify(obj));
   log('structuredClone polyfilled');
 }
 
+// En release : on peut réduire le bruit, mais on NE coupe PAS console.error
 if (!__DEV__ && SILENCE_RELEASE) {
   console.log = () => {};
   console.warn = () => {};
-  console.error = () => {};
+  // console.error RESTE actif
 }
 
+// UI fallback de l’ErrorBoundary
 function MyFallback({ error }) {
   err('ErrorBoundary caught:', error?.message, error?.stack);
   return (
@@ -97,15 +102,18 @@ function MyFallback({ error }) {
         justifyContent: 'center',
         alignItems: 'center',
         backgroundColor: '#181A20',
+        paddingHorizontal: 24,
       }}
     >
-      <Text style={{ color: '#FFD600', fontWeight: 'bold', fontSize: 20, marginBottom: 16 }}>
-        Oops !
+      <Text style={{ color: '#FFD600', fontWeight: 'bold', fontSize: 20, marginBottom: 12 }}>
+        Oops!
       </Text>
-      <Text style={{ color: '#fff', textAlign: 'center', fontSize: 16, marginBottom: 10 }}>
+      <Text style={{ color: '#fff', textAlign: 'center', fontSize: 16, marginBottom: 8 }}>
         {error?.message || 'Une erreur est survenue.'}
       </Text>
-      <Text style={{ color: '#aaa', fontSize: 12 }}>Essaie de relancer l’application.</Text>
+      <Text style={{ color: '#aaa', fontSize: 12, textAlign: 'center' }}>
+        Essaie de relancer l’application.
+      </Text>
     </View>
   );
 }
@@ -121,6 +129,7 @@ function mapSeverityToToastType(sev) {
   return 'info';
 }
 
+// Firestore: récup CEP au besoin (fallback unique par uid)
 async function fetchUserCepFromFirestore(uid) {
   try {
     const db = getFirestore();
@@ -135,6 +144,7 @@ async function fetchUserCepFromFirestore(uid) {
   }
 }
 
+// Utils logs
 function safeJson(obj) {
   try {
     return JSON.stringify(obj)?.slice(0, 1000);
@@ -150,25 +160,35 @@ function maskToken(tok) {
   return s.length <= 12 ? s : `${s.slice(0, 12)}…(${s.length})`;
 }
 
+// Composant “headless” qui fait tout le bootstrap notifs + upsert device
 function PushBootstrap() {
   const expoTokenRef = useRef(null);
   const fcmTokenRef = useRef(null);
   const lastUpsertKeyRef = useRef('');
+  const triedFallbackForUidRef = useRef(''); // évite Firestore fallback multiple
   const { user } = useUserStore();
 
   useEffect(() => {
-    let detachListeners;
-    let unsubscribeAuth;
-    let triedFallbackForUid = '';
+    let detachListeners = () => {}; // ← toujours une fonction
+    let unsubscribeAuth = () => {}; // ← idem
 
     (async () => {
       const t0 = Date.now();
       log('mount → start bootstrap');
 
-      // 🔐 Relie notifs ↔ auth pour naviguer correctement après clic
-      wireAuthGateForNotifications(auth);
+      // 🔐 Lie notifs ↔ auth (navigation après tap notif quand app fermée)
+      try {
+        wireAuthGateForNotifications(auth);
+      } catch (e) {
+        warn('wireAuthGateForNotifications error:', e?.message || e);
+      }
 
-      // 🔔 Initialisation notifications (canaux + permissions + cold start)
+      // Android : canaux D’ABORD, puis init (perms, cold start)
+      try {
+        await ensureAndroidChannels();
+      } catch (e) {
+        warn('ensureAndroidChannels error:', e?.message || e);
+      }
       try {
         await initNotifications();
         log('initNotifications ok');
@@ -176,17 +196,9 @@ function PushBootstrap() {
         warn('initNotifications error:', e?.message || e);
       }
 
-      // (Garde : s’assurer des canaux Android au tout début)
+      // a) Listeners
       try {
-        await ensureAndroidChannels();
-      } catch (e) {
-        warn('ensureAndroidChannels error:', e?.message || e);
-      }
-
-      // Listeners + tokens
-      try {
-        // a) Listeners
-        detachListeners = attachNotificationListeners({
+        const maybeDetach = attachNotificationListeners({
           onReceive: (n) => {
             const content = n?.request?.content || {};
             const title = content?.title || 'VigiApp';
@@ -212,32 +224,36 @@ function PushBootstrap() {
             });
           },
           onResponse: (r) => {
-            log(
-              'listener:onResponse',
-              safeJson({
-                data: r?.notification?.request?.content?.data,
-              })
-            );
+            log('listener:onResponse', safeJson({ data: r?.notification?.request?.content?.data }));
           },
         });
+        detachListeners = typeof maybeDetach === 'function' ? maybeDetach : () => {};
         log('listeners attached');
-
-        // b) Permissions + Expo push token
-        const expoTok = await registerForPushNotificationsAsync();
-        expoTokenRef.current = expoTok;
-        log('expo token obtained:', maskToken(expoTok));
-
-        // c) FCM device token (sauvé côté Firestore si user connecté)
-        const fcmTok = await getFcmDeviceTokenAsync();
-        fcmTokenRef.current = fcmTok;
-        log('fcm token obtained:', maskToken(fcmTok));
       } catch (e) {
-        err('bootstrap register/listeners failed:', e?.message || e);
+        err('attachNotificationListeners failed:', e?.message || e);
       }
 
-      // Upsert device quand on a un user + au moins un token
+      // b) Permissions + Expo push token
       try {
-        unsubscribeAuth = onAuthStateChanged(auth, async (fbUser) => {
+        const expoTok = await registerForPushNotificationsAsync();
+        expoTokenRef.current = expoTok || null;
+        log('expo token obtained:', maskToken(expoTok));
+      } catch (e) {
+        warn('registerForPushNotificationsAsync error:', e?.message || e);
+      }
+
+      // c) FCM device token (sauvé côté Firestore si user connecté)
+      try {
+        const fcmTok = await getFcmDeviceTokenAsync();
+        fcmTokenRef.current = fcmTok || null;
+        log('fcm token obtained:', maskToken(fcmTok));
+      } catch (e) {
+        warn('getFcmDeviceTokenAsync error:', e?.message || e);
+      }
+
+      // d) Upsert device quand on a un user + au moins un token
+      try {
+        const unsub = onAuthStateChanged(auth, async (fbUser) => {
           if (!fbUser) {
             log('auth: signed out (no upsert)');
             return;
@@ -247,11 +263,12 @@ function PushBootstrap() {
             return;
           }
 
+          // CEP depuis store, sinon fallback Firestore (1x/uid)
           let cep = user?.cep ? String(user.cep) : null;
           log('auth: CEP from store =', cep || '(none)');
 
-          if (!cep && triedFallbackForUid !== fbUser.uid) {
-            triedFallbackForUid = fbUser.uid;
+          if (!cep && triedFallbackForUidRef.current !== fbUser.uid) {
+            triedFallbackForUidRef.current = fbUser.uid;
             cep = await fetchUserCepFromFirestore(fbUser.uid);
           }
           if (!cep) {
@@ -259,6 +276,7 @@ function PushBootstrap() {
             return;
           }
 
+          // Idempotence via clé (uid + prefixes tokens)
           const key = `${fbUser.uid}:${String(expoTokenRef.current || '').slice(0, 12)}:${String(fcmTokenRef.current || '').slice(0, 12)}`;
           if (lastUpsertKeyRef.current === key) {
             log('auth: upsert skipped (same uid+tokens prefix)', key);
@@ -283,6 +301,7 @@ function PushBootstrap() {
             err('upsert failed:', e?.message || e);
           }
         });
+        unsubscribeAuth = typeof unsub === 'function' ? unsub : () => {};
         log('auth listener attached');
       } catch (e) {
         err('attach onAuthStateChanged failed:', e?.message || e);
@@ -292,6 +311,7 @@ function PushBootstrap() {
       log('bootstrap completed in', `${dt}ms`);
     })();
 
+    // Cleanup strict-mode safe
     return () => {
       log('unmount → cleanup…');
       try {
@@ -307,6 +327,7 @@ function PushBootstrap() {
         err('detach auth error:', e?.message || e);
       }
     };
+    // On redéclenche si CEP change (idempotent grâce à lastUpsertKeyRef)
   }, [user?.cep]);
 
   return null;

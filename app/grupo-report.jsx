@@ -131,7 +131,7 @@ export default function GrupoReportScreen() {
         setLoadingLoc(false);
         setShowManualLoc(false);
         setModalVisible(false);
-      } catch (_) {
+      } catch {
         setAddress({
           rua: 'Não recuperado',
           numero: '',
@@ -143,7 +143,7 @@ export default function GrupoReportScreen() {
         setShowManualLoc(false);
         setModalVisible(false);
       }
-    } catch (_) {
+    } catch {
       setLoadingLoc(false);
       setLocal(null);
       setShowManualLoc(false);

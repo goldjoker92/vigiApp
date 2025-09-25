@@ -1,11 +1,10 @@
-// components/WeatherCard.jsx
+// app/components/WeatherCard.jsx
 // ------------------------------------------------------------------
-// WeatherCard (VigiApp 2050)
-// - Date + heure (gras) au-dessus
-// - "Cidade, UF" centrés (Ville VERT, UF JAUNE) + mini-drapeau (UF sinon 🇧🇷)
-// - Température XXL, emoji animé, description PT-BR
-// - Aucun texte de provider affiché (mais logs temps & provider)
-// - Skeleton futuriste + logs de performance
+// WeatherCard (robuste + logs)
+// - Timeouts élargis (geo 4s, météo 5s) + "hard stop" du skeleton à 4.5s
+// - Toujours sortir du loading (pas de skeleton infini)
+// - Fallback user-friendly si réseau lent + cache 10min
+// - Pas de .forEach fragile; logs précis pour profiler.
 // ------------------------------------------------------------------
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -17,45 +16,49 @@ import {
   mapConditionToEmojiLabel,
   normalizeUf,
   normalizeConditionText,
-} from '@/utils/weather';
+} from '../../utils/weather';
+import { cacheGet, cacheSet } from '../../utils/cache';
+import { withTimeout } from '../../utils/net'; // bien présent
+import { safeForEach } from '../../utils/safeEach';
 
 const W = Dimensions.get('window').width;
+const WX_TTL_SEC = 10 * 60; // 10 min
+const keyFor = (cep) => `wx:${cep || 'unknown'}`;
 
-// ------- cache simple des drapeaux (12h) -------
-let __UF_FLAGS_CACHE = null;
-let __UF_FLAGS_TS = 0;
+const UF_FLAGS_KEY = 'uf-flags-map';
 const UF_FLAGS_API = 'https://apis.codante.io/bandeiras-dos-estados';
+const UF_FLAGS_TTL_SEC = 12 * 60 * 60;
+
 async function getUfFlagUrl(uf) {
   if (!uf) {
     return null;
   }
-  const now = Date.now();
-  if (__UF_FLAGS_CACHE && now - __UF_FLAGS_TS < 12 * 60 * 60 * 1000) {
-    return (__UF_FLAGS_CACHE[uf.toUpperCase()] || {}).circle || null;
+  let map = await cacheGet(UF_FLAGS_KEY);
+  if (!map) {
+    console.time('[flags] fetch');
+    try {
+      const resp = await withTimeout(fetch(UF_FLAGS_API), 2500, 'flags-timeout');
+      if (!resp.ok) {
+        throw new Error(`flags-status-${resp.status}`);
+      }
+      const list = await resp.json();
+      map = {};
+      for (const item of list || []) {
+        const key = String(item.uf || '').toUpperCase();
+        map[key] = { circle: item.flag_url_circle };
+      }
+      await cacheSet(UF_FLAGS_KEY, map, UF_FLAGS_TTL_SEC);
+      console.timeEnd('[flags] fetch');
+    } catch (e) {
+      console.timeEnd('[flags] fetch');
+      console.warn('[flags] fetch error:', e?.message || String(e));
+      return null;
+    }
   }
-  const resp = await fetch(UF_FLAGS_API);
-  if (!resp.ok) {
-    return null;
-  }
-  const list = await resp.json();
-  const map = {};
-  for (const item of list || []) {
-    const key = String(item.uf || '').toUpperCase();
-    map[key] = {
-      circle: item.flag_url_circle,
-      rounded: item.flag_url_rounded,
-      square: item.flag_url_square,
-      full: item.flag_url,
-      name: item.name,
-    };
-  }
-  __UF_FLAGS_CACHE = map;
-  __UF_FLAGS_TS = now;
   return (map[uf.toUpperCase()] || {}).circle || null;
 }
 
-export default function WeatherCard({ cep }) {
-  // ---- states
+export default function WeatherCard({ cep, showScrollHint = false }) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
   const [city, setCity] = useState('');
@@ -65,89 +68,228 @@ export default function WeatherCard({ cep }) {
   const [conditionCode, setConditionCode] = useState('');
   const [flagUrl, setFlagUrl] = useState(null);
 
-  // ---- animations: halo + parallax + particules
+  // animations
   const halo = useRef(new Animated.Value(1)).current;
   const drift = useRef(new Animated.Value(0)).current;
-  const particles = new Array(7).fill(0).map(() => useRef(new Animated.Value(0)).current);
+  // Ref contenant un ARRAY d'Animated.Value ; on dérèfère une fois pour obtenir l'array.
+  const particlesRef = useRef(Array.from({ length: 9 }, () => new Animated.Value(0)));
+  const particles = Array.isArray(particlesRef.current) ? particlesRef.current : [];
 
-  const label = useMemo(
-    () => mapConditionToEmojiLabel(conditionCode, conditionText),
-    [conditionCode, conditionText]
-  );
+  // Hard-stop du skeleton (si tout foire, on bascule en erreur lisible)
+  useEffect(() => {
+    if (!loading) {
+      return;
+    }
+    const t = setTimeout(() => {
+      if (loading) {
+        console.warn('[WeatherCard] hard-stop skeleton (timeout 4500ms)');
+        setLoading(false);
+        setErr('Tempo esgotado para carregar a previsão.');
+      }
+    }, 4500);
+    return () => clearTimeout(t);
+  }, [loading]);
 
   const animKind = useMemo(() => {
     const t = normalizeConditionText(conditionText, conditionCode).toLowerCase();
-    if (t.includes('thunder') || t.includes('trovoada') || t.includes('tempest')) {
+    if (/(thunder|trovoada|tempest)/.test(t)) {
       return 'storm';
     }
-    if (t.includes('rain') || t.includes('chuva') || t.includes('shower') || t.includes('garoa')) {
-      return 'rain';
+    if (/(heavy rain|chuva|downpour|garoa|drizzle)/.test(t)) {
+      return t.includes('drizzle') || t.includes('garoa') ? 'drizzle' : 'rain';
     }
-    if (t.includes('cloud') || t.includes('nublado')) {
+    if (/(snow|neve)/.test(t)) {
+      return 'snow';
+    }
+    if (/(hail|granizo)/.test(t)) {
+      return 'hail';
+    }
+    if (/(fog|mist|neblina)/.test(t)) {
+      return 'fog';
+    }
+    if (/(wind|vento)/.test(t)) {
+      return 'wind';
+    }
+    if (/(night|noite).*?(clear|limpo)/.test(t)) {
+      return 'night';
+    }
+    if (/(cloud|nublado|encoberto|overcast)/.test(t)) {
       return 'cloud';
     }
-    if (t.includes('clear') || t.includes('limpo') || t.includes('sun')) {
+    if (/(clear|limpo|sunny|sol)/.test(t)) {
       return 'sun';
     }
     return 'default';
   }, [conditionText, conditionCode]);
 
-  // ---- load météo + label
+  const mainEmoji = useMemo(() => {
+    switch (animKind) {
+      case 'sun':
+        return '☀️';
+      case 'cloud':
+        return '☁️';
+      case 'rain':
+        return '🌧️';
+      case 'drizzle':
+        return '🌦️';
+      case 'storm':
+        return '⛈️';
+      case 'snow':
+        return '❄️';
+      case 'hail':
+        return '🌨️';
+      case 'fog':
+        return '🌫️';
+      case 'wind':
+        return '🌬️';
+      case 'night':
+        return '🌙';
+      default:
+        return '🌤️';
+    }
+  }, [animKind]);
+
+  const particleChar = useMemo(() => {
+    switch (animKind) {
+      case 'storm':
+        return '⚡';
+      case 'rain':
+        return '💧';
+      case 'drizzle':
+        return '·';
+      case 'snow':
+        return '❄';
+      case 'hail':
+        return '•';
+      case 'fog':
+        return '﹅';
+      case 'wind':
+        return '~';
+      case 'cloud':
+        return '•';
+      case 'sun':
+        return '✦';
+      default:
+        return '·';
+    }
+  }, [animKind]);
+
+  // SWR-ish bootstrap
+  const lastPayloadRef = useRef(null);
   useEffect(() => {
     let mounted = true;
     (async () => {
-      const t0 = Date.now();
-      try {
-        setLoading(true);
-        setErr(null);
+      const key = keyFor(cep);
+      console.time(`[WeatherCard] bootstrap ${key}`);
 
-        const base = await resolveCoordsAndLabel({ cep }); // -> {coords, city, uf, source}
+      // 1) cache instantané
+      const cached = await cacheGet(key);
+      if (cached) {
+        console.log('[WeatherCard] cache HIT', key, cached);
+        if (!mounted) {
+          return;
+        }
+        setCity(cached.city);
+        setUf(cached.uf);
+        setTemp(cached.temp);
+        setConditionText(cached.conditionText);
+        setConditionCode(cached.conditionCode);
+        lastPayloadRef.current = cached;
+        setLoading(false);
+      } else {
+        console.log('[WeatherCard] cache MISS', key);
+        setLoading(true);
+      }
+
+      // 2) refresh réseau
+      try {
+        console.time('[WeatherCard] geo');
+        const base = await withTimeout(resolveCoordsAndLabel({ cep }), 4000, 'geo-timeout');
+        console.timeEnd('[WeatherCard] geo');
         if (!mounted) {
           return;
         }
 
         const fixed = ensureCityFromCapitalIfMissing(base);
+
+        console.time('[WeatherCard] weather');
+        const now = await withTimeout(
+          getWeatherNowWithFallback(fixed.coords),
+          5000,
+          'weather-timeout'
+        );
+        console.timeEnd('[WeatherCard] weather');
         if (!mounted) {
           return;
         }
-        setCity(fixed.city);
-        setUf(normalizeUf(fixed.uf));
-        console.log('[WeatherCard] coords source =', base.source);
 
-        const now = await getWeatherNowWithFallback(fixed.coords);
-        if (!mounted) {
-          return;
+        const fresh = {
+          city: fixed.city,
+          uf: normalizeUf(fixed.uf),
+          temp: now?.tempC ?? null,
+          conditionText: normalizeConditionText(now?.text, now?.code),
+          conditionCode: now?.code || '',
+        };
+
+        const prev = lastPayloadRef.current;
+        const changed =
+          !prev ||
+          prev.city !== fresh.city ||
+          prev.uf !== fresh.uf ||
+          prev.temp !== fresh.temp ||
+          prev.conditionText !== fresh.conditionText ||
+          prev.conditionCode !== fresh.conditionCode;
+
+        if (changed) {
+          setCity(fresh.city);
+          setUf(fresh.uf);
+          setTemp(fresh.temp);
+          setConditionText(fresh.conditionText);
+          setConditionCode(fresh.conditionCode);
+          lastPayloadRef.current = fresh;
         }
-        setTemp(now?.tempC ?? null);
-        setConditionText(normalizeConditionText(now?.text, now?.code));
-        setConditionCode(now?.code || '');
-
-        const ms = Date.now() - t0;
-        console.log('[WeatherCard] loaded in', ms, 'ms', '| provider =', now?.provider || '—');
+        await cacheSet(key, fresh, WX_TTL_SEC);
+        setErr(null);
+        console.log(
+          '[WeatherCard] refreshed | provider =',
+          now?.provider || '—',
+          '| changed =',
+          changed
+        );
       } catch (e) {
-        if (!mounted) {
-          return;
+        console.warn('[WeatherCard] refresh error:', e?.message || String(e));
+        if (!cached) {
+          // Fallback minimal si rien en cache
+          setCity('—');
+          setUf('');
+          setTemp(null);
+          setConditionText('Sem dados de rede');
+          setConditionCode('');
+          setErr('Sem conexão');
         }
-        setErr(e?.message || String(e));
       } finally {
         if (mounted) {
           setLoading(false);
         }
+        console.timeEnd(`[WeatherCard] bootstrap ${key}`);
       }
     })();
+
     return () => {
       mounted = false;
     };
   }, [cep]);
 
-  // ---- flag
+  // drapeau
   useEffect(() => {
     let alive = true;
     (async () => {
+      if (!uf) {
+        setFlagUrl(null);
+        return;
+      }
+      console.time(`[flags] ${uf}`);
       try {
-        if (!uf) {
-          return setFlagUrl(null);
-        }
         const url = await getUfFlagUrl(uf);
         if (alive) {
           setFlagUrl(url || null);
@@ -157,25 +299,26 @@ export default function WeatherCard({ cep }) {
           setFlagUrl(null);
         }
       }
+      console.timeEnd(`[flags] ${uf}`);
     })();
     return () => {
       alive = false;
     };
   }, [uf]);
 
-  // ---- animations
+  // animations
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
         Animated.timing(halo, {
-          toValue: 1.1,
-          duration: 1200,
+          toValue: 1.12,
+          duration: 1000,
           easing: Easing.out(Easing.quad),
           useNativeDriver: true,
         }),
         Animated.timing(halo, {
           toValue: 1.0,
-          duration: 1100,
+          duration: 900,
           easing: Easing.in(Easing.quad),
           useNativeDriver: true,
         }),
@@ -186,26 +329,26 @@ export default function WeatherCard({ cep }) {
       Animated.sequence([
         Animated.timing(drift, {
           toValue: 1,
-          duration: 2600,
+          duration: 2400,
           easing: Easing.inOut(Easing.quad),
           useNativeDriver: true,
         }),
         Animated.timing(drift, {
           toValue: 0,
-          duration: 2600,
+          duration: 2400,
           easing: Easing.inOut(Easing.quad),
           useNativeDriver: true,
         }),
       ])
     ).start();
 
-    particles.forEach((p, i) => {
+    safeForEach(particles, (p, i) => {
       Animated.loop(
         Animated.sequence([
-          Animated.delay(i * 150),
+          Animated.delay(i * 120),
           Animated.timing(p, {
             toValue: 1,
-            duration: 1700,
+            duration: 1500,
             easing: Easing.linear,
             useNativeDriver: true,
           }),
@@ -216,44 +359,19 @@ export default function WeatherCard({ cep }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // styles animés
   const haloStyle = { transform: [{ scale: halo }] };
   const driftStyle = {
-    transform: [{ translateX: drift.interpolate({ inputRange: [0, 1], outputRange: [-7, 7] }) }],
+    transform: [{ translateX: drift.interpolate({ inputRange: [0, 1], outputRange: [-8, 8] }) }],
   };
 
-  // particules (emoji selon animKind)
-  const particleChar = useMemo(() => {
-    if (animKind === 'storm') {
-      return '⚡';
-    }
-    if (animKind === 'rain') {
-      return '💧';
-    }
-    if (animKind === 'cloud') {
-      return '•';
-    }
-    if (animKind === 'sun') {
-      return '✦';
-    }
-    return '·';
-  }, [animKind]);
-
-  const formatHeaderDate = () => {
-    const d = new Date();
-    const date = d.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
-    const time = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    return { date, time };
-  };
-  const { date: dateBR, time: timeBR } = formatHeaderDate();
+  const d = new Date();
+  const dateBR = d.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
+  const timeBR = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
   const Title = () => (
     <View style={styles.titleWrap}>
-      {/* date + heure (gras, sur 2 lignes si besoin) */}
       <Text style={styles.date}>{dateBR} —</Text>
       <Text style={styles.date}>{timeBR}</Text>
-
-      {/* Ville, UF + drapeau */}
       <View style={styles.cityRow}>
         <Text style={styles.cityH1} numberOfLines={1}>
           {city || 'Localização'}
@@ -261,7 +379,7 @@ export default function WeatherCard({ cep }) {
         </Text>
         {uf ? <Text style={styles.ufH1}>{uf}</Text> : <Text style={styles.ufH1}>—</Text>}
         {flagUrl ? (
-          <Image source={{ uri: flagUrl }} style={styles.flag} resizeMode="cover" />
+          <Image source={{ uri: flagUrl }} style={styles.flag} />
         ) : (
           <Text style={styles.flagFallback}>🇧🇷</Text>
         )}
@@ -269,50 +387,33 @@ export default function WeatherCard({ cep }) {
     </View>
   );
 
-  // UI
   return (
     <View style={styles.card}>
       {loading ? (
         <View style={styles.skeleton}>
-          <View style={styles.shimmerBar} />
-          <View style={[styles.shimmerBar, { width: '46%', opacity: 0.85 }]} />
+          <Animated.View style={[styles.shimmerBar, { opacity: halo }]} />
+          <Animated.View style={[styles.shimmerBar, { width: '50%', opacity: drift }]} />
           <View style={styles.tempGhost} />
-          <View style={styles.scene}>
-            <Animated.View style={[styles.halo, haloStyle]} />
-            <Animated.Text style={[styles.emoji, driftStyle]}>🌤️</Animated.Text>
-          </View>
+          <Text style={styles.loadingHint}>
+            Atualizando previsão… {showScrollHint ? 'deslize para ver mais ⟶' : ''}
+          </Text>
         </View>
       ) : err ? (
         <View style={styles.errorBox}>
           <Title />
           <Text style={styles.errTitle}>Não foi possível carregar a previsão.</Text>
-          <Text style={styles.errSmall}>{err}</Text>
+          <Text style={styles.errSmall}>{String(err)}</Text>
         </View>
       ) : (
         <>
           <Title />
-
-          {/* température + état */}
           <View style={styles.nowRow}>
-            <Text style={styles.temp}>{temp != null ? Math.round(temp) : '--'}°</Text>
+            <Text style={styles.temp}>{temp !== null ? Math.round(temp) : '--'}°</Text>
           </View>
-
-          {/* scène animée + description */}
           <View style={styles.scene}>
             <Animated.View style={[styles.halo, haloStyle]} />
-            <Animated.Text style={[styles.emoji, driftStyle]}>
-              {animKind === 'sun'
-                ? '☀️'
-                : animKind === 'cloud'
-                  ? '☁️'
-                  : animKind === 'rain'
-                    ? '🌧️'
-                    : animKind === 'storm'
-                      ? '⛈️'
-                      : '🌤️'}
-            </Animated.Text>
-
-            {particles.map((p, i) => (
+            <Animated.Text style={[styles.emoji, driftStyle]}>{mainEmoji}</Animated.Text>
+            {(particles || []).map((p, i) => (
               <Animated.Text
                 key={i}
                 style={[
@@ -321,7 +422,7 @@ export default function WeatherCard({ cep }) {
                     left: W * 0.14 + i * 20,
                     opacity: p.interpolate({ inputRange: [0, 1], outputRange: [0.0, 0.85] }),
                     transform: [
-                      { translateY: p.interpolate({ inputRange: [0, 1], outputRange: [-8, 14] }) },
+                      { translateY: p.interpolate({ inputRange: [0, 1], outputRange: [-10, 16] }) },
                       { scale: p.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1.15] }) },
                     ],
                   },
@@ -331,12 +432,11 @@ export default function WeatherCard({ cep }) {
               </Animated.Text>
             ))}
           </View>
-
-          {/* description PT-BR */}
           <Text style={styles.descText} numberOfLines={1}>
             {normalizeConditionText(conditionText, conditionCode) ||
               mapConditionToEmojiLabel(conditionCode, conditionText)}
           </Text>
+          {showScrollHint && <Text style={styles.scrollHint}>deslize para ver mais ⟶</Text>}
         </>
       )}
     </View>
@@ -353,19 +453,15 @@ const styles = StyleSheet.create({
     padding: 16,
     borderWidth: 1,
     borderColor: '#2d3038',
-    marginBottom: 16,
+    marginBottom: 12,
     overflow: 'hidden',
-    minHeight: 176,
+    minHeight: 196,
     justifyContent: 'center',
+    width: Math.min(W - 36, 520),
+    alignSelf: 'center',
   },
 
-  /* TITRES */
-  titleWrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    marginBottom: 8,
-  },
+  titleWrap: { alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: 8 },
   date: {
     color: '#bfe2ff',
     fontSize: 15.5,
@@ -392,54 +488,27 @@ const styles = StyleSheet.create({
   flag: { width: 18, height: 18, borderRadius: 9, marginLeft: 6 },
   flagFallback: { fontSize: 16, marginLeft: 6 },
 
-  /* NOW */
-  nowRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-    marginTop: 4,
-  },
-  temp: { color: '#fff', fontSize: 50, fontWeight: '900', lineHeight: 54 },
+  nowRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center', marginTop: 4 },
+  temp: { color: '#fff', fontSize: 52, fontWeight: '900', lineHeight: 56 },
 
-  /* SCÈNE ANIMÉE */
-  scene: {
-    height: 70,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 6,
-  },
+  scene: { height: 76, alignItems: 'center', justifyContent: 'center', marginTop: 6 },
   halo: {
     position: 'absolute',
-    width: 88,
-    height: 88,
-    borderRadius: 48,
-    backgroundColor: 'rgba(34,197,94,0.12)',
+    width: 94,
+    height: 94,
+    borderRadius: 52,
+    backgroundColor: 'rgba(34,197,94,0.14)',
     borderWidth: 1,
-    borderColor: 'rgba(34,197,94,0.28)',
+    borderColor: 'rgba(34,197,94,0.32)',
   },
-  emoji: { fontSize: 34, color: '#fff' },
+  emoji: { fontSize: 36, color: '#fff' },
   particle: { position: 'absolute', top: 16, fontSize: 13, color: '#e5e7eb' },
 
-  /* Loading / Error */
-  skeleton: {
-    minHeight: 140,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-  },
-  shimmerBar: {
-    width: '62%',
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: '#2a2e37',
-  },
-  tempGhost: {
-    width: 90,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: '#2a2e37',
-    marginTop: 6,
-  },
+  skeleton: { minHeight: 160, alignItems: 'center', justifyContent: 'center', gap: 10 },
+  shimmerBar: { width: '62%', height: 16, borderRadius: 8, backgroundColor: '#2a2e37' },
+  tempGhost: { width: 100, height: 44, borderRadius: 10, backgroundColor: '#2a2e37', marginTop: 6 },
+  loadingHint: { color: '#9aa3ad', fontSize: 12, marginTop: 8 },
+
   errorBox: {
     borderColor: 'rgba(248,113,113,0.25)',
     borderWidth: 1,
@@ -450,11 +519,6 @@ const styles = StyleSheet.create({
   errTitle: { color: '#fff', fontWeight: '800' },
   errSmall: { color: '#9aa3ad', fontSize: 12 },
 
-  /* Description */
-  descText: {
-    color: '#cbd5e1',
-    fontWeight: '800',
-    textAlign: 'center',
-    marginTop: 4,
-  },
+  descText: { color: '#cbd5e1', fontWeight: '800', textAlign: 'center', marginTop: 6 },
+  scrollHint: { color: '#94a3b8', fontSize: 12, textAlign: 'center', marginTop: 6 },
 });

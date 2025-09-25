@@ -7,7 +7,7 @@
 // - Options: forceRefresh, maxAgeDays, userAgent, sleepMs
 // -------------------------------------------------------------
 import { doc, getDoc, setDoc, serverTimestamp, increment } from 'firebase/firestore';
-import { db } from '@/firebase';
+import { db } from '../firebase';
 
 // ====================== Helpers ======================
 

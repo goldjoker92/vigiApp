@@ -33,7 +33,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useHeaderHeight } from '@react-navigation/elements';
 import { BlurView } from 'expo-blur';
 import Svg, { Defs, LinearGradient, Stop, Path, G } from 'react-native-svg';
-import { cacheGet, cacheSet, cacheSetForever } from '@/utils/cache';
+import { cacheGet, cacheSet, cacheSetForever } from '../../utils/cache';
+import { safeForEach } from '../../utils/safeEach';
 
 // Firestore
 import { collection, query, where, orderBy, onSnapshot, Timestamp } from 'firebase/firestore';
@@ -264,7 +265,7 @@ export default function MapaScreen() {
               setStateName(reg);
               await cacheSetForever('geo:stateName', reg);
             }
-          } catch (_) {}
+          } catch {}
         } else {
           console.log('[MAP] permission refusée → fallback Fortaleza');
         }
@@ -306,7 +307,7 @@ export default function MapaScreen() {
         q,
         async (snap) => {
           const rows = [];
-          snap.forEach((doc) => {
+          safeForEach(snap, (doc) => {
             const d = doc.data() || {};
             const hasCount =
               Object.prototype.hasOwnProperty.call(d, 'count') ||
@@ -355,7 +356,7 @@ export default function MapaScreen() {
       const mpp = metersPerPixelAt(center.latitude, zoom);
       const rpx = Math.max(8, Math.min(radiusM / mpp, Math.max(width, height) * 1.2));
       setPxRadius(rpx);
-    } catch (_) {}
+    } catch {}
   }, [center, radiusM]);
   useEffect(() => {
     refreshScreenGeometry();

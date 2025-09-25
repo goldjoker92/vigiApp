@@ -37,7 +37,7 @@ try {
     persistence: getReactNativePersistence(ReactNativeAsyncStorage),
   });
   console.log('✅ [firebase] auth initialisée (AsyncStorage)');
-} catch (e) {
+} catch {
   // Si déjà initialisée (Fast Refresh), on récupère l’instance existante
   auth = getAuth(app);
   console.log('ℹ️ [firebase] auth réutilisée');

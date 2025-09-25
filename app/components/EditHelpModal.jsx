@@ -42,7 +42,7 @@ export default function NovaDemandaModal({ visible, onClose, onCreate }) {
       await onCreate(desc.trim());
       setDesc('');
       onClose();
-    } catch (_) {
+    } catch {
       // Toast d’erreur possible ici
     }
     setLoading(false);

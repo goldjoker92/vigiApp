@@ -9,7 +9,7 @@ const TABS = [
   { name: 'profile', label: 'Perfil', icon: User },
 ];
 
-export default function CustomTabBar({ state, descriptors, navigation }) {
+export default function CustomTabBar({ state, _descriptors, navigation }) {
   const router = useRouter();
   return (
     <>

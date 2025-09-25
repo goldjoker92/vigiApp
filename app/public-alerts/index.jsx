@@ -3,7 +3,7 @@
 
 import React from 'react';
 import { View, Text, SafeAreaView } from 'react-native';
-import PublicAlertsFeedCore from '@/app/public-alerts/parts/PublicAlertsFeedCore';
+import PublicAlertsFeedCore from '../../app/public-alerts/parts/PublicAlertsFeedCore';
 
 export default function PublicAlertsPage() {
   return (

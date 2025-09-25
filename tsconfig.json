@@ -1,20 +1,58 @@
 {
+  "extends": "./node_modules/expo/tsconfig.base",
   "compilerOptions": {
-    "strict": true,
-    "module": "ESNext",
+    /* Build/Emit */
+    "noEmit": true, // ← évite d’écrire des .js/.d.ts (corrige "would overwrite input file")
+    "skipLibCheck": true,
+
+    /* Langage/Module */
     "target": "ES2020",
+    "module": "ESNext",
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+
+    /* JS + TS mix */
+    "allowJs": true, // ← accepte .js/.jsx
+    "checkJs": false, // ← passe à true si tu veux le type-check sur les .js
+    "strict": true,
     "forceConsistentCasingInFileNames": true,
-    "skipLibCheck": true,
+
+    /* Base + alias */
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./", "app/*"]
+      "@/*": ["app/*", "src/*"] // ← alias @/ vers app/ et src/
     },
-    "allowJs": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true
+
+    /* Types (facilite l’IDE) */
+    "types": ["react", "react-native"]
   },
-  "include": ["**/*.ts", "**/*.tsx", "app/**/*.jsx", "app/**/*.js"],
-  "extends": "expo/tsconfig.base"
+
+  /* On cible clairement ce qu’on veut typer côté app */
+  "include": [
+    "app/**/*.ts",
+    "app/**/*.tsx",
+    "app/**/*.js",
+    "app/**/*.jsx",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "src/**/*.js",
+    "src/**/*.jsx",
+    "index.js",
+    "index.ts",
+    "index.tsx"
+  ],
+
+  /* On évite le bruit et les faux positifs */
+  "exclude": [
+    "node_modules",
+    "android",
+    "ios",
+    ".expo",
+    "dist",
+    "build",
+    "coverage",
+    "functions/**" // ← exclu du root, on lui met un tsconfig dédié (ci-dessous)
+  ]
 }
