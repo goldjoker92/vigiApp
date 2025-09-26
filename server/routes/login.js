@@ -1,48 +1,36 @@
-﻿// functions/index.js
-import { initializeApp } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
+﻿/**
+ * server/routes/login.js
+ * Routes /signup et /login.
+ * - Accepte { prehash, saltId } (nouveau client)
+ * - OU { password } (ancien client) : on pré-hash côté serveur pour compat
+ *
+ * NOTE: Remplace la Map "users" par ton DB (mongodb, pg, etc.) en prod.
+ */
 import express from "express";
 import crypto from "node:crypto";
-import { onRequest } from "firebase-functions/v2/https";
-import { setGlobalOptions } from "firebase-functions/v2/options";
-import { HASH_SCHEMES } from "./securityConfig.js";
-import { hashForStorageFromClientPrehash, verifyFromClientPrehash } from "./passwordService.js";
+import { HASH_SCHEMES } from "../securityConfig.js";
+import { hashForStorageFromClientPrehash, verifyFromClientPrehash } from "../passwordService.js";
 
-initializeApp();
-const db = getFirestore();
-setGlobalOptions({ region: "southamerica-east1", cors: true });
+const router = express.Router();
+// Map en mémoire pour tests rapides (email -> { storedHash, perUserSalt, hashVersion })
+const users = new Map();
 
-const app = express();
-app.use(express.json());
-
+/** utilitaire : sha256 hex avec prefix "v1::" identique au client */
 function sha256HexServerPrefixed(plain) {
   const buf = crypto.createHash("sha256").update("v1::" + plain, "utf8").digest();
   return Array.from(buf).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
-const usersCol = () => db.collection("users");
-
-app.get("/health", (req, res) => res.json({ ok: true, service: "api", region: "southamerica-east1" }));
-
-app.post("/signup", async (req, res) => {
+/** Signup lit { email, prehash, saltId } (nouveau flow) */
+router.post("/signup", async (req, res) => {
   try {
     const { email, prehash, saltId } = req.body ?? {};
     if (!email || !prehash || !saltId) return res.status(400).json({ ok: false, code: "BAD_REQUEST" });
     if (!Object.hasOwn(HASH_SCHEMES, saltId)) return res.status(400).json({ ok: false, code: "UNSUPPORTED_SALT_ID" });
-
-    const userRef = usersCol().doc(email);
-    const snap = await userRef.get();
-    if (snap.exists) return res.status(409).json({ ok: false, code: "ALREADY_EXISTS" });
+    if (users.has(email)) return res.status(409).json({ ok: false, code: "ALREADY_EXISTS" });
 
     const rec = await hashForStorageFromClientPrehash(prehash, saltId);
-    await userRef.set({
-      email,
-      storedHash: rec.storedHash,
-      perUserSalt: rec.perUserSalt,
-      hashVersion: rec.hashVersion,
-      createdAt: new Date().toISOString()
-    });
-
+    users.set(email, rec);
     return res.json({ ok: true });
   } catch (e) {
     console.error(e);
@@ -50,25 +38,31 @@ app.post("/signup", async (req, res) => {
   }
 });
 
-app.post("/login", async (req, res) => {
+/** Login : accepte ancien et nouveau format */
+router.post("/login", async (req, res) => {
   try {
     const { email, prehash, saltId, password } = req.body ?? {};
     if (!email) return res.status(400).json({ ok: false, code: "BAD_REQUEST" });
 
-    let effectivePrehash;
+    let effectivePrehash, effectiveSaltId;
+
     if (prehash && saltId && Object.hasOwn(HASH_SCHEMES, saltId)) {
+      // nouveau client déjà branché
       effectivePrehash = prehash;
+      effectiveSaltId = saltId;
     } else if (typeof password === "string") {
-      effectivePrehash = sha256HexServerPrefixed(password); // fallback legacy
+      // ancien client : on calcule le pré-hash serveur-side (fallback)
+      effectivePrehash = sha256HexServerPrefixed(password);
+      effectiveSaltId = "build-v1";
     } else {
       return res.status(400).json({ ok: false, code: "MISSING_CREDENTIALS" });
     }
 
-    const userRef = usersCol().doc(email);
-    const snap = await userRef.get();
-    if (!snap.exists) return res.status(401).json({ ok: false });
+    // récupère l'utilisateur (ici Map, remplace par DB en prod)
+    const user = users.get(email);
+    if (!user) return res.status(401).json({ ok: false });
 
-    const user = snap.data();
+    // vérification avec passwordService
     const ok = await verifyFromClientPrehash(effectivePrehash, {
       storedHash: user.storedHash,
       perUserSalt: user.perUserSalt,
@@ -76,6 +70,8 @@ app.post("/login", async (req, res) => {
     });
 
     if (!ok) return res.status(401).json({ ok: false });
+
+    // succès : génère token réel ici (JWT) ; renvoi fake pour test
     return res.json({ ok: true, token: "FAKE_JWT_FOR_TEST" });
   } catch (e) {
     console.error(e);
@@ -83,4 +79,4 @@ app.post("/login", async (req, res) => {
   }
 });
 
-export const api = onRequest(app);
+export default router;

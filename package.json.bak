@@ -1,0 +1,18 @@
+{
+    "name": "prehash-saltid-demo",
+    "version": "1.0.0",
+    "type": "module",
+    "private": true,
+    "scripts": {
+        "start": "node server/index.js",
+        "signup": "node -e \"import(\\\"./client/cryptoClient.js\\\").then(async m=>{const r=await m.signup(\\\"http://localhost:3000\\\", \\\"test@example.com\\\", \\\"motdepasse\\\"); console.log(r);})\"",
+        "login": "node -e \"import('./client/loginAdapter.js').then(async m=>{const r=await m.login('http://localhost:3000','test@example.com','motdepasse'); console.log(r);})\""
+    },
+    "dependencies": {
+        "@react-native-async-storage/async-storage": "2.2.0",
+        "argon2": "0.41.1",
+        "dotenv": "16.6.1",
+        "express": "4.21.2",
+        "firebase": "12.3.0"
+    }
+}

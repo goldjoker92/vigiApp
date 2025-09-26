@@ -1,0 +1,13 @@
+﻿{
+  "name": "vigi-tools",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "signup:cli": "node -e \"import('../client/cryptoClient.js').then(async m=>{const r=await m.signup('http://localhost:3000','test@example.com','motdepasse'); console.log(r);})\"",
+    "login:cli":  "node -e \"import('../client/loginAdapter.js').then(async m=>{const r=await m.login('http://localhost:3000','test@example.com','motdepasse'); console.log(r);})\""
+  },
+  "dependencies": {
+    "firebase": "12.3.0"
+  }
+}

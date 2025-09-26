@@ -513,7 +513,7 @@ export default function ReportScreen() {
       console.log('[REPORT] handleSend ABORT: coords unavailable');
       return;
     }
-  // ---- Conte?do neutro + bloqueio progressivo (3 tentativas => 6h)
+  // ---- Conte�do neutro + bloqueio progressivo (3 tentativas => 6h)
   const uid = auth.currentUser?.uid || "anon";
   const verdict = checkReportAcceptable(descricao, uid);
   if (!verdict.ok) {
@@ -929,7 +929,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
 });
-
 
 
 

@@ -1,15 +1,15 @@
-// screens/Report.jsx
+﻿// screens/Report.jsx
 // -------------------------------------------------------------
-// Rôle : création d’un signalement PUBLIC dans /publicAlerts
+// R�le : cr�ation d??Tun signalement PUBLIC dans /publicAlerts
 // - Localisation (GPS) -> adresse + CEP (Google-first via utils/cep)
 // - Sauvegarde Firestore avec createdAt + expiresAt = now + 90j (TTL)
 // - Logs [REPORT] pour tout suivre (diagnostic production-friendly)
-// - Déclenchement non-bloquant de la Cloud Function d’alerte publique
-// - ✅ Toasters UX (queue) : positifs/info/erreur, 4s, barre de temps, non-collés aux bords
-// - ✅ Flux MANUEL **ou** AUTO : bouton actif sans GPS si champs requis OK ; géocodage si nécessaire à l’envoi
-// - ✅ Séquencement toasts :
-//      • AUTO: toasts de localisation d’abord, puis le vert “prêt” si formulaire complet
-//      • MANUEL: le vert “prêt” sort auto quand tous les champs requis sont OK
+// - D�clenchement non-bloquant de la Cloud Function d??Talerte publique
+// - ?o. Toasters UX (queue) : positifs/info/erreur, 4s, barre de temps, non-coll�s aux bords
+// - ?o. Flux MANUEL **ou** AUTO : bouton actif sans GPS si champs requis OK ; g�ocodage si n�cessaire � l??Tenvoi
+// - ?o. S�quencement toasts :
+//      ??? AUTO: toasts de localisation d??Tabord, puis le vert ??opr�t??? si formulaire complet
+//      ??? MANUEL: le vert ??opr�t??? sort auto quand tous les champs requis sont OK
 // -------------------------------------------------------------
 
 import React, { useMemo, useRef, useState, useEffect } from 'react';
@@ -29,8 +29,8 @@ import {
 } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import * as Location from 'expo-location';
-import { db, auth } from '../firebase';
-import { collection, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { auth } from '../firebase';
+import { serverTimestamp, Timestamp } from 'firebase/firestore';
 import { useRouter } from 'expo-router';
 import {
   MapPin,
@@ -48,6 +48,9 @@ import {
 import { useAuthGuard } from '../hooks/useAuthGuard';
 import { resolveExactCepFromCoords, GOOGLE_MAPS_KEY } from '../utils/cep';
 import { upsertPublicAlert } from "../platform_services/incidents";
+import { reportNewLexemesRaw } from "../platform_services/observability/mod_signals";
+ import { checkReportAcceptable } from "../platform_services/abuse_monitor";
+import { abuseState } from "../platform_services/observability/abuse_strikes";
 
 
 // -------------------------------------------------------------
@@ -60,11 +63,11 @@ const ALERT_RADIUS_M = 1000;
 
 const categories = [
   { label: 'Roubo/Furto', icon: ShieldAlert, severity: 'medium', color: '#FFA500' },
-  { label: 'Agressão', icon: UserX, severity: 'medium', color: '#FFA500' },
-  { label: 'Incidente de trânsito', icon: Car, severity: 'minor', color: '#FFE600' },
-  { label: 'Incêndio', icon: Flame, severity: 'grave', color: '#FF3B30' },
+  { label: 'Agress�o', icon: UserX, severity: 'medium', color: '#FFA500' },
+  { label: 'Incidente de tr�nsito', icon: Car, severity: 'minor', color: '#FFE600' },
+  { label: 'Inc�ndio', icon: Flame, severity: 'grave', color: '#FF3B30' },
   { label: 'Falta de luz', icon: Bolt, severity: 'minor', color: '#FFE600' },
-  { label: 'Mal súbito (problema de saúde)', icon: HandHeart, severity: 'grave', color: '#FF3B30' },
+  { label: 'Mal s�bito (problema de sa�de)', icon: HandHeart, severity: 'grave', color: '#FF3B30' },
   { label: 'Outros', icon: FileQuestion, severity: 'minor', color: '#007AFF' },
 ];
 
@@ -84,14 +87,14 @@ const severityToColor = (sev) => {
 };
 
 const buildEnderecoLabel = (ruaNumero, cidade, estado) =>
-  [ruaNumero, cidade && `${cidade}/${estado}`].filter(Boolean).join(' — ');
+  [ruaNumero, cidade && `${cidade}/${estado}`].filter(Boolean).join(' ??" ');
 
 // -------------------------------------------------------------
-// Validation "format brésilien" pour flux MANUEL
+// Validation "format br�silien" pour flux MANUEL
 // (CEP optionnel ; si fourni, doit matcher le format)
 // -------------------------------------------------------------
 const isValidUF = (uf) => /^[A-Z]{2}$/.test(String(uf || '').trim());
-const hasStreetNumber = (ruaNumero) => /\d+/.test(String(ruaNumero || '')); // au moins un numéro
+const hasStreetNumber = (ruaNumero) => /\d+/.test(String(ruaNumero || '')); // au moins un num�ro
 const isValidCidade = (cidade) => /^[\p{L}\s'.-]+$/u.test(String(cidade || '').trim());
 const isValidCepIfPresent = (cep) => {
   const d = onlyDigits(cep || '');
@@ -100,22 +103,22 @@ const isValidCepIfPresent = (cep) => {
 
 function validateBrazilianManualAddress({ ruaNumero, cidade, estado, cep }) {
   if (!ruaNumero?.trim() || !hasStreetNumber(ruaNumero)) {
-    return { ok: false, msg: '🥲 Informe rua com número.' };
+    return { ok: false, msg: '?Y?? Informe rua com n�mero.' };
   }
   if (!cidade?.trim() || !isValidCidade(cidade)) {
-    return { ok: false, msg: '🥲 Cidade inválida.' };
+    return { ok: false, msg: '?Y?? Cidade inv�lida.' };
   }
   if (!estado?.trim() || !isValidUF(estado.toUpperCase())) {
-    return { ok: false, msg: '🥲 UF deve ter 2 letras (ex.: CE).' };
+    return { ok: false, msg: '?Y?? UF deve ter 2 letras (ex.: CE).' };
   }
   if (!isValidCepIfPresent(cep)) {
-    return { ok: false, msg: '🥲 CEP inválido (opcional, mas se informado deve ter 8 dígitos).' };
+    return { ok: false, msg: '?Y?? CEP inv�lido (opcional, mas se informado deve ter 8 d�gitos).' };
   }
   return { ok: true };
 }
 
 // -------------------------------------------------------------
-// Geocoding (address -> coords) — utilisé pour le flux MANUEL
+// Geocoding (address -> coords) ??" utilis� pour le flux MANUEL
 // -------------------------------------------------------------
 async function geocodeAddressToCoords({ ruaNumero, cidade, estado, cep, googleKey }) {
   try {
@@ -123,7 +126,7 @@ async function geocodeAddressToCoords({ ruaNumero, cidade, estado, cep, googleKe
     const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(
       addr
     )}&region=br&key=${googleKey}`;
-    console.log('[REPORT][MANUAL][GEO] forward geocode →', addr);
+    console.log('[REPORT][MANUAL][GEO] forward geocode ??', addr);
     const resp = await fetch(url);
     const json = await resp.json();
     if (json.status === 'OK' && json.results?.length) {
@@ -131,7 +134,7 @@ async function geocodeAddressToCoords({ ruaNumero, cidade, estado, cep, googleKe
       const loc = first.geometry?.location;
       if (loc?.lat && loc?.lng) {
         console.log('[REPORT][MANUAL][GEO] OK lat/lng =', loc);
-        // Tentative d’extraire un CEP si pas fourni
+        // Tentative d??Textraire un CEP si pas fourni
         let cepOut = cep || '';
         const postal = first.address_components?.find((c) => c.types?.includes('postal_code'));
         if (!cepOut && postal?.long_name) {
@@ -154,9 +157,9 @@ async function geocodeAddressToCoords({ ruaNumero, cidade, estado, cep, googleKe
 }
 
 // -------------------------------------------------------------
-// Toast léger avec **QUEUE** (pas de chevauchement)
+// Toast l�ger avec **QUEUE** (pas de chevauchement)
 // -------------------------------------------------------------
-const TOAST_DURATION_MS = 4000; // ≈ 4s
+const TOAST_DURATION_MS = 4000; // ??^ 4s
 
 function useToastQueue() {
   const [current, setCurrent] = useState(null); // { type, text }
@@ -170,7 +173,7 @@ function useToastQueue() {
   const play = () => {
     if (activeRef.current) {
       return;
-    } // déjà en cours
+    } // d�j� en cours
     const next = queueRef.current.shift();
     if (!next) {
       return;
@@ -257,19 +260,19 @@ function useToastQueue() {
 function getMissingFields({ categoria, descricao, ruaNumero, cidade, estado }) {
   const missing = [];
   if (!categoria) {
-    missing.push('• categoria');
+    missing.push('??? categoria');
   }
   if (!String(descricao || '').trim()) {
-    missing.push('• descrição');
+    missing.push('??? descri��o');
   }
   if (!String(ruaNumero || '').trim()) {
-    missing.push('• rua e número');
+    missing.push('??? rua e n�mero');
   }
   if (!String(cidade || '').trim()) {
-    missing.push('• cidade');
+    missing.push('??? cidade');
   }
   if (!String(estado || '').trim()) {
-    missing.push('• estado/UF');
+    missing.push('??? estado/UF');
   }
   return missing;
 }
@@ -278,7 +281,7 @@ function showDisabledGuideToast(show, fields) {
   if (!fields.length) {
     return;
   }
-  const text = `⚠️ Campos obrigatórios faltando:\n${fields.join('\n')}`;
+  const text = `?s?? Campos obrigat�rios faltando:\n${fields.join('\n')}`;
   console.log('[REPORT][TOAST][GUIDE] missing =', fields);
   show({ type: 'error', text });
 }
@@ -293,10 +296,10 @@ export default function ReportScreen() {
 
   const { show, ToastOverlay } = useToastQueue();
 
-  // État formulaire
+  // ??tat formulaire
   const [categoria, setCategoria] = useState(null);
   const [descricao, setDescricao] = useState('');
-  const [local, setLocal] = useState(null); // { latitude, longitude, ... } — GPS **ou** géocodage lors de l’envoi
+  const [local, setLocal] = useState(null); // { latitude, longitude, ... } ??" GPS **ou** g�ocodage lors de l??Tenvoi
   const [ruaNumero, setRuaNumero] = useState('');
   const [cidade, setCidade] = useState('');
   const [estado, setEstado] = useState('');
@@ -304,7 +307,7 @@ export default function ReportScreen() {
   const [loadingLoc, setLoadingLoc] = useState(false);
   const [cepPrecision, setCepPrecision] = useState('none');
 
-  // Garde-fou pour le séquencement AUTO: on retarde le "prêt" pendant l'auto
+  // Garde-fou pour le s�quencement AUTO: on retarde le "pr�t" pendant l'auto
   const autoFlowActiveRef = useRef(false);
 
   const now = new Date();
@@ -324,14 +327,14 @@ export default function ReportScreen() {
   );
 
   // -----------------------------------------------------------
-  // Toast "prêt" auto — en MANUEL uniquement (ou quand l'AUTO est fini)
+  // Toast "pr�t" auto ??" en MANUEL uniquement (ou quand l'AUTO est fini)
   // -----------------------------------------------------------
   const readyToastShownRef = useRef(false);
   useEffect(() => {
-    // on n'affiche pas le toast "prêt" si on est en plein flux AUTO
+    // on n'affiche pas le toast "pr�t" si on est en plein flux AUTO
     if (isBtnActive && !readyToastShownRef.current && !autoFlowActiveRef.current) {
       console.log('[REPORT][TOAST] ready-toast (form complet, MANUAL or POST-AUTO)');
-      show({ type: 'success', text: '🛩️ Pronto pra enviar!' });
+      show({ type: 'success', text: '?Y>?? Pronto pra enviar!' });
       readyToastShownRef.current = true;
     } else if (!isBtnActive) {
       readyToastShownRef.current = false;
@@ -349,7 +352,7 @@ export default function ReportScreen() {
       const { status } = await Location.requestForegroundPermissionsAsync();
       console.log('[REPORT][AUTO] Location perm =', status);
       if (status !== 'granted') {
-        show({ type: 'error', text: '😕 Permissão de localização negada.' });
+        show({ type: 'error', text: '?Y~. Permiss�o de localiza��o negada.' });
         return;
       }
 
@@ -360,7 +363,7 @@ export default function ReportScreen() {
       setLocal(coords);
 
       // Reverse CEP via util Google-first
-      console.log('[REPORT][AUTO] resolveExactCepFromCoords…');
+      console.log('[REPORT][AUTO] resolveExactCepFromCoords???');
       const res = await resolveExactCepFromCoords(coords.latitude, coords.longitude, {
         googleApiKey: GOOGLE_MAPS_KEY,
       });
@@ -381,20 +384,20 @@ export default function ReportScreen() {
       if (res.cep) {
         setCep(res.cep);
         setCepPrecision('exact');
-        // AUTO: localisation d’abord
-        show({ type: 'info', text: '📍 Localização atualizada. CEP detectado.' });
+        // AUTO: localisation d??Tabord
+        show({ type: 'info', text: '?Y"? Localiza��o atualizada. CEP detectado.' });
       } else if (Array.isArray(res.candidates) && res.candidates.length > 0) {
         setCep('');
         setCepPrecision('needs-confirmation');
-        show({ type: 'info', text: 'ℹ️ Vários CEPs possíveis — confirme o endereço/CEP.' });
+        show({ type: 'info', text: '?"?? V�rios CEPs poss�veis ??" confirme o endere�o/CEP.' });
       } else {
         setCep('');
         setCepPrecision('general');
-        show({ type: 'info', text: '🔎 CEP exato não encontrado — pode inserir manualmente.' });
+        show({ type: 'info', text: '?Y"Z CEP exato n�o encontrado ??" pode inserir manualmente.' });
       }
 
-      // Ensuite, si le formulaire est complet -> toast "prêt"
-      // (on le pousse APRÈS les toasts de localisation)
+      // Ensuite, si le formulaire est complet -> toast "pr�t"
+      // (on le pousse APR?^S les toasts de localisation)
       const formNowComplete =
         categoria &&
         descricao.trim() &&
@@ -402,13 +405,13 @@ export default function ReportScreen() {
         (res.address?.cidade || cidade).trim() &&
         (uf || estado).trim();
       if (formNowComplete) {
-        console.log('[REPORT][AUTO] Form complete post-geo → enqueue ready toast');
-        show({ type: 'success', text: '🛩️ Pronto pra enviar!' });
-        readyToastShownRef.current = true; // évite un doublon via useEffect
+        console.log("[REPORT][AUTO] Form complete post-geo ?? enqueue ready toast");
+        show({ type: 'success', text: '?Y>?? Pronto pra enviar!' });
+        readyToastShownRef.current = true; // �vite un doublon via useEffect
       }
     } catch (e) {
       console.log('[REPORT][AUTO] ERREUR =', e?.message || e);
-      show({ type: 'error', text: '🚫 Não foi possível obter sua localização.' });
+      show({ type: 'error', text: '?Ys? N�o foi poss�vel obter sua localiza��o.' });
     } finally {
       setLoadingLoc(false);
       autoFlowActiveRef.current = false;
@@ -417,7 +420,7 @@ export default function ReportScreen() {
   };
 
   // -----------------------------------------------------------
-  // Validation légère (toasts rouges si incomplet) — pour SEND
+  // Validation l�g�re (toasts rouges si incomplet) ??" pour SEND
   // -----------------------------------------------------------
   const validateForSendCommon = () => {
     const missing = getMissingFields({ categoria, descricao, ruaNumero, cidade, estado });
@@ -429,7 +432,7 @@ export default function ReportScreen() {
   };
 
   // -----------------------------------------------------------
-  // MANUEL: envoi -> géocode si pas de coords ; vérif format BR
+  // MANUEL: envoi -> g�ocode si pas de coords ; v�rif format BR
   // -----------------------------------------------------------
   const handleSendManualFlow = async () => {
     console.log('[REPORT][MANUAL] handleSendManualFlow');
@@ -441,13 +444,13 @@ export default function ReportScreen() {
     });
     if (!fmt.ok) {
       show({ type: 'error', text: fmt.msg });
-      console.log('[REPORT][MANUAL] format invalid →', fmt.msg);
+      console.log('[REPORT][MANUAL] format invalid ??', fmt.msg);
       return null;
     }
 
     let coords = local;
     if (!coords?.latitude || !coords?.longitude) {
-      console.log('[REPORT][MANUAL] no coords — forward geocoding from address…');
+      console.log('[REPORT][MANUAL] no coords ??" forward geocoding from address???');
       const g = await geocodeAddressToCoords({
         ruaNumero,
         cidade,
@@ -456,7 +459,7 @@ export default function ReportScreen() {
         googleKey: GOOGLE_MAPS_KEY,
       });
       if (!g.ok) {
-        show({ type: 'error', text: '📭 Endereço não encontrado. Verifique os campos.' });
+        show({ type: 'error', text: '?Y"? Endere�o n�o encontrado. Verifique os campos.' });
         console.log('[REPORT][MANUAL] forward geocoding FAILED:', g.error);
         return null;
       }
@@ -473,14 +476,14 @@ export default function ReportScreen() {
   };
 
   // -----------------------------------------------------------
-  // AUTO: envoi — coords déjà présents via handleLocationAutoFlow
+  // AUTO: envoi ??" coords d�j� pr�sents via handleLocationAutoFlow
   // -----------------------------------------------------------
   const handleSendAutoFlow = async () => {
     console.log('[REPORT][AUTO] handleSendAutoFlow');
     if (local?.latitude && local?.longitude) {
       return local;
     }
-    console.log('[REPORT][AUTO] Missing coords unexpectedly — fallback MANUAL geocode');
+    console.log('[REPORT][AUTO] Missing coords unexpectedly ??" fallback MANUAL geocode');
     return await handleSendManualFlow();
   };
 
@@ -496,7 +499,7 @@ export default function ReportScreen() {
       return;
     }
 
-    // 2) Flux MANUEL ou AUTO suivant présence coords
+    // 2) Flux MANUEL ou AUTO suivant pr�sence coords
     const isAuto = !!(local?.latitude && local?.longitude);
     console.log('[REPORT] flow =', isAuto ? 'AUTO' : 'MANUAL');
 
@@ -541,20 +544,26 @@ export default function ReportScreen() {
         createdAt: serverTimestamp(),
         expiresAt: Timestamp.fromDate(expires),
 
-        // ✅ Rayon fixe V1
+        // ?o. Rayon fixe V1
         radius: ALERT_RADIUS_M, // compat front si tu lis encore "radius"
-        radius_m: ALERT_RADIUS_M, // clé canonique back
+        radius_m: ALERT_RADIUS_M, // cl� canonique back
       };
 
+      await reportNewLexemesRaw(descricao, { feature: 'desc', catHint: 'slang', city: cidade, uf: estado.toUpperCase() });
       console.log('[REPORT] Firestore payload =', payload);
-      const docRef = await addDoc(collection(db, 'publicAlerts'), payload);
-      console.log('[REPORT] addDoc OK => id:', docRef.id);
+      const { id: alertId } = await upsertPublicAlert({
+  user: { uid: auth.currentUser?.uid },
+  coords,
+  payload,
+  ttlDays: DB_RETENTION_DAYS,
+});
+console.log('[REPORT] upsert OK => id:', alertId);
 
       // Cloud Function (non-bloquant)
       (async () => {
         try {
           const body = {
-            alertId: docRef.id,
+            alertId,
             endereco: enderecoLabel,
             bairro: '',
             cidade,
@@ -563,7 +572,7 @@ export default function ReportScreen() {
             lat: coords.latitude,
             lng: coords.longitude,
 
-            // ✅ fixe
+            // ?o. fixe
             radius_m: ALERT_RADIUS_M,
 
             severidade: sev || 'medium',
@@ -592,7 +601,7 @@ export default function ReportScreen() {
 
       // Confirmation + retour
       Alert.alert('Alerta enviado!', 'Seu alerta foi registrado.');
-      console.log('[REPORT] handleSend SUCCESS → navigate home');
+      console.log('[REPORT] handleSend SUCCESS ?? navigate home');
       router.replace('/(tabs)/home');
     } catch (e) {
       console.log('[REPORT] Firestore ERROR =', e?.message || e);
@@ -603,7 +612,7 @@ export default function ReportScreen() {
   };
 
   // -----------------------------------------------------------
-  // RENDER (ordre de hooks stable; gating d’UI)
+  // RENDER (ordre de hooks stable; gating d??TUI)
   // -----------------------------------------------------------
   return (
     <View style={{ flex: 1, backgroundColor: '#181A20' }}>
@@ -623,16 +632,16 @@ export default function ReportScreen() {
             <View style={styles.alertCard}>
               <AlertTriangle color="#fff" size={26} style={{ marginRight: 12 }} />
               <View style={{ flex: 1 }}>
-                <Text style={styles.alertTitle}>⚠️ Atenção!</Text>
+                <Text style={styles.alertTitle}>?s?? Aten��o!</Text>
                 <Text style={styles.alertMsg}>
-                  Toda declaração feita no aplicativo envolve sua{' '}
-                  <Text style={{ fontWeight: 'bold' }}>boa fé</Text> e{' '}
+                  Toda declara��o feita no aplicativo envolve sua{' '}
+                  <Text style={{ fontWeight: 'bold' }}>boa f�</Text> e{' '}
                   <Text style={{ fontWeight: 'bold' }}>responsabilidade</Text>
                   {'\n'}
-                  Nunca substitua os serviços de emergência!
+                  Nunca substitua os servi�os de emerg�ncia!
                   {'\n'}
                   <Text style={{ fontWeight: 'bold' }}>
-                    ☎️ Ligue 190 (Polícia) ou 192 (Samu) em caso de risco ou emergência.
+                    ?~Z? Ligue 190 (Pol�cia) ou 192 (Samu) em caso de risco ou emerg�ncia.
                   </Text>
                 </Text>
               </View>
@@ -640,7 +649,7 @@ export default function ReportScreen() {
 
             <Text style={styles.title}>
               <Bell color="#007AFF" size={22} style={{ marginRight: 5 }} />
-              Sinalizar um evento público
+              Sinalizar um evento p�blico
             </Text>
 
             <View style={styles.categoriaGroup}>
@@ -673,7 +682,7 @@ export default function ReportScreen() {
             <Text style={styles.label}>Descreva o ocorrido</Text>
             <TextInput
               style={styles.input}
-              placeholder="Descrição (obrigatório)"
+              placeholder="Descri��o (obrigat�rio)"
               value={descricao}
               onChangeText={setDescricao}
               multiline
@@ -685,27 +694,27 @@ export default function ReportScreen() {
                 <Text style={styles.readonlyValue}>{dateBR}</Text>
               </View>
               <View style={styles.readonlyField}>
-                <Text style={styles.readonlyLabel}>Horário</Text>
+                <Text style={styles.readonlyLabel}>Hor�rio</Text>
                 <Text style={styles.readonlyValue}>{timeBR}</Text>
               </View>
             </View>
 
-            <Text style={styles.label}>Localização</Text>
+            <Text style={styles.label}>Localiza��o</Text>
             <TextInput
               style={styles.input}
-              placeholder="Rua e número (obrigatório)"
+              placeholder="Rua e n�mero (obrigat�rio)"
               value={ruaNumero}
               onChangeText={setRuaNumero}
             />
             <TextInput
               style={styles.input}
-              placeholder="Cidade (obrigatório)"
+              placeholder="Cidade (obrigat�rio)"
               value={cidade}
               onChangeText={setCidade}
             />
             <TextInput
               style={styles.input}
-              placeholder="Estado/UF (ex.: CE) (obrigatório)"
+              placeholder="Estado/UF (ex.: CE) (obrigat�rio)"
               value={estado}
               onChangeText={(v) => setEstado(String(v).toUpperCase())}
               autoCapitalize="characters"
@@ -724,8 +733,8 @@ export default function ReportScreen() {
                 {cepPrecision === 'exact'
                   ? 'CEP exato detectado.'
                   : cepPrecision === 'needs-confirmation'
-                    ? 'Vários CEPs possíveis — confirme o endereço/CEP.'
-                    : 'CEP não foi identificado — você pode inserir manualmente.'}
+                    ? 'V�rios CEPs poss�veis ??" confirme o endere�o/CEP.'
+                    : 'CEP n�o foi identificado ??" voc� pode inserir manualmente.'}
               </Text>
             )}
 
@@ -736,7 +745,7 @@ export default function ReportScreen() {
             >
               <MapPin color="#007AFF" size={18} style={{ marginRight: 8 }} />
               <Text style={styles.locBtnText}>
-                {loadingLoc ? 'Buscando localização...' : 'Usar minha localização atual'}
+                {loadingLoc ? 'Buscando localiza��o...' : 'Usar minha localiza��o atual'}
               </Text>
             </TouchableOpacity>
 
@@ -762,7 +771,7 @@ export default function ReportScreen() {
               }
               onPress={() => {
                 if (!isBtnActive) {
-                  // Pas d'effet visuel, mais on guide immédiatement
+                  // Pas d'effet visuel, mais on guide imm�diatement
                   const missing = getMissingFields({
                     categoria,
                     descricao,
@@ -908,3 +917,12 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
 });
+
+
+
+
+
+
+
+
+
