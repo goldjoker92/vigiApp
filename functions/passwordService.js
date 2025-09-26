@@ -1,35 +1,35 @@
-﻿// functions/passwordService.js
-import argon2 from "argon2";
-import { randomBytes } from "crypto";
-import { defineString } from "firebase-functions/params";
-import { HASH_SCHEMES } from "./securityConfig.js";
+// functions/passwordService.js
+import argon2 from 'argon2';
+import { randomBytes } from 'crypto';
+import { defineString } from 'firebase-functions/params';
+import { HASH_SCHEMES } from './securityConfig.js';
 
-const PEPPER_V1 = defineString("security.pepper_v1");
+const PEPPER_V1 = defineString('security.pepper_v1');
 
 function getPepper(saltId) {
   const key = HASH_SCHEMES[saltId]?.pepperParamKey;
-  if (!key) throw new Error("Unknown saltId");
-  if (key === "security.pepper_v1") return PEPPER_V1.value();
-  throw new Error("Pepper key not handled: " + key);
+  if (!key) throw new Error('Unknown saltId');
+  if (key === 'security.pepper_v1') return PEPPER_V1.value();
+  throw new Error('Pepper key not handled: ' + key);
 }
 
 export async function hashForStorageFromClientPrehash(clientPrehash, saltId) {
   const pepper = getPepper(saltId);
-  if (!pepper) throw new Error("Missing pepper - set functions config");
-  const perUserSalt = randomBytes(16).toString("hex");
+  if (!pepper) throw new Error('Missing pepper - set functions config');
+  const perUserSalt = randomBytes(16).toString('hex');
   const toHash = `${clientPrehash}:${pepper}:${perUserSalt}`;
   const stored = await argon2.hash(toHash, {
     type: argon2.argon2id,
     memoryCost: 65536,
     timeCost: 3,
-    parallelism: 1
+    parallelism: 1,
   });
   return { storedHash: stored, perUserSalt, hashVersion: saltId };
 }
 
 export async function verifyFromClientPrehash(clientPrehash, user) {
   const pepper = getPepper(user.hashVersion);
-  if (!pepper) throw new Error("Missing pepper - set functions config");
+  if (!pepper) throw new Error('Missing pepper - set functions config');
   const toVerify = `${clientPrehash}:${pepper}:${user.perUserSalt}`;
   return argon2.verify(user.storedHash, toVerify);
 }

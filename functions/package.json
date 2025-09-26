@@ -1,7 +1,9 @@
 ﻿{
   "name": "vigiapp-functions",
   "type": "module",
-  "engines": { "node": "20" },
+  "engines": {
+    "node": "20"
+  },
   "dependencies": {
     "argon2": "^0.41.1",
     "express": "^4.19.2",

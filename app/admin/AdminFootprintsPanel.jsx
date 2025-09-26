@@ -153,7 +153,7 @@ export default function AdminFootprintsPanel({ map, L, apiKey }) {
       });
       circleLayersRef.current = layers;
     },
-    [L, map, clearLayers]
+    [L, map, clearLayers],
   );
 
   // Loaders
@@ -169,8 +169,8 @@ export default function AdminFootprintsPanel({ map, L, apiKey }) {
         map.fitBounds(
           L.latLngBounds(
             [BRAZIL_BOUNDS.south, BRAZIL_BOUNDS.west],
-            [BRAZIL_BOUNDS.north, BRAZIL_BOUNDS.east]
-          )
+            [BRAZIL_BOUNDS.north, BRAZIL_BOUNDS.east],
+          ),
         );
       }
     } catch (e) {
@@ -207,7 +207,7 @@ export default function AdminFootprintsPanel({ map, L, apiKey }) {
         setLoading(false);
       }
     },
-    [apiKey, map, L, renderCircles]
+    [apiKey, map, L, renderCircles],
   );
 
   const loadViewport = useCallback(async () => {

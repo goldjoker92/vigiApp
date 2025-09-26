@@ -8,7 +8,7 @@ module.exports = (config) =>
     if (!cfg.modResults.contents.includes(addLine)) {
       cfg.modResults.contents = cfg.modResults.contents.replace(
         /dependencies\s*\{/,
-        `dependencies {\n    ${addLine}`
+        `dependencies {\n    ${addLine}`,
       );
     }
     return cfg;

@@ -49,7 +49,7 @@ function AnimatedSkeletonLine({ style, delay = 0 }) {
       Animated.sequence([
         Animated.timing(opacity, { toValue: 1, duration: 600, delay, useNativeDriver: true }),
         Animated.timing(opacity, { toValue: 0.5, duration: 600, useNativeDriver: true }),
-      ])
+      ]),
     ).start();
   }, [delay, opacity]);
   return <Animated.View style={[style, { opacity }]} />;
@@ -142,7 +142,7 @@ export default function HomeScreen() {
   const outrosGrupos = (grupos || []).filter(
     (g) =>
       !(g.membersIds || []).includes(user?.id || user?.uid) &&
-      (g.members?.length || 0) < (g.maxMembers || 30)
+      (g.members?.length || 0) < (g.maxMembers || 30),
   );
 
   // Salutation dynamique (pt-BR)

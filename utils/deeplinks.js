@@ -166,7 +166,7 @@ export async function openWaze({ lat, lng } = {}) {
         },
       },
     ],
-    { cancelable: true }
+    { cancelable: true },
   );
 }
 

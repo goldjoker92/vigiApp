@@ -93,7 +93,7 @@ export default function FeedGroupRequests({ groupId }) {
         setPendingVolunteer(mine);
         console.log(
           '[useEffect] Modale ouverte chez le créateur, volunteer:',
-          mine.volunteerApelido
+          mine.volunteerApelido,
         );
       }
     }
@@ -113,7 +113,7 @@ export default function FeedGroupRequests({ groupId }) {
       Toast.show({ type: 'success', text1: 'Ajuda aceita!' });
       console.log(
         '[handleConfirmHelp] Ajuda aceita pour volunteer:',
-        pendingVolunteer.volunteerApelido
+        pendingVolunteer.volunteerApelido,
       );
     } catch (e) {
       Toast.show({ type: 'error', text1: 'Erro ao aceitar ajuda', text2: e.message });

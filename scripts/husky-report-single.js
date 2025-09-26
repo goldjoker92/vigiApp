@@ -62,6 +62,6 @@ function readStdin() {
 
   // Log small summary to console (for hook logs)
   console.log(
-    `[husky] report updated (${hook}); entries=${Math.min(entries.length + 1, MAX_ENTRIES)}`
+    `[husky] report updated (${hook}); entries=${Math.min(entries.length + 1, MAX_ENTRIES)}`,
   );
 })();

@@ -138,7 +138,7 @@ async function softValidateAndEnrichViaCep(cep8) {
     const json = await withTimeout(
       fetch(url).then((r) => r.json()),
       CONF.viacepTimeoutMs,
-      'VIACEP_TIMEOUT'
+      'VIACEP_TIMEOUT',
     );
     if (!json || json.erro) {
       console.log('[CEP][VIACEP] not found/erro for', cep8);
@@ -173,7 +173,7 @@ async function reverseWithGoogle(lat, lng) {
   const json = await withTimeout(
     fetch(url).then((r) => r.json()),
     CONF.providerTimeoutMs,
-    'GOOGLE_TIMEOUT'
+    'GOOGLE_TIMEOUT',
   );
 
   const first = (json.results || [])[0];
@@ -222,7 +222,7 @@ async function reverseWithOpenCage(lat, lng) {
   const json = await withTimeout(
     fetch(url).then((r) => r.json()),
     CONF.providerTimeoutMs,
-    'OPENCAGE_TIMEOUT'
+    'OPENCAGE_TIMEOUT',
   );
 
   const best = (json.results || [])[0];
@@ -269,7 +269,7 @@ async function reverseWithLocationIQ(lat, lng) {
   const json = await withTimeout(
     fetch(url).then((r) => r.json()),
     CONF.providerTimeoutMs,
-    'LOCATIONIQ_TIMEOUT'
+    'LOCATIONIQ_TIMEOUT',
   );
 
   const m = extractLocationIQ(json);

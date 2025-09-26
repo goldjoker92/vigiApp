@@ -105,7 +105,7 @@ function clusterByTypeNoCount(rows, proximityM = CLUSTER_THRESHOLD_M) {
       if ((c.type || c.categoria) === (a.type || a.categoria)) {
         const dist = haversineMeters(
           { latitude: c.lat, longitude: c.lng },
-          { latitude: a.lat, longitude: a.lng }
+          { latitude: a.lat, longitude: a.lng },
         );
         if (dist <= proximityM) {
           idx = i;
@@ -154,7 +154,7 @@ function RadarSweepBounded({
   const rot = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     const loop = Animated.loop(
-      Animated.timing(rot, { toValue: 1, duration, easing: Easing.linear, useNativeDriver: true })
+      Animated.timing(rot, { toValue: 1, duration, easing: Easing.linear, useNativeDriver: true }),
     );
     loop.start();
     return () => loop.stop();
@@ -227,7 +227,7 @@ export default function MapaScreen() {
           heading: 0,
           zoom: cameraLike.zoom ?? 14,
         },
-        { duration: 250 }
+        { duration: 250 },
       );
     } catch (e) {
       console.log('[MAP] animateCamera error', e);
@@ -235,7 +235,7 @@ export default function MapaScreen() {
   }, []);
   const colorFor = useCallback(
     (a) => a.color || CATEGORY_COLOR[a.categoria] || CATEGORY_COLOR[a.type] || '#007AFF',
-    []
+    [],
   );
 
   // Localisation + reverse geocode + cache Estado
@@ -331,7 +331,7 @@ export default function MapaScreen() {
           await cacheSet('alerts:public:v1', rows, 300); // cache alerts (5 min)
           console.log('[CACHE] alerts saved =', rows.length);
         },
-        (err) => console.log('[MAP] onSnapshot error', err)
+        (err) => console.log('[MAP] onSnapshot error', err),
       );
     })();
     return () => {
@@ -366,7 +366,7 @@ export default function MapaScreen() {
       setRegion(reg);
       refreshScreenGeometry();
     },
-    [refreshScreenGeometry]
+    [refreshScreenGeometry],
   );
 
   // Incidents dynamiques: <=36h, cluster ~80m UNIQUEMENT si pas de count, puis filtrage dans le cercle
@@ -384,7 +384,7 @@ export default function MapaScreen() {
     const combined = [...withCount, ...clusteredNoCount];
 
     return combined.filter(
-      (c) => haversineMeters(center, { latitude: c.lat, longitude: c.lng }) <= radiusM
+      (c) => haversineMeters(center, { latitude: c.lat, longitude: c.lng }) <= radiusM,
     );
   }, [alerts, center, radiusM]);
 
@@ -416,7 +416,7 @@ export default function MapaScreen() {
       }
       setRadiusM(p.meters);
     },
-    [center, animateTo]
+    [center, animateTo],
   );
 
   return (

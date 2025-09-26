@@ -128,7 +128,7 @@ async function ensureAlertsHighChannel() {
         warn(
           'ATTENTION: "alerts-high" existe avec importance faible.',
           'Android ne permet pas d’augmenter l’importance après création.',
-          '→ Désinstalle/réinstalle l’app OU change d’ID de canal.'
+          '→ Désinstalle/réinstalle l’app OU change d’ID de canal.',
         );
       }
     }
@@ -237,7 +237,7 @@ export function attachNotificationListeners({ onReceive, onResponse } = {}) {
         'title=',
         content?.title,
         'data=',
-        d
+        d,
       );
 
       // Fallback visible si on reçoit un truc “muet” (rare)
@@ -273,7 +273,7 @@ export function attachNotificationListeners({ onReceive, onResponse } = {}) {
         'channelId(remote)=',
         chRemote,
         'data=',
-        d
+        d,
       );
 
       if (!__authReady) {
@@ -304,7 +304,7 @@ export async function registerForPushNotificationsAsync() {
     Constants?.expoConfig?.extra?.eas?.projectId || Constants?.easConfig?.projectId || null;
 
   const tokenResp = await Notifications.getExpoPushTokenAsync(
-    projectId ? { projectId } : undefined
+    projectId ? { projectId } : undefined,
   );
   const expoToken = tokenResp?.data || null;
   log('Expo push token =', expoToken);
