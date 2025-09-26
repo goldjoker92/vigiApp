@@ -25,6 +25,8 @@ const functions = require('firebase-functions');
 const v1functions = require('firebase-functions/v1');
 const admin = require('firebase-admin');
 const geofire = require('geofire-common'); // NEW: geohash pour footprints
+const { safeForEach } = require('@/utils/safeEach');
+
 
 // ======================================================================
 // Init admin — idempotent
@@ -430,7 +432,7 @@ async function cleanInvalidTokens(expoResults, tokenMap) {
     }
 
     const batch = db.batch();
-    snap.forEach((doc) => {
+    safeForEach(snap, (doc) =>  {
       matchedDocs += 1;
       batch.update(doc.ref, {
         expoPushToken: delField,
@@ -588,7 +590,7 @@ async function getTokensByCEP(cep) {
   log('[getTokensByCEP] cep=', cep);
   const snap = await db.collection('devices').where('cep', '==', cep).get();
   const tokens = [];
-  snap.forEach((doc) => {
+  safeForEach(snap, (doc) => {
     const t = doc.get('expoPushToken');
     if (t) {
       tokens.push(t);
@@ -606,7 +608,7 @@ async function getTokensByUserIds(userIds) {
   const tokens = [];
   for (const ids of chunk(userIds, 10)) {
     const snap = await db.collection('devices').where('userId', 'in', ids).get();
-    snap.forEach((doc) => {
+    safeForEach(snap, (doc) => {
       const t = doc.get('expoPushToken');
       if (t) {
         tokens.push(t);
@@ -627,7 +629,7 @@ async function getFcmTokensByCEP(cep) {
   log('[getFcmTokensByCEP] cep=', cep);
   const snap = await db.collection('devices').where('cep', '==', cep).get();
   const tokens = [];
-  snap.forEach((doc) => {
+ safeForEach(snap, (doc) =>  {
     const t = doc.get('fcmToken');
     if (t) {
       tokens.push(t);
@@ -645,7 +647,7 @@ async function getFcmTokensByUserIds(userIds) {
   const tokens = [];
   for (const ids of chunk(userIds, 10)) {
     const snap = await db.collection('devices').where('userId', 'in', ids).get();
-    snap.forEach((doc) => {
+    safeForEach(snap, (doc) =>  {
       const t = doc.get('fcmToken');
       if (t) {
         tokens.push(t);
