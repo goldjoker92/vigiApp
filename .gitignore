@@ -81,3 +81,7 @@ ios/
 platform_services/observability/
 
 client/.session.json
+.history
+.husky
+.lh
+

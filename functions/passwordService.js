@@ -1,4 +1,4 @@
-﻿// functions/passwordService.js
+// functions/passwordService.js
 const argon2 = require('argon2');
 const { randomBytes } = require('crypto');
 const { defineString } = require('firebase-functions/params');

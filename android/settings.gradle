@@ -1,4 +1,14 @@
 pluginManagement {
+  repositories {
+    google()
+    mavenCentral()
+    gradlePluginPortal()
+  }
+
+  // ⚠️ Pas de plugin Compose ici (on reste en Kotlin 1.9.24 sans Compose)
+  // Laisse l’AGP géré par le buildscript du projet ou ton version catalog
+
+  // React Native Gradle Plugin
   def reactNativeGradlePlugin = new File(
     providers.exec {
       workingDir(rootDir)
@@ -6,7 +16,8 @@ pluginManagement {
     }.standardOutput.asText.get().trim()
   ).getParentFile().absolutePath
   includeBuild(reactNativeGradlePlugin)
-  
+
+  // Expo Gradle Plugin (autolinking)
   def expoPluginsPath = new File(
     providers.exec {
       workingDir(rootDir)
@@ -30,10 +41,9 @@ extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
   }
 }
 expoAutolinking.useExpoModules()
-
-rootProject.name = 'vigiapp'
-
 expoAutolinking.useExpoVersionCatalog()
 
-include ':app'
+rootProject.name = "vigiApp"
+
+include(":app")
 includeBuild(expoAutolinking.reactNativeGradlePlugin)

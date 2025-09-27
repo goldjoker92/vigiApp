@@ -1,0 +1,40 @@
+{
+  "version": "2.0.0",
+  "windows": {
+    "options": {
+      "shell": { "executable": "powershell.exe", "args": ["-NoLogo", "-NoProfile", "-Command"] }
+    }
+  },
+  "tasks": [
+    {
+      "label": "Android: Clean Gradle",
+      "type": "shell",
+      "command": "cd android; .\\gradlew.bat --stop; .\\gradlew.bat clean",
+      "problemMatcher": []
+    },
+    {
+      "label": "Project: Wipe caches",
+      "type": "shell",
+      "command": "rimraf android\\.gradle android\\app\\build node_modules\\.cache",
+      "problemMatcher": []
+    },
+    {
+      "label": "Yarn: install",
+      "type": "shell",
+      "command": "yarn install",
+      "problemMatcher": []
+    },
+    {
+      "label": "Expo: run Android",
+      "type": "shell",
+      "command": "npx expo run:android",
+      "problemMatcher": []
+    },
+    {
+      "label": "Metro: start",
+      "type": "shell",
+      "command": "npx expo start --tunnel",
+      "problemMatcher": []
+    }
+  ]
+}

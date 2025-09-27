@@ -4,16 +4,24 @@ buildscript {
     mavenCentral()
   }
   dependencies {
-    // garde tes versions d'AGP/Kotlin actuelles
-    // classpath "com.android.tools.build:gradle:..."
-    // classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:..."
+    // ✅ Kotlin 1.9.24 (pas de Compose plugin)
+    classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.24")
+
+    // Google Services (Firebase)
     classpath("com.google.gms:google-services:4.4.2")
+
+    // AGP: laisse ta version actuelle si déjà en place (ex: 8.3.x/8.4.x)
+    // classpath("com.android.tools.build:gradle:8.3.2")
   }
 }
 
-// 🔒 Version unique du Billing Client pour tout le projet
+/**
+ * Valeurs globales lues par des libs RN (datetimepicker, etc.)
+ */
 ext {
-  BILLING_CLIENT_VERSION = "6.1.0"
+  compileSdkVersion = 35
+  targetSdkVersion  = 35
+  minSdkVersion     = 23
 }
 
 allprojects {
@@ -22,14 +30,14 @@ allprojects {
     mavenCentral()
   }
 
-  // ✅ Bloque toute tentative de tirer une version plus vieille
+  // 🔒 Verrouille Billing 6.1.0 partout
   configurations.all {
     resolutionStrategy {
-      force "com.android.billingclient:billing:${BILLING_CLIENT_VERSION}"
-      eachDependency { details ->
-        if (details.requested.group == "com.android.billingclient"
-            && details.requested.name == "billing") {
-          details.useVersion(BILLING_CLIENT_VERSION)
+      force "com.android.billingclient:billing:6.1.0"
+      eachDependency { d ->
+        if (d.requested.group == "com.android.billingclient"
+            && d.requested.name == "billing") {
+          d.useVersion("6.1.0")
         }
       }
     }
