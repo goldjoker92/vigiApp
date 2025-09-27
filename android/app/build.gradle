@@ -1,132 +1,134 @@
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
-// ⚠️ NE PAS ajouter org.jetbrains.kotlin.plugin.compose
 apply plugin: "com.facebook.react"
 
+// Projet racine
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
 
+/**
+ * Configuration React Native + Expo
+ */
 react {
-  entryFile = file(["node", "-e", "require('expo/scripts/resolveAppEntry')", projectRoot, "android", "absolute"].execute(null, rootDir).text.trim())
-  reactNativeDir = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).getParentFile().getAbsoluteFile()
-  hermesCommand = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).getParentFile().getAbsolutePath() + "/sdks/hermesc/%OS-BIN%/hermesc"
-  codegenDir = new File(["node", "--print", "require.resolve('@react-native/codegen/package.json', { paths: [require.resolve('react-native/package.json')] })"].execute(null, rootDir).text.trim()).getParentFile().getAbsoluteFile()
+    entryFile = file(["node", "-e", "require('expo/scripts/resolveAppEntry')", projectRoot, "android", "absolute"].execute(null, rootDir).text.trim())
+    reactNativeDir = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).getParentFile().getAbsoluteFile()
+    hermesCommand = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).getParentFile().getAbsolutePath() + "/sdks/hermesc/%OS-BIN%/hermesc"
+    codegenDir = new File(["node", "--print", "require.resolve('@react-native/codegen/package.json', { paths: [require.resolve('react-native/package.json')] })"].execute(null, rootDir).text.trim()).getParentFile().getAbsoluteFile()
 
-  enableBundleCompression = (findProperty('android.enableBundleCompression') ?: false).toBoolean()
-  cliFile = new File(["node", "--print", "require.resolve('@expo/cli', { paths: [require.resolve('expo/package.json')] })"].execute(null, rootDir).text.trim())
-  bundleCommand = "export:embed"
+    enableBundleCompression = (findProperty('android.enableBundleCompression') ?: false).toBoolean()
+    cliFile = new File(["node", "--print", "require.resolve('@expo/cli', { paths: [require.resolve('expo/package.json')] })"].execute(null, rootDir).text.trim())
+    bundleCommand = "export:embed"
 
-  autolinkLibrariesWithApp()
+    autolinkLibrariesWithApp()
 }
 
+/**
+ * Proguard
+ */
 def enableProguardInReleaseBuilds = (findProperty('android.enableProguardInReleaseBuilds') ?: false).toBoolean()
+
+/**
+ * JS Engine: JSC ou Hermes
+ */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
 android {
-  namespace 'com.guigui92.vigiapp'
+    namespace "com.guigui92.vigiapp"
 
-  // ✅ explicite, ne dépends pas d’ext
-  compileSdkVersion 35
-  buildToolsVersion "35.0.0"
+    compileSdkVersion 36
 
-  defaultConfig {
-    applicationId 'com.guigui92.vigiapp'
-    minSdkVersion 23
-    targetSdkVersion 35
-    versionCode 1
-    versionName "1.0.0"
-  }
+    defaultConfig {
+        applicationId "com.guigui92.vigiapp"
+        minSdkVersion 24
+        targetSdkVersion 36
 
-  // Java/Kotlin 17
-  compileOptions {
-    sourceCompatibility JavaVersion.VERSION_17
-    targetCompatibility JavaVersion.VERSION_17
-  }
-  kotlinOptions {
-    jvmTarget = '17'
-  }
+        versionCode 1
+        versionName "1.0.0"
 
-  signingConfigs {
-    debug {
-      storeFile file('debug.keystore')
-      storePassword 'android'
-      keyAlias 'androiddebugkey'
-      keyPassword 'android'
+        // Obligatoire pour Expo/RN flavours
+        missingDimensionStrategy "store", "play"
     }
-  }
 
-  buildTypes {
-    debug {
-      signingConfig signingConfigs.debug
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
-    release {
-      signingConfig signingConfigs.debug // ⚠️ remplace par ta release keystore pour la prod
-      shrinkResources (findProperty('android.enableShrinkResourcesInReleaseBuilds')?.toBoolean() ?: false)
-      minifyEnabled enableProguardInReleaseBuilds
-      proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
-      crunchPngs (findProperty('android.enablePngCrunchInReleaseBuilds')?.toBoolean() ?: true)
-    }
-  }
 
-  packagingOptions {
-    jniLibs {
-      useLegacyPackaging (findProperty('expo.useLegacyPackaging')?.toBoolean() ?: false)
+    kotlinOptions {
+        jvmTarget = "17"
     }
-  }
 
-  androidResources {
-    ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~'
-  }
+    signingConfigs {
+        debug {
+            storeFile file("debug.keystore")
+            storePassword "android"
+            keyAlias "androiddebugkey"
+            keyPassword "android"
+        }
+    }
+
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
+        release {
+            signingConfig signingConfigs.debug
+            shrinkResources (findProperty('android.enableShrinkResourcesInReleaseBuilds')?.toBoolean() ?: false)
+            minifyEnabled enableProguardInReleaseBuilds
+            proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+            crunchPngs (findProperty('android.enablePngCrunchInReleaseBuilds')?.toBoolean() ?: true)
+        }
+    }
+
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging (findProperty('expo.useLegacyPackaging')?.toBoolean() ?: false)
+        }
+    }
+
+    androidResources {
+        ignoreAssetsPattern "!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~"
+    }
 }
 
-// Applique les valeurs statiques depuis gradle.properties aux packagingOptions
+/**
+ * Propagation des propriétés gradle.properties → packagingOptions
+ */
 ["pickFirsts", "excludes", "merges", "doNotStrip"].each { prop ->
-  def options = (findProperty("android.packagingOptions.$prop") ?: "").split(",");
-  for (i in 0..<options.size()) options[i] = options[i].trim();
-  options -= ""
-  if (options.length > 0) {
-    println "android.packagingOptions.$prop += $options ($options.length)"
-    options.each { android.packagingOptions[prop] += it }
-  }
+    def options = (findProperty("android.packagingOptions.$prop") ?: "").split(",")
+    for (i in 0..<options.size()) options[i] = options[i].trim()
+    options -= ""
+    if (options.length > 0) {
+        println "android.packagingOptions.$prop += $options ($options.length)"
+        options.each {
+            android.packagingOptions[prop] += it
+        }
+    }
 }
 
 dependencies {
-  implementation("com.facebook.react:react-android")
+    // React Native géré par RN Gradle Plugin
+    implementation("com.facebook.react:react-android")
 
-  // 🔒 Billing Client v6.1.0
-  implementation "com.android.billingclient:billing:6.1.0"
+    def isGifEnabled = (findProperty('expo.gif.enabled') ?: "") == "true"
+    def isWebpEnabled = (findProperty('expo.webp.enabled') ?: "") == "true"
+    def isWebpAnimatedEnabled = (findProperty('expo.webp.animated') ?: "") == "true"
 
-  def isGifEnabled = (findProperty('expo.gif.enabled') ?: "") == "true";
-  def isWebpEnabled = (findProperty('expo.webp.enabled') ?: "") == "true";
-  def isWebpAnimatedEnabled = (findProperty('expo.webp.animated') ?: "") == "true";
-
-  if (isGifEnabled) {
-    implementation("com.facebook.fresco:animated-gif:${expoLibs.versions.fresco.get()}")
-  }
-  if (isWebpEnabled) {
-    implementation("com.facebook.fresco:webpsupport:${expoLibs.versions.fresco.get()}")
-    if (isWebpAnimatedEnabled) {
-      implementation("com.facebook.fresco:animated-webp:${expoLibs.versions.fresco.get()}")
+    if (isGifEnabled) {
+        implementation("com.facebook.fresco:animated-gif:${expoLibs.versions.fresco.get()}")
     }
-  }
 
-  if (hermesEnabled.toBoolean()) {
-    implementation("com.facebook.react:hermes-android")
-  } else {
-    implementation jscFlavor
-  }
+    if (isWebpEnabled) {
+        implementation("com.facebook.fresco:webpsupport:${expoLibs.versions.fresco.get()}")
+        if (isWebpAnimatedEnabled) {
+            implementation("com.facebook.fresco:animated-webp:${expoLibs.versions.fresco.get()}")
+        }
+    }
+
+    if (hermesEnabled.toBoolean()) {
+        implementation("com.facebook.react:hermes-android")
+    } else {
+        implementation jscFlavor
+    }
 }
 
-// Filet local (au cas où)
-configurations.all {
-  resolutionStrategy {
-    force "com.android.billingclient:billing:6.1.0"
-    eachDependency { d ->
-      if (d.requested.group == "com.android.billingclient"
-          && d.requested.name == "billing") {
-        d.useVersion("6.1.0")
-      }
-    }
-  }
-}
-
-apply plugin: 'com.google.gms.google-services'
+apply plugin: "com.google.gms.google-services"

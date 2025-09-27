@@ -1,45 +1,48 @@
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
+
 buildscript {
   repositories {
     google()
     mavenCentral()
   }
   dependencies {
-    // ✅ Kotlin 1.9.24 (pas de Compose plugin)
-    classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.24")
-
-    // Google Services (Firebase)
+    // Google Services (Firebase, Analytics, etc.)
+    // 4.4.2 corrige des warnings et tient bien avec AGP 8.9.x
     classpath("com.google.gms:google-services:4.4.2")
 
-    // AGP: laisse ta version actuelle si déjà en place (ex: 8.3.x/8.4.x)
-    // classpath("com.android.tools.build:gradle:8.3.2")
+    // Android Gradle Plugin (AGP) – OK pour compileSdk 36 et toolchain récente
+    classpath("com.android.tools.build:gradle:8.9.1")
+
+    // React Native Gradle Plugin (fourni par react-native)
+    classpath("com.facebook.react:react-native-gradle-plugin")
+
+    // Kotlin Gradle Plugin (compatible AGP 8.9.x)
+    classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.24")
   }
 }
 
-/**
- * Valeurs globales lues par des libs RN (datetimepicker, etc.)
- */
-ext {
-  compileSdkVersion = 35
-  targetSdkVersion  = 35
-  minSdkVersion     = 23
-}
+// RN Android sources depuis node_modules (nécessaire pour certaines résolutions)
+def reactNativeAndroidDir = new File(
+  providers.exec {
+    workingDir(rootDir)
+    commandLine("node", "--print", "require.resolve('react-native/package.json')")
+  }.standardOutput.asText.get().trim(),
+  "../android"
+)
 
 allprojects {
   repositories {
+    // React Native (AARs locaux)
+    maven { url(reactNativeAndroidDir) }
+
     google()
     mavenCentral()
-  }
 
-  // 🔒 Verrouille Billing 6.1.0 partout
-  configurations.all {
-    resolutionStrategy {
-      force "com.android.billingclient:billing:6.1.0"
-      eachDependency { d ->
-        if (d.requested.group == "com.android.billingclient"
-            && d.requested.name == "billing") {
-          d.useVersion("6.1.0")
-        }
-      }
-    }
+    // JitPack uniquement si tu as une lib qui le demande (sinon, commente)
+    // maven { url "https://www.jitpack.io" }
   }
 }
+
+// Garde les plugins racine Expo & RN
+apply plugin: "expo-root-project"
+apply plugin: "com.facebook.react.rootproject"
