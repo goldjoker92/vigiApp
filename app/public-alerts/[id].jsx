@@ -197,7 +197,7 @@ function LoaderDots() {
             easing: Easing.in(Easing.quad),
             useNativeDriver: true,
           }),
-        ])
+        ]),
       ).start();
 
     bounce(a1, 0);

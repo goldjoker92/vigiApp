@@ -49,13 +49,11 @@ export async function openWhatsAppPersonal({ text = '', phone } = {}) {
     if (Platform.OS === 'android') {
       // 1) perso
       try {
-        const { startActivityAsync } = await import('expo-intent-launcher');
-        console.log('[WA] ANDROID → com.whatsapp');
-        await startActivityAsync('android.intent.action.SEND', {
-          packageName: 'com.whatsapp',
-          type: 'text/plain',
-          extra: { 'android.intent.extra.TEXT': msg },
-        });
+        const url = phoneDigits
+          ? `https://wa.me/${phoneDigits}?text=${enc(msg)}`
+          : `https://wa.me/?text=${enc(msg)}`;
+        console.log('[WA] ANDROID → wa.me');
+        await openUrl(url);
         return;
       } catch (e) {
         console.warn('[WA] perso KO, fallback web:', e?.message || e);
@@ -72,15 +70,13 @@ export async function openWhatsAppPersonal({ text = '', phone } = {}) {
         console.warn('[WA] web KO, fallback business:', e2?.message || e2);
       }
 
-      // 3) business
+      // 3) business fallback (use wa.me again)
       try {
-        const { startActivityAsync } = await import('expo-intent-launcher');
-        console.log('[WA] ANDROID → com.whatsapp.w4b');
-        await startActivityAsync('android.intent.action.SEND', {
-          packageName: 'com.whatsapp.w4b',
-          type: 'text/plain',
-          extra: { 'android.intent.extra.TEXT': msg },
-        });
+        const urlBusiness = phoneDigits
+          ? `https://wa.me/${phoneDigits}?text=${enc(msg)}`
+          : `https://wa.me/?text=${enc(msg)}`;
+        console.log('[WA] ANDROID → wa.me (business fallback)');
+        await openUrl(urlBusiness);
         return;
       } catch (e3) {
         console.warn('[WA] business KO:', e3?.message || e3);
@@ -166,7 +162,7 @@ export async function openWaze({ lat, lng } = {}) {
         },
       },
     ],
-    { cancelable: true }
+    { cancelable: true },
   );
 }
 

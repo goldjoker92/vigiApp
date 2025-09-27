@@ -70,8 +70,8 @@ async function selectRecipientsGeohash({ lat, lng, radiusM }) {
   // Requêtes Firestore en // sur chaque borne
   const snaps = await Promise.all(
     bounds.map(([start, end]) =>
-      db.collection('users').orderBy('geohash').startAt(start).endAt(end).get()
-    )
+      db.collection('users').orderBy('geohash').startAt(start).endAt(end).get(),
+    ),
   );
 
   const out = [];
@@ -426,7 +426,7 @@ module.exports.sendPublicAlertByAddress = onRequest(
                   ack: '0',
                 },
               },
-            })
+            }),
           );
         }
       }
@@ -440,5 +440,5 @@ module.exports.sendPublicAlertByAddress = onRequest(
       err('[PUBLIC ALERT] ERROR', e);
       return res.status(500).json({ ok: false, error: e?.message || String(e) });
     }
-  }
+  },
 );

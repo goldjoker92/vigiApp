@@ -1,10 +1,10 @@
-﻿/**
+/**
  * server/index.js
  * Express minimal, charge .env, monte les routes.
  */
-import "dotenv/config";
-import express from "express";
-import loginRouter from "./routes/login.js";
+import 'dotenv/config';
+import express from 'express';
+import loginRouter from './routes/login.js';
 
 const app = express();
 app.use(express.json());

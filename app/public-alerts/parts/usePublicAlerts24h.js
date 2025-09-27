@@ -70,7 +70,7 @@ export default function usePublicAlerts24h() {
     const q = query(
       collection(db, 'publicAlerts'),
       where('createdAt', '>=', since),
-      orderBy('createdAt', 'desc')
+      orderBy('createdAt', 'desc'),
     );
 
     if (__DEV__) {
@@ -92,7 +92,7 @@ export default function usePublicAlerts24h() {
           console.log('[usePublicAlerts24h] onSnapshot error:', err?.message || err);
         }
         setAlerts([]);
-      }
+      },
     );
 
     // Tick local (1/min) pour recalcul des libellés temporels

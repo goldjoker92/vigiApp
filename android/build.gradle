@@ -1,38 +1,37 @@
-// Top-level build file where you can add configuration options common to all sub-projects/modules.
-
 buildscript {
   repositories {
     google()
     mavenCentral()
   }
   dependencies {
-        classpath 'com.google.gms:google-services:4.4.1'
-    classpath('com.android.tools.build:gradle')
-    classpath('com.facebook.react:react-native-gradle-plugin')
-    classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')
+    // garde tes versions d'AGP/Kotlin actuelles
+    // classpath "com.android.tools.build:gradle:..."
+    // classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:..."
+    classpath("com.google.gms:google-services:4.4.2")
   }
 }
 
-def reactNativeAndroidDir = new File(
-  providers.exec {
-    workingDir(rootDir)
-    commandLine("node", "--print", "require.resolve('react-native/package.json')")
-  }.standardOutput.asText.get().trim(),
-  "../android"
-)
+// 🔒 Version unique du Billing Client pour tout le projet
+ext {
+  BILLING_CLIENT_VERSION = "6.1.0"
+}
 
 allprojects {
   repositories {
-    maven {
-      // All of React Native (JS, Obj-C sources, Android binaries) is installed from npm
-      url(reactNativeAndroidDir)
-    }
-
     google()
     mavenCentral()
-    maven { url 'https://www.jitpack.io' }
+  }
+
+  // ✅ Bloque toute tentative de tirer une version plus vieille
+  configurations.all {
+    resolutionStrategy {
+      force "com.android.billingclient:billing:${BILLING_CLIENT_VERSION}"
+      eachDependency { details ->
+        if (details.requested.group == "com.android.billingclient"
+            && details.requested.name == "billing") {
+          details.useVersion(BILLING_CLIENT_VERSION)
+        }
+      }
+    }
   }
 }
-
-apply plugin: "expo-root-project"
-apply plugin: "com.facebook.react.rootproject"

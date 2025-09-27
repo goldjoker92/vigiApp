@@ -1,0 +1,22 @@
+{
+    "sourceFile": "eslint.config.js",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 1,
+            "patches": [
+                {
+                    "date": 1758956894793,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                },
+                {
+                    "date": 1758957035239,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1,8 +1,8 @@\n // eslint.config.js — Flat config (ESLint v9)\n const expo = require('eslint-config-expo/flat');\n \n-// Removed unused isCI variable\n+const _isCI = process.env.CI === 'true';\n \n // Front: on tolère console.* totalement (plus aucun warning)\n const frontConsoleRule = 'off';\n \n"
+                }
+            ],
+            "date": 1758956894793,
+            "name": "Commit-0",
+            "content": "// eslint.config.js — Flat config (ESLint v9)\nconst expo = require('eslint-config-expo/flat');\n\n// Removed unused isCI variable\n\n// Front: on tolère console.* totalement (plus aucun warning)\nconst frontConsoleRule = 'off';\n\n// Back (functions): idem, console.* libre\nconst functionsConsoleRule = 'off';\n\nmodule.exports = [\n  // Base Expo (React/JS/TS)\n  ...expo,\n\n  // Ignorés globaux\n  {\n    ignores: [\n      '**/node_modules/**',\n      '**/dist/**',\n      '**/build/**',\n      '**/coverage/**',\n      '.expo/**',\n      '.expo-shared/**',\n      '.turbo/**',\n      '.metro-cache/**',\n      'web-build/**',\n      // artefacts functions\n      'functions/lib/**',\n      'functions/dist/**',\n    ],\n  },\n\n  // Règles communes\n  {\n    files: ['**/*.{js,jsx,ts,tsx}'],\n    languageOptions: {\n      ecmaVersion: 2023,\n      sourceType: 'module',\n      globals: {\n        // Globals React Native utiles côté front\n        __DEV__: 'readonly',\n        fetch: 'readonly',\n        Request: 'readonly',\n        Response: 'readonly',\n        FormData: 'readonly',\n      },\n    },\n    rules: {\n      // Sécurité\n      eqeqeq: ['error', 'always'],\n      curly: ['error', 'all'],\n      // Confort\n      'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],\n      'no-undef': 'error',\n      // Style délégué à Prettier (si tu l’utilises)\n      quotes: 'off',\n      indent: 'off',\n      semi: ['error', 'always'],\n      'comma-dangle': 'off',\n      'arrow-parens': 'off',\n      // Hooks\n      'react-hooks/rules-of-hooks': 'error',\n      'react-hooks/exhaustive-deps': 'warn',\n      // Additional rules\n      'no-unused-expressions': 'warn',\n      'import/no-duplicates': 'warn',\n      'react/prop-types': 'off',\n      'react/react-in-jsx-scope': 'off',\n    },\n  },\n\n  // FRONT (app/, src/…) : console tolérées\n  {\n    files: ['app/**/*.{js,jsx,ts,tsx}', 'src/**/*.{js,jsx,ts,tsx}'],\n    languageOptions: {\n      globals: {\n        // parfois utiles avec Expo Router\n        module: 'readonly',\n        require: 'readonly',\n      },\n    },\n    rules: {\n      'no-console': frontConsoleRule,\n    },\n  },\n\n  // BACK — Firebase Functions\n  {\n    files: ['functions/**/*.js'],\n    languageOptions: {\n      sourceType: 'commonjs',\n      globals: {\n        // Node globals\n        process: 'readonly',\n        module: 'readonly',\n        require: 'readonly',\n        __dirname: 'readonly',\n        console: 'readonly',\n      },\n    },\n    rules: {\n      'no-console': functionsConsoleRule,\n      eqeqeq: ['error', 'always'],\n      curly: ['error', 'all'],\n      'no-undef': 'error',\n    },\n  },\n\n  // TESTS\n  {\n    files: ['**/*.{spec,test}.{js,jsx,ts,tsx}', '**/__mocks__/**/*'],\n    languageOptions: {\n      globals: { jest: 'readonly', expect: 'readonly' },\n    },\n    rules: {\n      'no-undef': 'off',\n      'no-console': 'off',\n    },\n  },\n];\n"
+        }
+    ]
+}

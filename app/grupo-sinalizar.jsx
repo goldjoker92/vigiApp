@@ -58,7 +58,7 @@ const PhoneSatelliteLoader = memo(function PhoneSatelliteLoader() {
           easing: Easing.in(Easing.quad),
           useNativeDriver: true,
         }),
-      ])
+      ]),
     ).start();
 
     Animated.loop(
@@ -67,7 +67,7 @@ const PhoneSatelliteLoader = memo(function PhoneSatelliteLoader() {
         duration: 2600,
         easing: Easing.linear,
         useNativeDriver: true,
-      })
+      }),
     ).start();
   }, [pulse, orbit]);
 
@@ -400,7 +400,7 @@ export default function GrupoSinalizarScreen() {
           mayShowUserSettingsDialog: true,
         }),
         7000,
-        'LOCATION_TIMEOUT_1'
+        'LOCATION_TIMEOUT_1',
       );
       console.log('[SINALIZAR] T#1 OK coords =', g1.coords);
       return g1.coords;
@@ -438,7 +438,7 @@ export default function GrupoSinalizarScreen() {
             if (loc?.coords) {
               best = loc.coords;
             }
-          }
+          },
         );
       } catch (e) {
         clearTimeout(timer);
@@ -500,7 +500,7 @@ export default function GrupoSinalizarScreen() {
       let { status } = await withTimeout(
         Location.getForegroundPermissionsAsync(),
         4000,
-        'PERM_TIMEOUT_1'
+        'PERM_TIMEOUT_1',
       );
       console.log('[SINALIZAR] Permission status =', status);
       if (status !== 'granted') {
@@ -508,7 +508,7 @@ export default function GrupoSinalizarScreen() {
         const ask = await withTimeout(
           Location.requestForegroundPermissionsAsync(),
           6000,
-          'PERM_TIMEOUT_2'
+          'PERM_TIMEOUT_2',
         );
         status = ask.status;
         console.log('[SINALIZAR] Permission asked →', status);
@@ -548,7 +548,7 @@ export default function GrupoSinalizarScreen() {
         const [wifi, radio] = await withTimeout(
           Promise.all([getWifiSnapshot(), getRadioSnapshot()]),
           2500,
-          'SIGNALS_TIMEOUT'
+          'SIGNALS_TIMEOUT',
         );
         console.log('[SINALIZAR][SIGNALS][WIFI]', wifi);
         console.log('[SINALIZAR][SIGNALS][RADIO]', radio);
@@ -575,7 +575,7 @@ export default function GrupoSinalizarScreen() {
           expectedUF: userUF || undefined,
         }),
         8000,
-        'CEP_TIMEOUT'
+        'CEP_TIMEOUT',
       );
 
       const addr = rawRes?.addr ?? rawRes?.address ?? {};
@@ -664,7 +664,7 @@ export default function GrupoSinalizarScreen() {
               },
             },
           ],
-          { cancelable: true }
+          { cancelable: true },
         );
       } else {
         console.log('[SINALIZAR][DECISION] AVEC groupe MAIS HORS ZONE → public (toast + /report)', {

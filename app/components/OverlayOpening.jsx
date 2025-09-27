@@ -25,7 +25,7 @@ export default function OverlayOpening({ visible, appLabel = 'app', subtitle = '
         Animated.sequence([
           Animated.timing(v, { toValue: 1, duration: 520, delay: i * 90, useNativeDriver: true }),
           Animated.timing(v, { toValue: 0, duration: 520, useNativeDriver: true }),
-        ])
+        ]),
       ).start();
     });
 

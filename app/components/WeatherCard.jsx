@@ -216,7 +216,7 @@ export default function WeatherCard({ cep, showScrollHint = false }) {
         const now = await withTimeout(
           getWeatherNowWithFallback(fixed.coords),
           5000,
-          'weather-timeout'
+          'weather-timeout',
         );
         console.timeEnd('[WeatherCard] weather');
         if (!mounted) {
@@ -254,7 +254,7 @@ export default function WeatherCard({ cep, showScrollHint = false }) {
           '[WeatherCard] refreshed | provider =',
           now?.provider || '—',
           '| changed =',
-          changed
+          changed,
         );
       } catch (e) {
         console.warn('[WeatherCard] refresh error:', e?.message || String(e));
@@ -322,7 +322,7 @@ export default function WeatherCard({ cep, showScrollHint = false }) {
           easing: Easing.in(Easing.quad),
           useNativeDriver: true,
         }),
-      ])
+      ]),
     ).start();
 
     Animated.loop(
@@ -339,7 +339,7 @@ export default function WeatherCard({ cep, showScrollHint = false }) {
           easing: Easing.inOut(Easing.quad),
           useNativeDriver: true,
         }),
-      ])
+      ]),
     ).start();
 
     safeForEach(particles, (p, i) => {
@@ -353,7 +353,7 @@ export default function WeatherCard({ cep, showScrollHint = false }) {
             useNativeDriver: true,
           }),
           Animated.timing(p, { toValue: 0, duration: 0, useNativeDriver: true }),
-        ])
+        ]),
       ).start();
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
