@@ -1,121 +1,238 @@
 // app/_layout.jsx
-// -------------------------------------------------------------
-// VigiApp — Root Layout (Expo Router)
-// - Notifications (Expo + FCM) initialisées au boot
-// - Chemins: ../libs/notifications, ../store/users, ../services/purchases
-// - Aucune régression: toasts, store, RevenueCat conservés
-// - Logs lisibles pour debug
-// -------------------------------------------------------------
+// ============================================================================
+// VigiApp — Root Layout (Expo Router) — VERSION LOG/DEBUG
+// - Notifications (Expo + FCM) : init + listeners + FCM token
+// - RevenueCat : init tôt, hook de sync
+// - Publicités AdMob : bootstrap SDK + bannière sticky (IDs TEST)
+// - Safe area + offset bannière pour éviter tout chevauchement
+// - Logs d’observabilité : group, time, try/catch, traces par étape
+// ============================================================================
 
-import React, { useEffect } from 'react';
-import { View } from 'react-native';
 import { Slot } from 'expo-router';
+import { useEffect, useMemo } from 'react';
+import { View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-// UI globale
+// UI globale (toast haut)
 import CustomTopToast from './components/CustomTopToast';
 
-// Store (emplacement root/../store/* dans ton projet)
+// Store utilisateur (id pour tracer context auth)
 import { useUserStore } from '../store/users';
 
-// RevenueCat
-import { initRevenueCat } from '../services/purchases';
+// RevenueCat : init & hook
 import { useRevenueCat } from '../hooks/useRevenueCat';
+import { initRevenueCat } from '../services/purchases';
 
-// 🔔 Notifications (lib à la racine: ../libs/notifications)
+// Notifications : pipeline complet (boot, listeners, FCM)
 import {
-  initNotifications,
   attachNotificationListeners,
-  wireAuthGateForNotifications,
   getFcmDeviceTokenAsync,
+  initNotifications,
+  wireAuthGateForNotifications,
 } from '../libs/notifications';
 
+// Publicités (AdMob) : SDK + Bannière (IDs TEST Google)
+import { AdBanner, AdBootstrap } from '../src/ads/ads';
+
+// -------------------------
+// Helpers de log formattés
+// -------------------------
+const L = {
+  scope(scope) {
+    return (msg, ...args) => console.log(`[${scope}] ${msg}`, ...args);
+  },
+  warn(scope) {
+    return (msg, ...args) => console.warn(`[${scope}] ⚠️ ${msg}`, ...args);
+  },
+  error(scope) {
+    return (msg, ...args) => console.error(`[${scope}] ❌ ${msg}`, ...args);
+  },
+};
+
+const logLayout = L.scope('LAYOUT');
+const warnLayout = L.warn('LAYOUT');
+const errLayout = L.error('LAYOUT');
+
+const logNotif = L.scope('NOTIF');
+const warnNotif = L.warn('NOTIF');
+const errNotif = L.error('NOTIF');
+
+const logRC = L.scope('RC');
+const warnRC = L.warn('RC');
+const errRC = L.error('RC');
+
+const logAds = L.scope('ADS');
+const warnAds = L.warn('ADS');
+const errAds = L.error('ADS');
+
 export default function Layout() {
-  // Si tu veux garder la lecture du userId sans warning "unused",
-  // on le log en debug une fois.
+  // --------------------------------------------------------------------------
+  // Sélecteur d’état utilisateur (pour routing notifs & debug ciblé)
+  // --------------------------------------------------------------------------
   const userId = useUserStore((s) => s?.user?.uid);
 
-  // === Notifications : init complète au boot ===
+  // --------------------------------------------------------------------------
+  // Safe area + offset de bannière (évite recouvrement de la UI)
+  // --------------------------------------------------------------------------
+  const insets = useSafeAreaInsets();
+  const BANNER_HEIGHT = 50; // approx BannerAdSize.BANNER ~ 50px
+  const bottomOffset = useMemo(() => {
+    const off = BANNER_HEIGHT + (insets?.bottom ?? 0);
+    logAds(
+      'bottomOffset calculé =',
+      off,
+      '(banner=',
+      BANNER_HEIGHT,
+      ', inset=',
+      insets?.bottom,
+      ')',
+    );
+    return off;
+  }, [insets?.bottom]);
+
+  // ==========================================================================
+  // BLOC NOTIFICATIONS — BOOT + LISTENERS + FCM
+  // ==========================================================================
   useEffect(() => {
+    console.groupCollapsed('[NOTIF] ▶ Pipeline boot');
+    console.time('[NOTIF] total');
+
     let detachListeners;
-
     (async () => {
-      console.log('[Layout][NOTIF] boot → wireAuthGateForNotifications()');
-      // 1) Gate d’auth: garantit le routing des taps (cold/warm) après login
-      wireAuthGateForNotifications();
-
       try {
-        console.log('[Layout][NOTIF] initNotifications()…');
-        // 2) Canaux Android + permissions + cold-start (ouvre si lancé via notif)
-        await initNotifications();
-        console.log('[Layout][NOTIF] init OK ✅');
+        // 1) Gate d’auth : garantit que les taps notifs routent après login
+        console.time('[NOTIF] wireAuthGateForNotifications');
+        logNotif('wireAuthGateForNotifications() → start');
+        wireAuthGateForNotifications();
+        console.timeEnd('[NOTIF] wireAuthGateForNotifications');
       } catch (e) {
-        console.warn('[Layout][NOTIF] init FAILED:', e?.message || e);
+        errNotif('wireAuthGateForNotifications failed:', e?.message || e);
       }
 
+      // 2) Initialisation des canaux + permission + cold-start
       try {
-        console.log('[Layout][NOTIF] attachNotificationListeners()…');
-        // 3) Listeners: réception en foreground + réponse (tap)
+        console.time('[NOTIF] initNotifications');
+        logNotif('initNotifications() → start');
+        await initNotifications();
+        console.timeEnd('[NOTIF] initNotifications');
+        logNotif('initNotifications() → OK ✅');
+      } catch (e) {
+        errNotif('initNotifications failed:', e?.message || e);
+      }
+
+      // 3) Listeners (foreground + tap)
+      try {
+        console.time('[NOTIF] attachNotificationListeners');
+        logNotif('attachNotificationListeners() → start');
         detachListeners = attachNotificationListeners({
           onReceive: (n) => {
             const d = n?.request?.content?.data;
-            console.log('[Layout][NOTIF] received (foreground) data =', d);
+            logNotif('onReceive (FG) data =', d);
           },
           onResponse: (r) => {
             const d = r?.notification?.request?.content?.data;
-            console.log('[Layout][NOTIF] tap response data =', d);
+            logNotif('onResponse (tap) data =', d);
           },
         });
-        console.log('[Layout][NOTIF] listeners attached ✅');
+        console.timeEnd('[NOTIF] attachNotificationListeners');
+        logNotif('listeners attached → OK ✅');
       } catch (e) {
-        console.warn('[Layout][NOTIF] listeners FAILED:', e?.message || e);
+        errNotif('attachNotificationListeners failed:', e?.message || e);
       }
 
-      // 4) Optionnel: récup FCM (device physique / Dev Client / APK)
+      // 4) FCM token (utile pour ciblage & tests physiques)
       try {
+        console.time('[NOTIF] getFcmDeviceTokenAsync');
         const token = await getFcmDeviceTokenAsync();
+        console.timeEnd('[NOTIF] getFcmDeviceTokenAsync');
         if (token) {
-          console.log('[Layout][NOTIF] FCM token ✅', token);
+          logNotif('FCM token ✅', token);
         } else {
-          console.log('[Layout][NOTIF] FCM token indisponible (simulateur/dev ?)');
+          warnNotif('FCM token indisponible (simulateur/dev-client ?)');
         }
       } catch (e) {
-        console.warn('[Layout][NOTIF] FCM token error:', e?.message || e);
+        errNotif('FCM token error:', e?.message || e);
       }
 
-      // Debug gentil: évite le warning "userId is defined but never used"
-      console.log('[Layout] userId =', userId || '(anon)');
+      // Contexte utilisateur (debug discret)
+      logLayout('userId =', userId || '(anon)');
+      console.timeEnd('[NOTIF] total');
+      console.groupEnd();
     })();
 
-    // Cleanup: détache proprement les listeners à l’unmount
+    // Cleanup : détache les listeners notifs à l’unmount
     return () => {
       try {
         detachListeners?.();
-        console.log('[Layout][NOTIF] listeners detached ✅');
-      } catch {}
+        logNotif('listeners detached ✅');
+      } catch (e) {
+        warnNotif('detach listeners failed (ignored):', e?.message || e);
+      }
     };
   }, [userId]);
 
-  // === RevenueCat & co — inchangé, non bloquant ===
+  // ==========================================================================
+  // BLOC REVENUECAT — INIT TÔT (NON BLOQUANT)
+  // ==========================================================================
   useEffect(() => {
+    console.groupCollapsed('[RC] ▶ Init');
+    console.time('[RC] initRevenueCat');
     (async () => {
       try {
-        console.log('[Layout][RC] initRevenueCat()…');
+        logRC('initRevenueCat() → start');
         await initRevenueCat();
-        console.log('[Layout][RC] init OK ✅');
+        logRC('initRevenueCat() → OK ✅');
       } catch (e) {
-        console.warn('[Layout][RC] init FAILED:', e?.message || e);
+        errRC('initRevenueCat failed:', e?.message || e);
+      } finally {
+        console.timeEnd('[RC] initRevenueCat');
+        console.groupEnd();
       }
     })();
   }, []);
 
-  // Hook RC conservé (no-op si déjà géré ailleurs)
-  useRevenueCat();
+  // Hook RC (si utilisé pour sync/offers) — no-op si déjà géré ailleurs
+  try {
+    useRevenueCat();
+    logRC('useRevenueCat() hook attached');
+  } catch (e) {
+    warnRC('useRevenueCat hook error (non bloquant):', e?.message || e);
+  }
 
-  // === Rendu racine ===
+  // ==========================================================================
+  // RENDU RACINE — ADS BOOTSTRAP + SLOT + BANNIÈRE STICKY
+  // ==========================================================================
   return (
     <View style={{ flex: 1 }}>
+      {/* ADS: Bootstrap SDK (IDs de test) — log dans AdBootstrap() */}
+      <AdBootstrap />
+
+      {/* UI globale (toast) */}
       <CustomTopToast />
-      <Slot />
+
+      {/* Contenu app : on laisse de la marge pour la bannière en bas */}
+      <View style={{ flex: 1, paddingBottom: bottomOffset }}>
+        <Slot />
+      </View>
+
+      {/* Bannière sticky bas : ne recouvre pas grâce au paddingBottom ci-dessus */}
+      <View
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          bottom: 0,
+          paddingBottom: insets?.bottom ?? 0,
+          backgroundColor: 'transparent',
+        }}
+      >
+        <AdBanner />
+      </View>
     </View>
   );
 }
+
+warnLayout('Layout component mounted');
+warnAds('Ad warning: something went wrong');
+errAds('Ad error: failed to load ad');
+errLayout('Layout error: failed to initialize');
