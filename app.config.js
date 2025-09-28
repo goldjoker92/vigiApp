@@ -16,7 +16,7 @@ export default ({ config }) => ({
           kotlinVersion: '1.9.24', // ⬅️ downgrade depuis 2.1.0
         },
         ios: {
-          deploymentTarget: '13.4',
+           deploymentTarget: '15.1'
         },
       },
     ],
