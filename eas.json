@@ -6,7 +6,6 @@
       "distribution": "internal",
       "channel": "dev",
       "android": {
-        "workflow": "managed",
         "buildType": "apk",
         "image": "sdk-53",
         "credentialsSource": "remote"
@@ -22,7 +21,6 @@
       "distribution": "internal",
       "channel": "preview",
       "android": {
-        "workflow": "managed",
         "buildType": "apk",
         "image": "sdk-53",
         "credentialsSource": "remote"
@@ -39,7 +37,6 @@
       "distribution": "store",
       "channel": "production",
       "android": {
-        "workflow": "managed",
         "buildType": "app-bundle",
         "image": "sdk-53",
         "credentialsSource": "remote"
