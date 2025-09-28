@@ -8,30 +8,29 @@ export default ({ config }) => ({
       'expo-build-properties',
       {
         android: {
-          compileSdkVersion: 36,
-          targetSdkVersion: 36,
+          compileSdkVersion: 35,
+          targetSdkVersion: 35,
           minSdkVersion: 24,
+          // ❌ ne pas définir kotlinVersion ici
         },
         ios: {
           deploymentTarget: '15.1',
         },
       },
     ],
-
     'expo-location',
-
     [
       'react-native-google-mobile-ads',
       {
         androidAppId:
           process.env.ADMOB_ANDROID_APP_ID ||
-          'ca-app-pub-3940256099942544~3347511713', // ID de test
+          'ca-app-pub-3940256099942544~3347511713', // test
       },
     ],
   ],
 
   updates: {
-    url: 'https://u.expo.dev/38fd672e-850f-436f-84f6-8a1626ed338a',
+    url: process.env.EAS_UPDATE_URL || 'https://u.expo.dev/38fd672e-850f-436f-84f6-8a1626ed338a',
   },
 
   android: {
@@ -89,3 +88,4 @@ export default ({ config }) => ({
     },
   },
 });
+// Note: pour définir kotlinVersion, créer un fichier android/build.gradle avec le contenu suivant :
