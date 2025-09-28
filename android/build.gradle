@@ -1,48 +1,30 @@
-// Top-level build file where you can add configuration options common to all sub-projects/modules.
-
 buildscript {
+  ext {
+    buildToolsVersion = "35.0.0"
+    minSdkVersion = 24
+    compileSdkVersion = 35
+    targetSdkVersion = 35
+    ndkVersion = "27.1.12297006"
+    kotlinVersion = "2.0.21"
+  }
   repositories {
     google()
     mavenCentral()
+    maven { url "https://www.jitpack.io" }
   }
   dependencies {
-    // Google Services (Firebase, Analytics, etc.)
-    // 4.4.2 corrige des warnings et tient bien avec AGP 8.9.x
+    classpath("com.android.tools.build:gradle:8.8.2")
     classpath("com.google.gms:google-services:4.4.2")
-
-    // Android Gradle Plugin (AGP) – OK pour compileSdk 36 et toolchain récente
-    classpath("com.android.tools.build:gradle:8.9.1")
-
-    // React Native Gradle Plugin (fourni par react-native)
-    classpath("com.facebook.react:react-native-gradle-plugin")
-
-    // Kotlin Gradle Plugin (compatible AGP 8.9.x)
-    classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.24")
+    // ❌ NE PAS ajouter com.facebook.react ici (plugin moderne géré côté app)
   }
 }
-
-// RN Android sources depuis node_modules (nécessaire pour certaines résolutions)
-def reactNativeAndroidDir = new File(
-  providers.exec {
-    workingDir(rootDir)
-    commandLine("node", "--print", "require.resolve('react-native/package.json')")
-  }.standardOutput.asText.get().trim(),
-  "../android"
-)
 
 allprojects {
   repositories {
-    // React Native (AARs locaux)
-    maven { url(reactNativeAndroidDir) }
-
     google()
     mavenCentral()
-
-    // JitPack uniquement si tu as une lib qui le demande (sinon, commente)
-    // maven { url "https://www.jitpack.io" }
+    maven { url "https://www.jitpack.io" }
+    maven { url "$rootDir/../node_modules/react-native/android" }
+    maven { url "$rootDir/../node_modules/jsc-android/dist" }
   }
 }
-
-// Garde les plugins racine Expo & RN
-apply plugin: "expo-root-project"
-apply plugin: "com.facebook.react.rootproject"

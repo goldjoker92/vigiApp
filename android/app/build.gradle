@@ -1,51 +1,40 @@
-apply plugin: "com.android.application"
-apply plugin: "org.jetbrains.kotlin.android"
-apply plugin: "com.facebook.react"
-
-// Projet racine
-def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
-
-/**
- * Configuration React Native + Expo
- */
-react {
-    entryFile = file(["node", "-e", "require('expo/scripts/resolveAppEntry')", projectRoot, "android", "absolute"].execute(null, rootDir).text.trim())
-    reactNativeDir = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).getParentFile().getAbsoluteFile()
-    hermesCommand = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).getParentFile().getAbsolutePath() + "/sdks/hermesc/%OS-BIN%/hermesc"
-    codegenDir = new File(["node", "--print", "require.resolve('@react-native/codegen/package.json', { paths: [require.resolve('react-native/package.json')] })"].execute(null, rootDir).text.trim()).getParentFile().getAbsoluteFile()
-
-    enableBundleCompression = (findProperty('android.enableBundleCompression') ?: false).toBoolean()
-    cliFile = new File(["node", "--print", "require.resolve('@expo/cli', { paths: [require.resolve('expo/package.json')] })"].execute(null, rootDir).text.trim())
-    bundleCommand = "export:embed"
-
-    autolinkLibrariesWithApp()
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+    id("com.facebook.react")           // ✅ plugin RN moderne
+    id("com.google.gms.google-services")
 }
 
-/**
- * Proguard
- */
-def enableProguardInReleaseBuilds = (findProperty('android.enableProguardInReleaseBuilds') ?: false).toBoolean()
-
-/**
- * JS Engine: JSC ou Hermes
- */
-def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
-
 android {
-    namespace "com.guigui92.vigiapp"
-
-    compileSdkVersion 36
+    namespace "com.vigiapp"            // ← mets ton vrai namespace (ex: com.oscar.vigiapp)
+    compileSdkVersion rootProject.ext.compileSdkVersion
 
     defaultConfig {
-        applicationId "com.guigui92.vigiapp"
-        minSdkVersion 24
-        targetSdkVersion 36
-
+        applicationId "com.vigiapp"    // ← mets ton vrai applicationId
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0.0"
 
-        // Obligatoire pour Expo/RN flavours
-        missingDimensionStrategy "store", "play"
+        multiDexEnabled true
+    }
+
+    buildTypes {
+        debug {
+            minifyEnabled false
+            shrinkResources false
+            manifestPlaceholders = [
+                ADMOB_APP_ID: "ca-app-pub-3940256099942544~3347511713" // ✅ Test ID Google
+            ]
+        }
+        release {
+            minifyEnabled false
+            shrinkResources false
+            manifestPlaceholders = [
+                ADMOB_APP_ID: "ca-app-pub-3940256099942544~3347511713" // 🔑 remplace par ton vrai App ID AdMob
+            ]
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+        }
     }
 
     compileOptions {
@@ -57,78 +46,24 @@ android {
         jvmTarget = "17"
     }
 
-    signingConfigs {
-        debug {
-            storeFile file("debug.keystore")
-            storePassword "android"
-            keyAlias "androiddebugkey"
-            keyPassword "android"
-        }
-    }
-
-    buildTypes {
-        debug {
-            signingConfig signingConfigs.debug
-        }
-        release {
-            signingConfig signingConfigs.debug
-            shrinkResources (findProperty('android.enableShrinkResourcesInReleaseBuilds')?.toBoolean() ?: false)
-            minifyEnabled enableProguardInReleaseBuilds
-            proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
-            crunchPngs (findProperty('android.enablePngCrunchInReleaseBuilds')?.toBoolean() ?: true)
-        }
-    }
-
     packagingOptions {
-        jniLibs {
-            useLegacyPackaging (findProperty('expo.useLegacyPackaging')?.toBoolean() ?: false)
-        }
-    }
-
-    androidResources {
-        ignoreAssetsPattern "!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~"
-    }
-}
-
-/**
- * Propagation des propriétés gradle.properties → packagingOptions
- */
-["pickFirsts", "excludes", "merges", "doNotStrip"].each { prop ->
-    def options = (findProperty("android.packagingOptions.$prop") ?: "").split(",")
-    for (i in 0..<options.size()) options[i] = options[i].trim()
-    options -= ""
-    if (options.length > 0) {
-        println "android.packagingOptions.$prop += $options ($options.length)"
-        options.each {
-            android.packagingOptions[prop] += it
+        resources {
+            excludes += [ "META-INF/LICENSE*", "META-INF/AL2.0", "META-INF/LGPL2.1" ]
         }
     }
 }
 
 dependencies {
-    // React Native géré par RN Gradle Plugin
-    implementation("com.facebook.react:react-android")
+    // ✅ React Native autolinking gère les libs natives automatiquement
 
-    def isGifEnabled = (findProperty('expo.gif.enabled') ?: "") == "true"
-    def isWebpEnabled = (findProperty('expo.webp.enabled') ?: "") == "true"
-    def isWebpAnimatedEnabled = (findProperty('expo.webp.animated') ?: "") == "true"
+    // Firebase (déjà ajouté via Expo config)
+    implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
+    implementation("com.google.firebase:firebase-messaging")
+    implementation("com.google.firebase:firebase-analytics")
 
-    if (isGifEnabled) {
-        implementation("com.facebook.fresco:animated-gif:${expoLibs.versions.fresco.get()}")
-    }
+    // AdMob / Google Mobile Ads
+    implementation("com.google.android.gms:play-services-ads:23.5.0")
 
-    if (isWebpEnabled) {
-        implementation("com.facebook.fresco:webpsupport:${expoLibs.versions.fresco.get()}")
-        if (isWebpAnimatedEnabled) {
-            implementation("com.facebook.fresco:animated-webp:${expoLibs.versions.fresco.get()}")
-        }
-    }
-
-    if (hermesEnabled.toBoolean()) {
-        implementation("com.facebook.react:hermes-android")
-    } else {
-        implementation jscFlavor
-    }
+    // MultiDex (au cas où ton app grossit)
+    implementation("androidx.multidex:multidex:2.0.1")
 }
-
-apply plugin: "com.google.gms.google-services"
