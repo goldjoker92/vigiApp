@@ -85,3 +85,6 @@ client/.session.json
 .husky
 .lh
 
+
+android/
+ios/
