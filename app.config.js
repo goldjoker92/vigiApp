@@ -4,18 +4,17 @@ export default ({ config }) => ({
   ...config,
 
   plugins: [
-    // Laisse Expo gérer Kotlin (ne pas mettre kotlinVersion ici)
     [
       'expo-build-properties',
       {
         android: {
           compileSdkVersion: 35,
           targetSdkVersion: 35,
-          minSdkVersion: 24
+          minSdkVersion: 24, // 👈 virgule fix
           // ❌ pas de kotlinVersion ici
         },
         ios: {
-          deploymentTarget: '15.1'
+          deploymentTarget: '15.1',
         },
       },
     ],
