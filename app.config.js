@@ -3,34 +3,43 @@ import 'dotenv/config';
 export default ({ config }) => ({
   ...config,
 
+  name: 'VigiApp',
+  slug: 'vigiapp',
+  scheme: 'vigiapp',
+  platforms: ['android'], // Android-only en Managed
+
   plugins: [
     [
       'expo-build-properties',
       {
         android: {
-          compileSdkVersion: 36,
-          targetSdkVersion: 36,
+          compileSdkVersion: 35,
+          targetSdkVersion: 35,
           minSdkVersion: 24,
-          // ❌ ne pas définir kotlinVersion ici
+          // Laisse kotlinVersion gérée par EAS (Managed)
         },
-        ios: {
-          deploymentTarget: '15.1',
-        },
+        // iOS: tu peux laisser vide; tu ne buildes pas iOS pour l’instant
       },
     ],
+    'expo-dev-client',
     'expo-location',
     [
       'react-native-google-mobile-ads',
       {
+        // Ton vrai App ID Android en prod ; en dev conserve le test si besoin
         androidAppId:
           process.env.ADMOB_ANDROID_APP_ID ||
-          'ca-app-pub-3940256099942544~3347511713', // test
+          'ca-app-pub-3940256099942544~3347511713', // TEST Android
+        // Requis par le plugin même si tu es Android-only (évite le crash/warn iOS)
+        iosAppId: 'ca-app-pub-3940256099942544~1458002511', // TEST iOS officiel
       },
     ],
   ],
 
   updates: {
-    url: process.env.EAS_UPDATE_URL || 'https://u.expo.dev/38fd672e-850f-436f-84f6-8a1626ed338a',
+    url:
+      process.env.EAS_UPDATE_URL ||
+      'https://u.expo.dev/38fd672e-850f-436f-84f6-8a1626ed338a',
   },
 
   android: {
@@ -53,6 +62,7 @@ export default ({ config }) => ({
     ],
   },
 
+  // La section iOS peut rester ; elle n’affecte pas ton build Android.
   ios: {
     ...config.ios,
     runtimeVersion: { policy: 'appVersion' },
@@ -62,9 +72,9 @@ export default ({ config }) => ({
       NSLocationAlwaysAndWhenInUseUsageDescription:
         "VigiApp a besoin de votre position en arrière-plan pour envoyer des alertes même quand l’app est fermée.",
       NSCameraUsageDescription:
-        "VigiApp utilise votre caméra pour joindre des photos à vos signalements.",
+        'VigiApp utilise votre caméra pour joindre des photos à vos signalements.',
       NSPhotoLibraryAddUsageDescription:
-        "VigiApp doit enregistrer des photos pour vos signalements.",
+        'VigiApp doit enregistrer des photos pour vos signalements.',
     },
   },
 
@@ -84,8 +94,9 @@ export default ({ config }) => ({
     EXPO_PUBLIC_LOCATIONIQ_KEY: process.env.EXPO_PUBLIC_LOCATIONIQ_KEY,
     EXPO_PUBLIC_CONTACT_EMAIL: process.env.EXPO_PUBLIC_CONTACT_EMAIL,
     eas: {
-      projectId: process.env.EAS_PROJECT_ID || '38fd672e-850f-436f-84f6-8a1626ed338a',
+      projectId:
+        process.env.EAS_PROJECT_ID || '38fd672e-850f-436f-84f6-8a1626ed338a',
     },
   },
 });
-// Note: pour définir kotlinVersion, créer un fichier android/build.gradle avec le contenu suivant :
+// doit rester en dernier
