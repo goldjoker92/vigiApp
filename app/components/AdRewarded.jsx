@@ -34,7 +34,7 @@ export default function AdRewarded({ onLoaded, onFailed, onReward }) {
       (reward) => {
         console.log('🎁 Reward reçu:', reward);
         onReward && onReward(reward);
-      }
+      },
     );
 
     rewarded.load();

@@ -6,9 +6,9 @@
     "skipLibCheck": true,
 
     /* JavaScript + JSX support */
-    "allowJs": true,         // accepte .js/.jsx
-    "checkJs": false,        // passe à true si tu veux activer le type-check JS
-    "jsx": "react-jsx",      // JSX moderne
+    "allowJs": true, // accepte .js/.jsx
+    "checkJs": false, // passe à true si tu veux activer le type-check JS
+    "jsx": "react-jsx", // JSX moderne
 
     /* Module/target */
     "target": "ES2020",
@@ -27,22 +27,7 @@
     "types": ["react", "react-native"]
   },
 
-  "include": [
-    "app/**/*",
-    "src/**/*",
-    "index.js",
-    "index.jsx",
-    "index.ts",
-    "index.tsx"
-  ],
+  "include": ["app/**/*", "src/**/*", "index.js", "index.jsx", "index.ts", "index.tsx"],
 
-  "exclude": [
-    "node_modules",
-    "android",
-    "ios",
-    ".expo",
-    "dist",
-    "build",
-    "coverage"
-  ]
+  "exclude": ["node_modules", "android", "ios", ".expo", "dist", "build", "coverage"]
 }

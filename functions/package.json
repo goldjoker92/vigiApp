@@ -1,13 +1,15 @@
-﻿{
+{
   "name": "vigiapp-functions",
-  "type": "module",
+  "main": "index.js",
+  "type": "commonjs",
   "engines": {
     "node": "20"
   },
+  "scripts": {
+    "deploy": "firebase deploy --only functions"
+  },
   "dependencies": {
-    "argon2": "^0.41.1",
-    "express": "^4.19.2",
-    "firebase-admin": "^12.6.0",
-    "firebase-functions": "^5.0.1"
+    "firebase-admin": "^12.7.0",
+    "firebase-functions": "^6.4.0"
   }
 }

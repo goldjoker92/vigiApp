@@ -9,6 +9,7 @@ export default ({ config }) => ({
   platforms: ['android'], // Android-only en Managed
 
   plugins: [
+    ['./plugins/withBrowserPin.js'],
     [
       'expo-build-properties',
       {
@@ -27,9 +28,7 @@ export default ({ config }) => ({
       'react-native-google-mobile-ads',
       {
         // Ton vrai App ID Android en prod ; en dev conserve le test si besoin
-        androidAppId:
-          process.env.ADMOB_ANDROID_APP_ID ||
-          'ca-app-pub-3940256099942544~3347511713', // TEST Android
+        androidAppId: process.env.ADMOB_ANDROID_APP_ID || 'ca-app-pub-3940256099942544~3347511713', // TEST Android
         // Requis par le plugin même si tu es Android-only (évite le crash/warn iOS)
         iosAppId: 'ca-app-pub-3940256099942544~1458002511', // TEST iOS officiel
       },
@@ -37,9 +36,7 @@ export default ({ config }) => ({
   ],
 
   updates: {
-    url:
-      process.env.EAS_UPDATE_URL ||
-      'https://u.expo.dev/38fd672e-850f-436f-84f6-8a1626ed338a',
+    url: process.env.EAS_UPDATE_URL || 'https://u.expo.dev/38fd672e-850f-436f-84f6-8a1626ed338a',
   },
 
   android: {
@@ -70,7 +67,7 @@ export default ({ config }) => ({
       NSLocationWhenInUseUsageDescription:
         'VigiApp utilise votre position pour afficher des alertes de voisinage pertinentes.',
       NSLocationAlwaysAndWhenInUseUsageDescription:
-        "VigiApp a besoin de votre position en arrière-plan pour envoyer des alertes même quand l’app est fermée.",
+        'VigiApp a besoin de votre position en arrière-plan pour envoyer des alertes même quand l’app est fermée.',
       NSCameraUsageDescription:
         'VigiApp utilise votre caméra pour joindre des photos à vos signalements.',
       NSPhotoLibraryAddUsageDescription:
@@ -94,8 +91,7 @@ export default ({ config }) => ({
     EXPO_PUBLIC_LOCATIONIQ_KEY: process.env.EXPO_PUBLIC_LOCATIONIQ_KEY,
     EXPO_PUBLIC_CONTACT_EMAIL: process.env.EXPO_PUBLIC_CONTACT_EMAIL,
     eas: {
-      projectId:
-        process.env.EAS_PROJECT_ID || '38fd672e-850f-436f-84f6-8a1626ed338a',
+      projectId: process.env.EAS_PROJECT_ID || '38fd672e-850f-436f-84f6-8a1626ed338a',
     },
   },
 });

@@ -1,10 +1,11 @@
 {
-  "cli": { "version": ">= 12.0.0", "appVersionSource": "remote" },
+  "cli": { "version": ">= 13.2.0", "appVersionSource": "remote" },
   "build": {
     "development": {
       "developmentClient": true,
       "distribution": "internal",
       "channel": "dev",
+      "resourceClass": "large",
       "android": {
         "buildType": "apk",
         "image": "sdk-53",
@@ -18,8 +19,10 @@
       }
     },
     "preview": {
+      "autoIncrement": true,
       "distribution": "internal",
       "channel": "preview",
+      "resourceClass": "large",
       "android": {
         "buildType": "apk",
         "image": "sdk-53",
@@ -50,6 +53,8 @@
     }
   },
   "submit": {
-    "production": { "android": { "track": "production" } }
+    "production": {
+      "android": { "track": "production" }
+    }
   }
 }
