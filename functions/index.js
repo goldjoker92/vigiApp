@@ -1,4 +1,11 @@
 // functions/index.js
+// -------------------------------------------------------------
+// VigiApp — API (Users + Public Alerts)
+// - Logs [API] cohérents (suivi clair en prod)
+// - Variables de simulation charge (désactivées par défaut)
+// - Zéro régression en prod
+// -------------------------------------------------------------
+
 const { initializeApp } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
 const express = require('express');
@@ -11,6 +18,7 @@ const {
   verifyFromClientPrehash,
 } = require('./passwordService.js');
 
+// ---------- INIT
 initializeApp();
 const db = getFirestore();
 setGlobalOptions({ region: 'southamerica-east1', cors: true });
@@ -18,6 +26,11 @@ setGlobalOptions({ region: 'southamerica-east1', cors: true });
 const app = express();
 app.use(express.json());
 
+// ---------- SIMULATION (désactivée par défaut)
+const SIMULATION_ENABLED = false; // ⚠️ mettre true seulement en test
+const MAX_CONCURRENT_USERS_SIMULATED = 1000; // valeur par défaut si simulation activée
+
+// ---------- HELPERS
 function sha256HexServerPrefixed(plain) {
   const buf = crypto
     .createHash('sha256')
@@ -30,13 +43,21 @@ function sha256HexServerPrefixed(plain) {
 
 const usersCol = () => db.collection('users');
 
-app.get('/health', (req, res) =>
-  res.json({ ok: true, service: 'api', region: 'southamerica-east1' }),
-);
+// ⚠️ Ligne qui branche l’endpoint “par adresse”
+exports.sendPublicAlertByAddress =
+  require('./src/sendPublicAlertByAddress').sendPublicAlertByAddress;
+
+// ---------- ROUTES
+app.get('/health', (req, res) => {
+  console.log('[API][HEALTH] checked');
+  res.json({ ok: true, service: 'api', region: 'southamerica-east1' });
+});
 
 app.post('/signup', async (req, res) => {
   try {
     const { email, prehash, saltId } = req.body ?? {};
+    console.log('[API][SIGNUP] attempt', { email, saltId });
+
     if (!email || !prehash || !saltId) {
       return res.status(400).json({ ok: false, code: 'BAD_REQUEST' });
     }
@@ -47,6 +68,7 @@ app.post('/signup', async (req, res) => {
     const userRef = usersCol().doc(email);
     const snap = await userRef.get();
     if (snap.exists) {
+      console.warn('[API][SIGNUP] already exists', { email });
       return res.status(409).json({ ok: false, code: 'ALREADY_EXISTS' });
     }
 
@@ -59,9 +81,10 @@ app.post('/signup', async (req, res) => {
       createdAt: new Date().toISOString(),
     });
 
+    console.log('[API][SIGNUP] success', { email });
     return res.json({ ok: true });
   } catch (e) {
-    console.error(e);
+    console.error('[API][SIGNUP] error', e);
     return res.status(500).json({ ok: false });
   }
 });
@@ -69,6 +92,8 @@ app.post('/signup', async (req, res) => {
 app.post('/login', async (req, res) => {
   try {
     const { email, prehash, saltId, password } = req.body ?? {};
+    console.log('[API][LOGIN] attempt', { email });
+
     if (!email) {
       return res.status(400).json({ ok: false, code: 'BAD_REQUEST' });
     }
@@ -85,6 +110,7 @@ app.post('/login', async (req, res) => {
     const userRef = usersCol().doc(email);
     const snap = await userRef.get();
     if (!snap.exists) {
+      console.warn('[API][LOGIN] no such user', { email });
       return res.status(401).json({ ok: false });
     }
 
@@ -96,13 +122,25 @@ app.post('/login', async (req, res) => {
     });
 
     if (!ok) {
+      console.warn('[API][LOGIN] bad password', { email });
       return res.status(401).json({ ok: false });
     }
-    return res.json({ ok: true, token: 'FAKE_JWT_FOR_TEST' });
+
+    console.log('[API][LOGIN] success', { email });
+    return res.json({
+      ok: true,
+      token: 'FAKE_JWT_FOR_TEST',
+      ...(SIMULATION_ENABLED ? { simulatedUsers: MAX_CONCURRENT_USERS_SIMULATED } : {}),
+    });
   } catch (e) {
-    console.error(e);
+    console.error('[API][LOGIN] error', e);
     return res.status(500).json({ ok: false });
   }
 });
 
+// ---------- EXPORT
 exports.api = onRequest(app);
+
+exports.api = onRequest(app);
+exports.sendPublicAlertByAddress =
+  require('./src/sendPublicAlertByAddress').sendPublicAlertByAddress;

@@ -81,7 +81,9 @@ export function useInterstitial() {
     const uClosed = ad.addAdEventListener(AdEventType.CLOSED, () => {
       console.log('[Ads] ❎ Interstitial fermé par l’utilisateur → rechargement');
       setLoaded(false);
-      try { ad.load(); } catch (e) {
+      try {
+        ad.load();
+      } catch (e) {
         console.log('[Ads] ⚠️ Erreur reload après fermeture:', e);
       }
     });
@@ -98,7 +100,11 @@ export function useInterstitial() {
 
     return () => {
       console.log('[Ads] 🧹 Cleanup interstitial');
-      try { uLoaded(); uClosed(); uError(); } catch {}
+      try {
+        uLoaded();
+        uClosed();
+        uError();
+      } catch {}
       interstitialRef.current = null;
     };
   }, []);
@@ -144,7 +150,9 @@ export function useRewarded(onReward) {
     const uClosed = ad.addAdEventListener(AdEventType.CLOSED, () => {
       console.log('[Ads] ❎ Rewarded fermé par l’utilisateur → rechargement');
       setLoaded(false);
-      try { ad.load(); } catch (e) {
+      try {
+        ad.load();
+      } catch (e) {
         console.log('[Ads] ⚠️ Erreur reload après fermeture:', e);
       }
     });
@@ -161,7 +169,12 @@ export function useRewarded(onReward) {
 
     return () => {
       console.log('[Ads] 🧹 Cleanup rewarded');
-      try { uLoaded(); uEarned(); uClosed(); uError(); } catch {}
+      try {
+        uLoaded();
+        uEarned();
+        uClosed();
+        uError();
+      } catch {}
       rewardedRef.current = null;
     };
   }, [onReward]);

@@ -27,7 +27,15 @@
     "types": ["react", "react-native"]
   },
 
-  "include": ["app/**/*", "src/**/*", "index.js", "index.jsx", "index.ts", "index.tsx"],
+  "include": [
+    "app/**/*",
+    "src/**/*",
+    "index.js",
+    "index.jsx",
+    "index.ts",
+    "index.tsx",
+    "log/mapLog.js"
+  ],
 
   "exclude": ["node_modules", "android", "ios", ".expo", "dist", "build", "coverage"]
 }

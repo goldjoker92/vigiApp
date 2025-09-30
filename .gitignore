@@ -84,13 +84,7 @@ client/.session.json
 .history
 .husky
 .lh
-
-
 android/
 ios/
 
-android/
-ios/
-
-android/
-ios/
+.env.sample

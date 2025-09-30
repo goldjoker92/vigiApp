@@ -15,6 +15,16 @@
 // - Cache: estado persistant (AsyncStorage), incidents TTL 5 min (pré-hydratation)
 // - JS pur
 // -------------------------------------------------------------
+// app/(tabs)/mapa.jsx
+// -------------------------------------------------------------
+// VigiApp — Carte publique (full debug + watchdog)
+// -------------------------------------------------------------
+// app/(tabs)/mapa.jsx
+// -------------------------------------------------------------
+// VigiApp — Carte publique (instrumentée)
+// - Logs MAPA partout : lifecycle, events RN Maps, cache, Firestore
+// - Aucune fuite de groupEnd, handlers centralisés
+// -------------------------------------------------------------
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
   View,
@@ -35,6 +45,7 @@ import { BlurView } from 'expo-blur';
 import Svg, { Defs, LinearGradient, Stop, Path, G } from 'react-native-svg';
 import { cacheGet, cacheSet, cacheSetForever } from '../../utils/cache';
 import { safeForEach } from '../../utils/safeEach';
+import { createMapLogger } from '../../src/log/mapLog';
 
 // Firestore
 import { collection, query, where, orderBy, onSnapshot, Timestamp } from 'firebase/firestore';
@@ -50,7 +61,7 @@ const PILL_IDLE_BG = 'rgba(39,194,255,0.10)';
 const PILL_IDLE_BORDER = 'rgba(39,194,255,0.20)';
 const PILL_ACTIVE_BG = '#27C2FF';
 
-// Couleurs côté Report (fallback si payload.color absent)
+// Couleurs fallback par catégorie
 const CATEGORY_COLOR = {
   'Roubo/Furto': '#FFA500',
   Agressão: '#FFA500',
@@ -61,7 +72,7 @@ const CATEGORY_COLOR = {
   Outros: '#007AFF',
 };
 
-// ---------- Utils ----------
+// ---------- Utils géo ----------
 function zoomForRadiusMeters(radiusMeters, latitude, viewportWidthPx = width, fill = 0.82) {
   const metersWanted = (2 * radiusMeters) / (viewportWidthPx * fill);
   const base = 156543.03392 * Math.cos((latitude * Math.PI) / 180);
@@ -94,7 +105,7 @@ function fmtDate(tsMillis) {
   return `${dd}/${mo} ${hh}:${mm}`;
 }
 
-// ---------- Cluster "sans count" (~80 m par type) ----------
+// ---------- Cluster à ~80 m si pas de count ----------
 const CLUSTER_THRESHOLD_M = 80;
 function clusterByTypeNoCount(rows, proximityM = CLUSTER_THRESHOLD_M) {
   const clusters = [];
@@ -198,6 +209,7 @@ function RadarSweepBounded({
 
 // ---------- Écran ----------
 export default function MapaScreen() {
+  const MAP = createMapLogger('MAPA:MAP'); // 🔎 tous les logs de cette page
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const mapRef = useRef(null);
@@ -205,34 +217,37 @@ export default function MapaScreen() {
   const [center, setCenter] = useState(null);
   const [region, setRegion] = useState(null);
   const [radiusM, setRadiusM] = useState(1000); // 1 km par défaut
-  // const [loadingLoc, setLoadingLoc] = useState(true);
-  const [stateName, setStateName] = useState('Estado'); // dynamique + cache
+  const [stateName, setStateName] = useState('Estado');
   const [barOpen, setBarOpen] = useState(true);
 
-  const [alerts, setAlerts] = useState([]); // bruts /publicAlerts
-  // const [cameraZoom, setCameraZoom] = useState(14);
+  const [alerts, setAlerts] = useState([]);
   const [centerPx, setCenterPx] = useState(null);
   const [pxRadius, setPxRadius] = useState(120);
 
-  const animateTo = useCallback((cameraLike) => {
-    const m = mapRef.current;
-    if (!m) {
-      return;
-    }
-    try {
-      m.animateCamera(
-        {
-          center: { latitude: cameraLike.latitude, longitude: cameraLike.longitude },
-          pitch: 0,
-          heading: 0,
-          zoom: cameraLike.zoom ?? 14,
-        },
-        { duration: 250 },
-      );
-    } catch (e) {
-      console.log('[MAP] animateCamera error', e);
-    }
-  }, []);
+  const animateTo = useCallback(
+    (cameraLike) => {
+      const m = mapRef.current;
+      if (!m) {
+        return;
+      }
+      try {
+        MAP.info('animateCamera →', cameraLike);
+        m.animateCamera(
+          {
+            center: { latitude: cameraLike.latitude, longitude: cameraLike.longitude },
+            pitch: 0,
+            heading: 0,
+            zoom: cameraLike.zoom ?? 14,
+          },
+          { duration: 250 },
+        );
+      } catch (e) {
+        MAP.err('animateCamera error', e?.message || e);
+      }
+    },
+    [MAP],
+  );
+
   const colorFor = useCallback(
     (a) => a.color || CATEGORY_COLOR[a.categoria] || CATEGORY_COLOR[a.type] || '#007AFF',
     [],
@@ -240,12 +255,13 @@ export default function MapaScreen() {
 
   // Localisation + reverse geocode + cache Estado
   useEffect(() => {
+    MAP.group('MOUNT');
     (async () => {
       try {
         const cachedUF = await cacheGet('geo:stateName');
         if (cachedUF) {
           setStateName(cachedUF);
-          console.log('[CACHE] uf hydrated =', cachedUF);
+          MAP.info('[CACHE] uf hydrated', cachedUF);
         }
 
         const { status } = await Location.requestForegroundPermissionsAsync();
@@ -267,15 +283,15 @@ export default function MapaScreen() {
             }
           } catch {}
         } else {
-          console.log('[MAP] permission refusée → fallback Fortaleza');
+          MAP.warn('permission refusée → fallback Fortaleza');
         }
         setCenter(c);
         const z = zoomForRadiusMeters(radiusM, c.latitude);
         animateTo({ ...c, zoom: z });
       } catch (e) {
-        console.log('[MAP] localisation error', e);
+        MAP.err('localisation error', e?.message || e);
       } finally {
-        /* setLoadingLoc(false); */
+        MAP.groupEndAll();
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -290,17 +306,16 @@ export default function MapaScreen() {
     animateTo({ ...center, zoom: z });
   }, [radiusM, center, animateTo]);
 
-  // Pré-hydrate incidents (TTL 5m) + abonnement Firestore (publicAlerts)
+  // Pré-hydrate incidents + abonnement Firestore (<=48h)
   useEffect(() => {
     let unsub = null;
     (async () => {
       const cached = await cacheGet('alerts:public:v1');
       if (cached) {
         setAlerts(cached);
-        console.log('[CACHE] alerts hydrated =', cached.length);
+        MAP.info('[CACHE] alerts hydrated', { count: cached.length });
       }
-
-      const col = collection(db, 'publicAlerts'); // = Report.jsx
+      const col = collection(db, 'publicAlerts');
       const t48h = Timestamp.fromMillis(Date.now() - 48 * 3600 * 1000);
       const q = query(col, where('createdAt', '>=', t48h), orderBy('createdAt', 'desc'));
       unsub = onSnapshot(
@@ -328,18 +343,14 @@ export default function MapaScreen() {
             });
           });
           setAlerts(rows);
-          await cacheSet('alerts:public:v1', rows, 300); // cache alerts (5 min)
-          console.log('[CACHE] alerts saved =', rows.length);
+          await cacheSet('alerts:public:v1', rows, 300);
+          MAP.info('[CACHE] alerts saved', { count: rows.length });
         },
-        (err) => console.log('[MAP] onSnapshot error', err),
+        (err) => MAP.err('onSnapshot error', err?.message || err),
       );
     })();
-    return () => {
-      if (unsub) {
-        unsub();
-      }
-    };
-  }, []);
+    return () => unsub && unsub();
+  }, [MAP]);
 
   // Géométrie pour borner le radar
   const refreshScreenGeometry = useCallback(async () => {
@@ -350,26 +361,27 @@ export default function MapaScreen() {
     try {
       const cam = await m.getCamera();
       const zoom = cam?.zoom ?? 14;
-      // setCameraZoom(zoom);
       const pt = await m.pointForCoordinate(center);
       setCenterPx(pt);
       const mpp = metersPerPixelAt(center.latitude, zoom);
       const rpx = Math.max(8, Math.min(radiusM / mpp, Math.max(width, height) * 1.2));
       setPxRadius(rpx);
+      MAP.info('[GEOM]', { zoomApprox: zoom, pxRadius: Math.round(rpx) });
     } catch {}
-  }, [center, radiusM]);
+  }, [center, radiusM, MAP]);
   useEffect(() => {
     refreshScreenGeometry();
   }, [refreshScreenGeometry]);
   const onRegionChangeComplete = useCallback(
     async (reg) => {
       setRegion(reg);
+      MAP.handlers.onRegionChangeComplete(reg);
       refreshScreenGeometry();
     },
-    [refreshScreenGeometry],
+    [refreshScreenGeometry, MAP],
   );
 
-  // Incidents dynamiques: <=36h, cluster ~80m UNIQUEMENT si pas de count, puis filtrage dans le cercle
+  // Incidents visibles dans le cercle (<=36h)
   const markers = useMemo(() => {
     if (!center) {
       return [];
@@ -383,12 +395,14 @@ export default function MapaScreen() {
     const clusteredNoCount = clusterByTypeNoCount(withoutCount, CLUSTER_THRESHOLD_M);
     const combined = [...withCount, ...clusteredNoCount];
 
-    return combined.filter(
+    const filtered = combined.filter(
       (c) => haversineMeters(center, { latitude: c.lat, longitude: c.lng }) <= radiusM,
     );
-  }, [alerts, center, radiusM]);
+    MAP.info('[FILTERED] markers', { total: filtered.length, recent: recent.length });
+    return filtered;
+  }, [alerts, center, radiusM, MAP]);
 
-  // Presets RAIO
+  // Presets
   const PRESETS = [
     { key: '500m', meters: 500, label: '500 m' },
     { key: '1k', meters: 1000, label: '1 km' },
@@ -432,14 +446,18 @@ export default function MapaScreen() {
             longitudeDelta: 0.2,
           }
         }
+        onLayout={MAP.handlers.onLayout}
+        onMapReady={MAP.handlers.onMapReady}
+        onMapLoaded={MAP.handlers.onMapLoaded}
         onRegionChangeComplete={onRegionChangeComplete}
+        onPress={MAP.handlers.onPress}
         showsUserLocation
         showsCompass={false}
         toolbarEnabled={false}
         rotateEnabled={false}
         moveOnMarkerPress={false}
       >
-        {/* User marker + callout propre */}
+        {/* User marker + callout */}
         {center && (
           <>
             <Marker coordinate={center} anchor={{ x: 0.5, y: 1 }} calloutAnchor={{ x: 0.5, y: 0 }}>
@@ -461,7 +479,7 @@ export default function MapaScreen() {
           </>
         )}
 
-        {/* Incidents (pins dans le cercle, couleur Report ou fallback categoria) */}
+        {/* Incidents */}
         {markers.map((a, idx) => {
           const pinColor = colorFor(a);
           const key = a.id || `${a.lat},${a.lng},${a.type || a.categoria},${idx}`;
@@ -489,7 +507,7 @@ export default function MapaScreen() {
         })}
       </MapView>
 
-      {/* Radar centré user et borné au cercle */}
+      {/* Radar visuel borné au cercle */}
       {center && centerPx && pxRadius ? (
         <RadarSweepBounded
           centerPx={centerPx}
@@ -501,10 +519,10 @@ export default function MapaScreen() {
         />
       ) : null}
 
-      {/* ----- Barre RAIO (verticale, pliable) ----- */}
+      {/* Barre RAIO (verticale, pliable) */}
       <View
         pointerEvents="box-none"
-        style={[styles.radiusWrap, { top: insets.top + headerHeight + 0 }]}
+        style={[styles.radiusWrap, { top: insets.top + headerHeight }]}
       >
         <View style={styles.radiusCard}>
           <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
@@ -545,8 +563,6 @@ export default function MapaScreen() {
 // ---------- Styles ----------
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
-
-  // Barre RAIO
   radiusWrap: {
     position: 'absolute',
     alignSelf: 'flex-start',
@@ -607,8 +623,6 @@ const styles = StyleSheet.create({
   pillSmallActive: { backgroundColor: PILL_ACTIVE_BG, borderColor: PILL_ACTIVE_BG },
   pillSmallText: { color: '#E6F7FF', fontWeight: '800', fontSize: 13 },
   pillSmallTextActive: { color: '#0b2033' },
-
-  // Callouts
   calloutCard: {
     backgroundColor: '#0b1420',
     borderRadius: 12,
@@ -621,8 +635,6 @@ const styles = StyleSheet.create({
   calloutTitle: { fontWeight: '900', marginBottom: 2, flexWrap: 'wrap' },
   calloutSub: { color: '#b7e6ff', fontSize: 12, marginBottom: 2 },
   calloutBody: { color: '#d8f2ff', fontSize: 13, flexWrap: 'wrap' },
-
-  // User callout
   userCard: {
     backgroundColor: '#fff',
     borderRadius: 10,
@@ -632,25 +644,4 @@ const styles = StyleSheet.create({
     borderColor: '#00000022',
   },
   userText: { color: '#111', fontWeight: '800' },
-
-  // Actions (droite)
-  actionsWrap: { position: 'absolute', right: 12, bottom: 40, alignItems: 'center', gap: 10 },
-  actionBtnAccent: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: ACCENT,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: ACCENT,
-        shadowOpacity: 0.35,
-        shadowRadius: 10,
-        shadowOffset: { width: 0, height: 6 },
-      },
-      android: { elevation: 8 },
-    }),
-  },
-  actionTxt: { color: '#0b2033', fontSize: 26, fontWeight: '900', marginTop: -2 },
 });

@@ -17,11 +17,13 @@ function BigButton({ label, onPress, disabled, secondary }) {
         pressed && !disabled && styles.buttonPressed,
       ]}
     >
-      <Text style={[
-        styles.buttonText,
-        secondary && styles.buttonTextSecondary,
-        disabled && styles.buttonTextDisabled,
-      ]}>
+      <Text
+        style={[
+          styles.buttonText,
+          secondary && styles.buttonTextSecondary,
+          disabled && styles.buttonTextDisabled,
+        ]}
+      >
         {label}
       </Text>
     </Pressable>
@@ -48,8 +50,14 @@ export default function AdsTestScreen() {
         <View style={styles.header}>
           <Text style={styles.title}>📢 Test des pubs</Text>
           <View style={styles.badgesRow}>
-            <StatusPill ok={inter.loaded} label={inter.loaded ? 'Interstitial prêt' : 'Interstitial loading…'} />
-            <StatusPill ok={rew.loaded} label={rew.loaded ? 'Rewarded prêt' : 'Rewarded loading…'} />
+            <StatusPill
+              ok={inter.loaded}
+              label={inter.loaded ? 'Interstitial prêt' : 'Interstitial loading…'}
+            />
+            <StatusPill
+              ok={rew.loaded}
+              label={rew.loaded ? 'Rewarded prêt' : 'Rewarded loading…'}
+            />
           </View>
         </View>
 
@@ -88,7 +96,13 @@ const styles = StyleSheet.create({
   pillTextOk: { color: '#2E7D32' },
   pillTextWait: { color: '#8D6E00' },
   grid: { gap: 12 },
-  button: { minHeight: 56, borderRadius: 12, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 },
+  button: {
+    minHeight: 56,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
   buttonPrimary: { backgroundColor: '#111827' },
   buttonSecondary: { backgroundColor: '#F3F4F6', borderWidth: 1, borderColor: '#E5E7EB' },
   buttonDisabled: { opacity: 0.5 },

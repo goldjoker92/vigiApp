@@ -1,13 +1,25 @@
 {
-  "name": "vigiapp-functions",
-  "engines": {
-    "node": "18"
+  "name": "functions",
+  "private": true,
+  "description": "Cloud Functions for Firebase",
+  "main": "index.js",
+  "type": "commonjs",
+  "engines": { "node": "20", "npm": "10" },
+  "scripts": {
+    "serve": "firebase emulators:start --only functions",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
+    "lint:fix": "eslint . --ext .js,.jsx,.ts,.tsx --fix",
+    "lint:front": "eslint app src --ext .js,.jsx,.ts,.tsx",
+    "lint:functions": "eslint functions --ext .js",
+    "start": "node server.js"             
   },
   "dependencies": {
-    "argon2": "^0.41.1",
-    "express": "^4.19.2",
-    "firebase-admin": "13.5.0",
-    "firebase-functions": "6.4.0"
-  },
-  "type": "commonjs"
+    "dayjs": "^1.11.13",
+    "firebase-admin": "^12.6.0",
+    "firebase-functions": "^6.4.0",
+    "geofire-common": "^6.0.0",
+    "express": "^4.19.2"                 
+  }
 }
