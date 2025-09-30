@@ -1,7 +1,7 @@
 const HASH_SCHEMES = {
   'build-v1': {
     kdf: 'argon2id',
-    pepperParamKey: 'security.pepper_v1',
+    pepperParamKey: 'SECURITY_PEPPER_V1',
     versionPrefix: 'v1::',
   },
 };

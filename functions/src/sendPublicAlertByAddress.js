@@ -1,11 +1,12 @@
-// functions/src/sendPublicAlertByAddress.js
 // ============================================================================
-// VigiApp — Public Alert (HTTP Cloud Function, prod-ready MVP)
+// VigiApp — Public Alert (HTTP Cloud Function, prod-grade)
 // ----------------------------------------------------------------------------
 // - Admin init idempotent
 // - Upsert Firestore publicAlerts/{alertId}
-// - Envoi FCM (title/body/data) robuste, tri erreurs (fatal/transient)
-// - Sélection destinataires "soft" (helpers optionnels)
+// - Sélection destinataires prioritaire GEO → widen → CEP → city sample
+// - Envoi FCM robuste: batch 500, retry transitoires, DLQ tokens morts
+// - Logs & métriques: counts, % succès, moy. tentatives, byCode, samples
+// - Audit Firestore pushAudits/{autoId}
 // - Anti-timeout: fast-exit si 0 dest., micro-yield entre batchs
 // - Couleur Android: normalisée et envoyée SEULEMENT si valide + non désactivée
 // ============================================================================
@@ -13,7 +14,6 @@
 const { onRequest } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
 
-// -- Admin init (idempotent)
 try {
   admin.app();
 } catch {
@@ -28,7 +28,6 @@ const DEFAULT_RADIUS_M = 1000;
 const ANDROID_CHANNEL_ID = 'alerts-high';
 const BATCH_SIZE = 500;
 
-// Kill switch couleur pour prod (mettre DISABLE_FCM_COLOR=true pour couper)
 const DISABLE_FCM_COLOR = process.env.DISABLE_FCM_COLOR === 'true';
 
 // -- Helpers optionnels (défauts sûrs si absents)
@@ -46,16 +45,21 @@ try {
   });
 }
 
-let selectRecipientsGeohash, selectRecipientsFallbackScan, auditPushBlastResult, enqueueDLQ;
+let selectRecipientsGeohash,
+  selectRecipientsFallbackScan,
+  selectRecipientsCitySample,
+  auditPushBlastResult,
+  enqueueDLQ;
 try {
   ({
     selectRecipientsGeohash,
     selectRecipientsFallbackScan,
+    selectRecipientsCitySample,
     auditPushBlastResult,
     enqueueDLQ,
   } = require('../lib/push-infra'));
 } catch {
-  /* soft-fail */
+  /* soft-fail, les helpers resteront undefined → recipients=0 */
 }
 
 // -- Utils
@@ -83,6 +87,52 @@ function maskToken(tok) {
   }
   const s = String(tok);
   return s.length <= 12 ? s : `${s.slice(0, 6)}…${s.slice(-4)}`;
+}
+
+// -- FCM bas niveau
+async function sendFCM(token, message) {
+  try {
+    const id = await admin.messaging().send(message, /* dryRun */ false);
+    return { ok: true, id };
+  } catch (e) {
+    const code = e?.errorInfo?.code || e?.code || '';
+    const msg = e?.message || String(e);
+    const fatal = [
+      'messaging/invalid-argument',
+      'messaging/invalid-recipient',
+      'messaging/registration-token-not-registered',
+      'messaging/invalid-registration-token',
+    ].includes(code);
+    const transient = [
+      'messaging/internal-error',
+      'messaging/server-unavailable',
+      'messaging/unavailable',
+      'messaging/unknown-error',
+      'deadline-exceeded',
+    ].includes(code);
+    console.warn('[ALERT_API] FCM SEND FAIL', code, maskToken(token), msg);
+    return { ok: false, fatal, transient, code, msg };
+  }
+}
+
+// Retry exponentiel + jitter pour erreurs transitoires, avec rapport d’attentes
+async function sendWithRetry(token, message, { max = 3 } = {}) {
+  let attempt = 0;
+  let last;
+  while (attempt < max) {
+    attempt += 1;
+    const r = await sendFCM(token, message);
+    if (r.ok || r.fatal) {
+      return { ...r, attempts: attempt };
+    }
+    last = r; // transient
+    const base = 200 * Math.pow(2, attempt - 1); // 200, 400, 800...
+    const jitter = Math.floor(Math.random() * 100);
+    const wait = Math.min(2000, base + jitter);
+    console.warn('[ALERT_API] retry', { token: maskToken(token), attempt, code: r.code, wait });
+    await new Promise((res) => setTimeout(res, wait));
+  }
+  return { ...(last || {}), attempts: max };
 }
 
 // -- Firestore upsert
@@ -120,32 +170,6 @@ async function upsertPublicAlertDoc({
   console.log('[ALERT_API] Firestore upsert publicAlerts/', alertId, '→ OK');
 }
 
-// -- FCM
-async function sendFCM(token, message) {
-  try {
-    const id = await admin.messaging().send(message, /* dryRun */ false);
-    return { ok: true, id };
-  } catch (e) {
-    const code = e?.errorInfo?.code || e?.code || '';
-    const msg = e?.message || String(e);
-    const fatal = [
-      'messaging/invalid-argument',
-      'messaging/invalid-recipient',
-      'messaging/registration-token-not-registered',
-      'messaging/invalid-registration-token',
-    ].includes(code);
-    const transient = [
-      'messaging/internal-error',
-      'messaging/server-unavailable',
-      'messaging/unavailable',
-      'messaging/unknown-error',
-      'deadline-exceeded',
-    ].includes(code);
-    console.warn('[ALERT_API] FCM SEND FAIL', code, maskToken(token), msg);
-    return { ok: false, fatal, transient, code, msg };
-  }
-}
-
 // -- Handler principal
 async function handleSendPublicAlertByAddress(req, res) {
   const t0 = Date.now();
@@ -179,7 +203,7 @@ async function handleSendPublicAlertByAddress(req, res) {
 
     let radiusM = clampRadiusM(b.radius_m ?? b.radius);
     const accent = resolveAccentColor({ severity, formColor });
-    const androidColor = normalizeAndroidColor(accent); // ← valide ou undefined
+    const androidColor = normalizeAndroidColor(accent);
     const local = localLabel({ endereco, bairro, cidade, uf });
     const deepLink = `vigiapp://public-alerts/${alertId}`;
 
@@ -208,12 +232,12 @@ async function handleSendPublicAlertByAddress(req, res) {
       color: accent,
     });
 
-    // -- Mode test : un seul device
+    // -- Mode test : un seul device (n’affecte pas la sélection publique)
     if (testToken) {
       const { title, body } = textsBySeverity(severity, local, '');
       const androidNotif = {
         channelId: ANDROID_CHANNEL_ID,
-        ...(androidColor ? { color: androidColor } : {}), // seulement si valide + non désactivée
+        ...(androidColor ? { color: androidColor } : {}),
       };
       const msg = {
         token: testToken,
@@ -237,12 +261,29 @@ async function handleSendPublicAlertByAddress(req, res) {
           channelId: ANDROID_CHANNEL_ID,
         },
       };
-      const r = await sendFCM(testToken, msg);
+      const r = await sendWithRetry(testToken, msg, { max: 3 });
       console.log('[ALERT_API] testToken result', r);
+      // On continue le flux public en parallèle (pas de return ici) ? Non: tests unitaires → on return.
       return res.status(200).json({ ok: true, mode: 'testToken', result: r, ms: Date.now() - t0 });
     }
 
-    // -- Sélection destinataires
+    // -------------------------
+    // Métriques agrégées blast
+    // -------------------------
+    const metrics = {
+      t0,
+      params: { alertId, lat, lng, radiusM, severity, cep: cep || '' },
+      recipients: 0,
+      sent: 0,
+      transient: 0,
+      fatal: 0,
+      otherErr: 0,
+      attemptsTotal: 0,
+      byCode: {},
+      samples: { fatal: [], transient: [], other: [] }, // max 20 chacun
+    };
+
+    // -- Sélection destinataires (A → B → widen → C)
     let recipients = [];
     if (typeof selectRecipientsGeohash === 'function') {
       console.log('[ALERT_API] select A geohash/haversine…');
@@ -264,29 +305,78 @@ async function handleSendPublicAlertByAddress(req, res) {
             : [];
         radiusM = widened;
       }
+
+      if (recipients.length === 0 && typeof selectRecipientsCitySample === 'function' && cidade) {
+        console.warn('[ALERT_API] C=0 → city sample', { cidade });
+        recipients = await selectRecipientsCitySample({ city: cidade });
+      }
     } else {
       console.warn('[ALERT_API] Sélection destinataires NON branchée → recipients=0');
     }
 
-    console.log('[ALERT_API] recipients', { count: recipients.length });
+    metrics.recipients = recipients.length;
+    console.log('[ALERT_METRICS] selection', {
+      alertId,
+      recipients: metrics.recipients,
+      radiusM,
+      severity,
+      cep: cep || '(vide)',
+    });
 
-    if (recipients.length === 0) {
+    if (metrics.recipients === 0) {
       const ms0 = Date.now() - t0;
-      console.log('[ALERT_API] DONE (no recipients)', { ms: ms0 });
-      return res
-        .status(200)
-        .json({ ok: true, recipients: 0, sent: 0, transient: 0, fatal: 0, otherErr: 0, ms: ms0 });
+      const summary0 = {
+        alertId,
+        geo: { lat, lng, radiusM },
+        recipients: 0,
+        sent: 0,
+        notSent: 0,
+        transient: 0,
+        fatal: 0,
+        otherErr: 0,
+        byCode: {},
+        attemptsAvg: 0,
+        successPct: 0,
+        ms: ms0,
+      };
+      console.log('[ALERT_METRICS] summary', summary0);
+      // Audit minimal
+      try {
+        if (typeof auditPushBlastResult === 'function') {
+          await auditPushBlastResult({
+            ...summary0,
+            kind: 'publicIncident',
+            cidade,
+            uf,
+            cep,
+            ts: admin.firestore.FieldValue.serverTimestamp(),
+            samples: metrics.samples,
+          }).catch(() => {});
+        } else {
+          await admin
+            .firestore()
+            .collection('pushAudits')
+            .add({
+              ...summary0,
+              kind: 'publicIncident',
+              cidade,
+              uf,
+              cep,
+              ts: admin.firestore.FieldValue.serverTimestamp(),
+              samples: metrics.samples,
+            });
+        }
+      } catch (e) {
+        console.warn('[ALERT_METRICS] audit_write_fail', String(e?.message || e));
+      }
+      return res.status(200).json({ ok: true, ...summary0 });
     }
 
-    // -- Envoi batché
-    let sent = 0,
-      transient = 0,
-      fatal = 0,
-      otherErr = 0;
+    // -- Envoi batché (avec retry & métriques)
     const { title, body } = textsBySeverity(severity, local, '');
-
     for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
       const batch = recipients.slice(i, i + BATCH_SIZE);
+
       const results = await Promise.allSettled(
         batch.map(async (u) => {
           const androidNotif = {
@@ -320,15 +410,28 @@ async function handleSendPublicAlertByAddress(req, res) {
               distancia: u.distance_m ? String(Math.round(u.distance_m)) : '',
             },
           };
-          const r = await sendFCM(u.token, msg);
+          const r = await sendWithRetry(u.token, msg, { max: 3 });
+          metrics.attemptsTotal += r.attempts || 1;
+
           if (r.ok) {
             return { kind: 'sent' };
           }
+
+          const code = r.code || 'unknown';
+          metrics.byCode[code] = (metrics.byCode[code] || 0) + 1;
+
           if (r.transient) {
-            return { kind: 'transient' };
+            if (metrics.samples.transient.length < 20) {
+              metrics.samples.transient.push({
+                token: maskToken(u.token),
+                code,
+                msg: r.msg?.slice(0, 120),
+              });
+            }
+            return { kind: 'transient', code };
           }
           if (r.fatal) {
-            if (enqueueDLQ && r.code === 'messaging/registration-token-not-registered') {
+            if (enqueueDLQ && code === 'messaging/registration-token-not-registered') {
               await enqueueDLQ({
                 kind: 'alert_public',
                 alertId,
@@ -336,68 +439,126 @@ async function handleSendPublicAlertByAddress(req, res) {
                 reason: r.msg || r.code,
               });
             }
-            return { kind: 'fatal' };
+            if (metrics.samples.fatal.length < 20) {
+              metrics.samples.fatal.push({
+                token: maskToken(u.token),
+                code,
+                msg: r.msg?.slice(0, 120),
+              });
+            }
+            return { kind: 'fatal', code };
           }
-          return { kind: 'other' };
+          if (metrics.samples.other.length < 20) {
+            metrics.samples.other.push({
+              token: maskToken(u.token),
+              code,
+              msg: r.msg?.slice(0, 120),
+            });
+          }
+          return { kind: 'other', code };
         }),
       );
 
       for (const rr of results) {
         if (rr.status !== 'fulfilled') {
-          otherErr += 1;
+          metrics.otherErr += 1;
           continue;
         }
         const k = rr.value?.kind;
         if (k === 'sent') {
-          sent += 1;
+          metrics.sent += 1;
         } else if (k === 'transient') {
-          transient += 1;
+          metrics.transient += 1;
         } else if (k === 'fatal') {
-          fatal += 1;
+          metrics.fatal += 1;
         } else {
-          otherErr += 1;
+          metrics.otherErr += 1;
         }
       }
 
-      console.log('[ALERT_API] batch', { i, sent, transient, fatal, otherErr });
+      console.log('[ALERT_METRICS] batch', {
+        i,
+        sent: metrics.sent,
+        transient: metrics.transient,
+        fatal: metrics.fatal,
+        otherErr: metrics.otherErr,
+      });
       await new Promise((r) => setImmediate(r));
     }
 
+    // -- Résumé & audit
     const ms = Date.now() - t0;
-    if (typeof auditPushBlastResult === 'function') {
-      await auditPushBlastResult({
-        alertId,
-        kind: 'publicIncident',
-        lat,
-        lng,
-        radiusM,
-        recipients: recipients.length,
-        sent,
-        transient,
-        fatal,
-        otherErr,
-        ms,
-      }).catch(() => {});
+    const notSent = Math.max(metrics.recipients - metrics.sent, 0);
+    const successPct = metrics.recipients
+      ? Math.round((metrics.sent / metrics.recipients) * 1000) / 10
+      : 0;
+    const denom = metrics.sent + metrics.transient + metrics.fatal + metrics.otherErr;
+    const attemptsAvg = denom ? Math.round((metrics.attemptsTotal * 10) / denom) / 10 : 0;
+
+    const summary = {
+      alertId,
+      geo: { lat, lng, radiusM },
+      recipients: metrics.recipients,
+      sent: metrics.sent,
+      notSent,
+      transient: metrics.transient,
+      fatal: metrics.fatal,
+      otherErr: metrics.otherErr,
+      byCode: metrics.byCode,
+      attemptsAvg,
+      successPct,
+      ms,
+    };
+
+    console.log('[ALERT_METRICS] summary', summary);
+
+    try {
+      if (typeof auditPushBlastResult === 'function') {
+        await auditPushBlastResult({
+          ...summary,
+          kind: 'publicIncident',
+          cidade,
+          uf,
+          cep,
+          ts: admin.firestore.FieldValue.serverTimestamp(),
+          samples: metrics.samples,
+        }).catch(() => {});
+      } else {
+        await admin
+          .firestore()
+          .collection('pushAudits')
+          .add({
+            ...summary,
+            kind: 'publicIncident',
+            cidade,
+            uf,
+            cep,
+            ts: admin.firestore.FieldValue.serverTimestamp(),
+            samples: metrics.samples,
+          });
+      }
+    } catch (e) {
+      console.warn('[ALERT_METRICS] audit_write_fail', String(e?.message || e));
     }
 
-    console.log('[ALERT_API] DONE', {
-      recipients: recipients.length,
-      sent,
-      transient,
-      fatal,
-      otherErr,
+    return res.status(200).json({
+      ok: true,
+      recipients: metrics.recipients,
+      sent: metrics.sent,
+      transient: metrics.transient,
+      fatal: metrics.fatal,
+      otherErr: metrics.otherErr,
+      byCode: metrics.byCode,
+      attemptsAvg,
+      successPct,
       ms,
     });
-    return res
-      .status(200)
-      .json({ ok: true, recipients: recipients.length, sent, transient, fatal, otherErr, ms });
   } catch (e) {
     console.error('[ALERT_API] FATAL', e?.stack || e?.message || e);
     return res.status(500).json({ ok: false, error: 'internal', detail: String(e?.message || e) });
   }
 }
 
-// -- Export HTTP v2 (runtime local à la fonction)
 const sendPublicAlertByAddress = onRequest(
   {
     region: 'southamerica-east1',
@@ -410,4 +571,3 @@ const sendPublicAlertByAddress = onRequest(
 );
 
 module.exports = { sendPublicAlertByAddress };
-// module.exports._sendPublicAlertByAddressHandler = handleSendPublicAlertByAddress; // si Cloud Run/Express

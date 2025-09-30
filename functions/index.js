@@ -1,11 +1,9 @@
 // ============================================================================
 // VigiApp — Functions "default" (alerts, jobs)
-// Export minimal et robuste de la fonction d'alerte publique
+// Point d’entrée du codebase: alertes publiques + maintenance
 // ============================================================================
-
 const { setGlobalOptions } = require('firebase-functions/v2/options');
 
-// ▸ Options globales appliquées à TOUTES les functions de ce codebase
 setGlobalOptions({
   region: 'southamerica-east1',
   cors: true,
@@ -14,39 +12,33 @@ setGlobalOptions({
   concurrency: 40,
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Logging util : format uniforme
+// Logger JSON uniforme
 function log(level, msg, extra = {}) {
-  // level: debug|info|warn|error
-  const line = {
-    ts: new Date().toISOString(),
-    service: 'functions-default',
-    level,
-    msg,
-    ...extra,
-  };
+  const line = { ts: new Date().toISOString(), service: 'functions-default', level, msg, ...extra };
   const text = JSON.stringify(line);
-  if (level === 'error') {
-    console.error(text);
-  } else if (level === 'warn') {
-    console.warn(text);
-  } else {
-    console.log(text);
-  }
+  if (level === 'error') {console.error(text);}
+  else if (level === 'warn') {console.warn(text);}
+  else {console.log(text);}
 }
 
-// Petit "ping" au chargement du code (utile en cold start)
 log('info', 'Loaded codebase: default');
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Export direct de la Cloud Function v2 déjà créée dans src/sendPublicAlertByAddress
-// ⚠️ NE PAS ré-emballer avec un autre onRequest (sinon régressions possibles)
+// ── Exports
 try {
   exports.sendPublicAlertByAddress =
     require('./src/sendPublicAlertByAddress').sendPublicAlertByAddress;
   log('info', 'Function exported', { fn: 'sendPublicAlertByAddress' });
 } catch (e) {
   log('error', 'Export failed', { fn: 'sendPublicAlertByAddress', error: String(e?.message || e) });
-  // En prod, on préfère échouer fort ici plutôt que déployer une surface partielle
-  throw e;
+  throw e; // fail fast: pas de déploiement partiel
+}
+
+try {
+  const maint = require('./src/maintenance');
+  exports.purgeStaleDevices = maint.purgeStaleDevices;
+  exports.cleanupDeadTokens = maint.cleanupDeadTokens;
+  log('info', 'Functions exported', { fns: ['purgeStaleDevices', 'cleanupDeadTokens'] });
+} catch (e) {
+  log('warn', 'Maintenance exports failed', { error: String(e?.message || e) });
+  // Non-bloquant
 }

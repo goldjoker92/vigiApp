@@ -39,9 +39,13 @@ function log(level, msg, extra = {}) {
     ...extra,
   };
   const text = JSON.stringify(line);
-  if (level === 'error') {console.error(text);}
-  else if (level === 'warn') {console.warn(text);}
-  else {console.log(text);}
+  if (level === 'error') {
+    console.error(text);
+  } else if (level === 'warn') {
+    console.warn(text);
+  } else {
+    console.log(text);
+  }
 }
 
 log('info', 'Loaded codebase: authapi');

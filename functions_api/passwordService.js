@@ -10,14 +10,20 @@ const PEPPER_V1 = defineString('security.pepper_v1');
 
 function getPepper(saltId) {
   const key = HASH_SCHEMES[saltId]?.pepperParamKey;
-  if (!key) {throw new Error('Unknown saltId');}
-  if (key === 'security.pepper_v1') {return PEPPER_V1.value();}
+  if (!key) {
+    throw new Error('Unknown saltId');
+  }
+  if (key === 'security.pepper_v1') {
+    return PEPPER_V1.value();
+  }
   throw new Error('Pepper key not handled: ' + key);
 }
 
 export async function hashForStorageFromClientPrehash(clientPrehash, saltId) {
   const pepper = getPepper(saltId);
-  if (!pepper) {throw new Error('Missing pepper - set functions params');}
+  if (!pepper) {
+    throw new Error('Missing pepper - set functions params');
+  }
   const perUserSalt = randomBytes(16).toString('hex');
   const toHash = `${clientPrehash}:${pepper}:${perUserSalt}`;
   const storedHash = await argon2.hash(toHash, {
@@ -31,7 +37,9 @@ export async function hashForStorageFromClientPrehash(clientPrehash, saltId) {
 
 export async function verifyFromClientPrehash(clientPrehash, user) {
   const pepper = getPepper(user.hashVersion);
-  if (!pepper) {throw new Error('Missing pepper - set functions params');}
+  if (!pepper) {
+    throw new Error('Missing pepper - set functions params');
+  }
   const toVerify = `${clientPrehash}:${pepper}:${user.perUserSalt}`;
   return argon2.verify(user.storedHash, toVerify);
 }

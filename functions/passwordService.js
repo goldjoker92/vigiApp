@@ -6,7 +6,7 @@ const { randomBytes } = require('crypto');
 const { defineString } = require('firebase-functions/params');
 const { HASH_SCHEMES } = require('./securityConfig.js');
 
-const PEPPER_V1 = defineString('security.pepper_v1');
+const PEPPER_V1 = defineString('SECURITY_PEPPER_V1');
 
 function getPepper(saltId) {
   const key = HASH_SCHEMES[saltId]?.pepperParamKey;
