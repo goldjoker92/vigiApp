@@ -1,4 +1,3 @@
-// functions/securityConfig.js
 const HASH_SCHEMES = {
   'build-v1': {
     kdf: 'argon2id',
@@ -6,5 +5,4 @@ const HASH_SCHEMES = {
     versionPrefix: 'v1::',
   },
 };
-
 module.exports = { HASH_SCHEMES };

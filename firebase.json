@@ -1,12 +1,6 @@
 ﻿{
   "functions": [
-    {
-      "source": "functions",
-      "codebase": "default"
-    },
-    {
-      "source": "functions_api",
-      "codebase": "authapi"
-    }
+    { "source": "functions", "codebase": "default" },
+    { "source": "functions_api", "codebase": "authapi" }
   ]
 }

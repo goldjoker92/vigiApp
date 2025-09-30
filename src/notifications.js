@@ -1,11 +1,14 @@
+// src/notifications.js
 // -------------------------------------------------------------
 // VigiApp — Notifications (Expo + FCM)
-// - Canaux Android: "default" + "alerts-high" (MAX → heads-up)
-// - Handler SDK 53+ (shouldShowBanner/List/Sound)
-// - Cold start & tap → navigation fiable (attend l’auth si besoin)
-// - Expose: initNotifications, attachNotificationListeners,
-//           wireAuthGateForNotifications, registerForPushNotificationsAsync,
-//           getFcmDeviceTokenAsync (+ utilitaires locaux)
+// Objectif V1: recevoir une notif en FG/BG/kill + ouvrir la page id
+// - Canaux Android: "default" (général) + "alerts-high" (MAX heads-up)
+// - Handler SDK 53+ (banner + sound + list)
+// - Cold start & tap → navigation (attend l’auth si besoin)
+// - Expose:
+//   initNotifications, attachNotificationListeners,
+//   wireAuthGateForNotifications, registerForPushNotificationsAsync,
+//   getFcmDeviceTokenAsync, fireLocalNow/scheduleLocalIn/cancelAll
 // -------------------------------------------------------------
 
 import * as Notifications from 'expo-notifications';
@@ -14,25 +17,22 @@ import { Platform, PermissionsAndroid } from 'react-native';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { onAuthStateChanged } from 'firebase/auth';
-
 import { auth } from '../firebase';
 import { getFirestore, doc, setDoc, arrayUnion } from 'firebase/firestore';
 
-// ===== Constantes de canaux =====
+// IDs de canaux (doivent matcher ton backend si tu forces un channelId côté FCM)
 export const DEFAULT_CHANNEL_ID = 'default';
 export const ALERTS_HIGH_CHANNEL_ID = 'alerts-high';
 
 const isAndroid = Platform.OS === 'android';
 const isAndroid13Plus = isAndroid && Platform.Version >= 33;
 
-// ===== Logs courts =====
+// logs simples
 const log = (...a) => console.log('[NOTIF]', ...a);
 const warn = (...a) => console.warn('[NOTIF]', ...a);
 
-// ===== Anti double-navigation =====
+// anti double-navigation + gate d’auth
 let __lastHandled = { id: undefined, ts: 0 };
-
-// ===== Gate d’auth pour naviguer après clic =====
 let __authReady = false;
 let __pendingNotifData = null;
 
@@ -58,7 +58,7 @@ function tryRoutePending() {
   routeFromData(data);
 }
 
-// ===== Navigation à partir des data =====
+// navigation à partir des data de la notif
 function routeFromData(data = {}) {
   const alertId = String(data?.alertId || '');
   if (!alertId) {
@@ -67,16 +67,17 @@ function routeFromData(data = {}) {
 
   const now = Date.now();
   if (__lastHandled.id === alertId && now - (__lastHandled.ts || 0) < 1200) {
+    // anti double
     return;
   }
   __lastHandled = { id: alertId, ts: now };
 
-  const openTarget = String(data?.openTarget || 'detail');
   const deepLink = String(data?.deepLink || '');
+  const openTarget = String(data?.openTarget || 'detail');
 
   try {
     if (deepLink && deepLink.startsWith('vigiapp://')) {
-      // Exemple: vigiapp://public-alerts/123 → /public-alerts/123
+      // ex: vigiapp://public-alerts/123 → /public-alerts/123
       router.push(deepLink.replace('vigiapp://', '/'));
       return;
     }
@@ -89,7 +90,7 @@ function routeFromData(data = {}) {
   }
 }
 
-// ===== Handler foreground (SDK 53+) =====
+// Handler foreground: affiche bannière + son même en FG (SDK 53+)
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowBanner: true,
@@ -99,7 +100,7 @@ Notifications.setNotificationHandler({
   }),
 });
 
-// ===== Canaux Android =====
+// canaux Android
 async function ensureDefaultChannel() {
   if (!isAndroid) {
     return;
@@ -117,20 +118,12 @@ async function ensureAlertsHighChannel() {
     return;
   }
 
-  // Info sur l’importance actuelle (si déjà créé)
   try {
     const channels = await Notifications.getNotificationChannelsAsync?.();
     const existing = channels?.find((c) => c.id === ALERTS_HIGH_CHANNEL_ID);
-    if (existing) {
-      // 1(None) 2(Min) 3(Low) 4(Default) 5(High) 6(Max)
-      log('alerts-high: canal déjà présent → importance =', existing.importance);
-      if (existing.importance < Notifications.AndroidImportance.HIGH) {
-        warn(
-          'ATTENTION: "alerts-high" existe avec importance faible.',
-          'Android ne permet pas d’augmenter l’importance après création.',
-          '→ Désinstalle/réinstalle l’app OU change d’ID de canal.',
-        );
-      }
+    if (existing && existing.importance < Notifications.AndroidImportance.HIGH) {
+      // Android ne permet pas de monter l’importance après création
+      warn('canal "alerts-high" existe avec importance faible. Réinstalle l’app ou change d’ID.');
     }
   } catch {}
 
@@ -152,10 +145,16 @@ export async function ensureAndroidChannels() {
   }
   await ensureDefaultChannel();
   await ensureAlertsHighChannel();
-  log('Android channels ensured:', DEFAULT_CHANNEL_ID, '+', ALERTS_HIGH_CHANNEL_ID);
+  try {
+    const list = await Notifications.getNotificationChannelsAsync?.();
+    log(
+      'channels:',
+      list?.map((c) => ({ id: c.id, importance: c.importance })),
+    );
+  } catch {}
 }
 
-// ===== Permissions =====
+// permissions
 async function ensureAndroid13Permission() {
   if (!isAndroid13Plus) {
     return;
@@ -180,7 +179,7 @@ async function ensureBasePermissions() {
   }
 }
 
-// ===== Sauvegarde FCM token (Firestore users/{uid}.fcmTokens += token) =====
+// Sauvegarde du FCM token côté Firestore
 async function saveFcmTokenForUser(token) {
   const u = auth?.currentUser;
   if (!u || !token) {
@@ -192,21 +191,20 @@ async function saveFcmTokenForUser(token) {
   log('FCM token saved for', u.uid);
 }
 
-// ===== Initialisation complète (à appeler au boot) =====
+// Init globale à appeler au boot de l’app
 export async function initNotifications() {
   if (isAndroid) {
-    await ensureAndroidChannels(); // ✅ canaux avant tout
-    await ensureAndroid13Permission();
+    await ensureAndroidChannels(); // ✅ canaux d’abord
+    await ensureAndroid13Permission(); // ✅ permission Android 13+
   }
-  await ensureBasePermissions();
+  await ensureBasePermissions(); // ✅ permission iOS/Android < 13
 
-  // Cold start: si l’app a été ouverte via une notif
+  // Cold start: l’app a été ouverte via une notif
   try {
     const resp = await Notifications.getLastNotificationResponseAsync();
     const data = resp?.notification?.request?.content?.data;
     if (data?.alertId) {
       log('Cold start from notification → data=', data);
-      // Si pas encore authentifié, on bufferise jusqu’à ce que l’auth soit prête
       if (!__authReady) {
         __pendingNotifData = data;
       } else {
@@ -216,31 +214,13 @@ export async function initNotifications() {
   } catch {}
 }
 
-// ===== Listeners (foreground + tap) =====
+// Listeners (FG + tap)
 export function attachNotificationListeners({ onReceive, onResponse } = {}) {
   const sub1 = Notifications.addNotificationReceivedListener((n) => {
     try {
       const content = n?.request?.content || {};
       const d = content?.data ?? {};
-      // @ts-ignore (clé possible selon SDK)
-      const chRemote =
-        n?.request?.trigger?.remoteMessage?.notification?.android?.channelId ??
-        // @ts-ignore
-        n?.request?.trigger?.remoteMessage?.notification?.channelId;
-
-      log(
-        'received (foreground):',
-        'channelId(data)=',
-        d?.channelId,
-        'channelId(remote)=',
-        chRemote,
-        'title=',
-        content?.title,
-        'data=',
-        d,
-      );
-
-      // Fallback visible si on reçoit un truc “muet” (rare)
+      // fallback UI si une notif silencieuse arrive en FG
       if (Platform.OS === 'android' && !content?.title) {
         Notifications.scheduleNotificationAsync({
           content: {
@@ -252,6 +232,7 @@ export function attachNotificationListeners({ onReceive, onResponse } = {}) {
           trigger: null,
         }).catch(() => {});
       }
+      log('received (foreground):', d);
     } catch {}
     onReceive?.(n);
   });
@@ -260,22 +241,7 @@ export function attachNotificationListeners({ onReceive, onResponse } = {}) {
     try {
       const n = r?.notification;
       const d = n?.request?.content?.data ?? {};
-      // @ts-ignore
-      const chRemote =
-        n?.request?.trigger?.remoteMessage?.notification?.android?.channelId ??
-        // @ts-ignore
-        n?.request?.trigger?.remoteMessage?.notification?.channelId;
-
-      log(
-        'tap response:',
-        'channelId(data)=',
-        d?.channelId,
-        'channelId(remote)=',
-        chRemote,
-        'data=',
-        d,
-      );
-
+      log('tap response:', d);
       if (!__authReady) {
         __pendingNotifData = d;
       } else {
@@ -295,14 +261,11 @@ export function attachNotificationListeners({ onReceive, onResponse } = {}) {
   };
 }
 
-// ===== Expo Push Token (optionnel si tu utilises l’API Expo Push) =====
+// Expo Push Token (optionnel si tu utilises l’API Expo Push)
 export async function registerForPushNotificationsAsync() {
-  // initNotifications s’assure déjà des canaux + permissions
   await initNotifications();
-
   const projectId =
     Constants?.expoConfig?.extra?.eas?.projectId || Constants?.easConfig?.projectId || null;
-
   const tokenResp = await Notifications.getExpoPushTokenAsync(
     projectId ? { projectId } : undefined,
   );
@@ -311,14 +274,14 @@ export async function registerForPushNotificationsAsync() {
   return expoToken;
 }
 
-// ===== FCM device token (nécessite Dev Client / APK) =====
+// FCM device token (nécessite Dev Client / APK)
 export async function getFcmDeviceTokenAsync() {
   try {
     if (!Device.isDevice) {
       log('Not a physical device → no FCM token');
       return null;
     }
-    await initNotifications(); // canaux + permissions + cold start
+    await initNotifications();
     const { data: token } = await Notifications.getDevicePushTokenAsync({ type: 'fcm' });
     log('FCM device token =', token);
     if (token) {
@@ -331,21 +294,19 @@ export async function getFcmDeviceTokenAsync() {
   }
 }
 
-// ===== Utils de test locaux =====
+// utilitaires de test locaux (ne passent pas par FCM)
 export async function fireLocalNow(data = {}) {
   return Notifications.scheduleNotificationAsync({
     content: { title: 'VigiApp (local)', body: 'Celle-ci est locale', data },
     trigger: null,
   });
 }
-
 export async function scheduleLocalIn(seconds = 5, data = {}) {
   return Notifications.scheduleNotificationAsync({
     content: { title: 'VigiApp (local)', body: `Programmée +${seconds}s`, data },
     trigger: { seconds },
   });
 }
-
 export async function cancelAll() {
   await Notifications.cancelAllScheduledNotificationsAsync();
 }

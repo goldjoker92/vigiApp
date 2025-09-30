@@ -1,4 +1,6 @@
-// functions/passwordService.js
+// functions/passwordService.js (CommonJS)
+// KDF: argon2id + pepper via params (Gen2)
+
 const argon2 = require('argon2');
 const { randomBytes } = require('crypto');
 const { defineString } = require('firebase-functions/params');
@@ -20,23 +22,23 @@ function getPepper(saltId) {
 async function hashForStorageFromClientPrehash(clientPrehash, saltId) {
   const pepper = getPepper(saltId);
   if (!pepper) {
-    throw new Error('Missing pepper - set functions config');
+    throw new Error('Missing pepper - set functions params');
   }
   const perUserSalt = randomBytes(16).toString('hex');
   const toHash = `${clientPrehash}:${pepper}:${perUserSalt}`;
-  const stored = await argon2.hash(toHash, {
+  const storedHash = await argon2.hash(toHash, {
     type: argon2.argon2id,
     memoryCost: 65536,
     timeCost: 3,
     parallelism: 1,
   });
-  return { storedHash: stored, perUserSalt, hashVersion: saltId };
+  return { storedHash, perUserSalt, hashVersion: saltId };
 }
 
 async function verifyFromClientPrehash(clientPrehash, user) {
   const pepper = getPepper(user.hashVersion);
   if (!pepper) {
-    throw new Error('Missing pepper - set functions config');
+    throw new Error('Missing pepper - set functions params');
   }
   const toVerify = `${clientPrehash}:${pepper}:${user.perUserSalt}`;
   return argon2.verify(user.storedHash, toVerify);
