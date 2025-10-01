@@ -9,6 +9,9 @@
 //   initNotifications, attachNotificationListeners,
 //   wireAuthGateForNotifications, registerForPushNotificationsAsync,
 //   getFcmDeviceTokenAsync, fireLocalNow/scheduleLocalIn/cancelAll
+//
+// NOTE: aucun write Firestore ici. On LOG seulement.
+//       L’upsert device est géré par libs/registerCurrentDevice.js
 // -------------------------------------------------------------
 
 import * as Notifications from 'expo-notifications';
@@ -18,7 +21,6 @@ import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../firebase';
-import { getFirestore, doc, setDoc, arrayUnion } from 'firebase/firestore';
 
 // IDs de canaux (doivent matcher ton backend si tu forces un channelId côté FCM)
 export const DEFAULT_CHANNEL_ID = 'default';
@@ -29,7 +31,7 @@ const isAndroid13Plus = isAndroid && Platform.Version >= 33;
 
 // logs simples
 const log = (...a) => console.log('[NOTIF]', ...a);
-const warn = (...a) => console.warn('[NOTIF]', ...a);
+const warn = (...a) => console.warn('[NOTIF] ⚠️', ...a);
 
 // anti double-navigation + gate d’auth
 let __lastHandled = { id: undefined, ts: 0 };
@@ -160,7 +162,9 @@ async function ensureAndroid13Permission() {
     return;
   }
   try {
-    const r = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
+    const r = await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
+    );
     log('POST_NOTIFICATIONS:', r);
   } catch (e) {
     warn('POST_NOTIFICATIONS error:', e?.message || e);
@@ -179,25 +183,13 @@ async function ensureBasePermissions() {
   }
 }
 
-// Sauvegarde du FCM token côté Firestore
-async function saveFcmTokenForUser(token) {
-  const u = auth?.currentUser;
-  if (!u || !token) {
-    log('skip save: missing user or token');
-    return;
-  }
-  const db = getFirestore();
-  await setDoc(doc(db, 'users', u.uid), { fcmTokens: arrayUnion(token) }, { merge: true });
-  log('FCM token saved for', u.uid);
-}
-
 // Init globale à appeler au boot de l’app
 export async function initNotifications() {
   if (isAndroid) {
-    await ensureAndroidChannels(); // ✅ canaux d’abord
-    await ensureAndroid13Permission(); // ✅ permission Android 13+
+    await ensureAndroidChannels();       // ✅ canaux d’abord
+    await ensureAndroid13Permission();   // ✅ permission Android 13+
   }
-  await ensureBasePermissions(); // ✅ permission iOS/Android < 13
+  await ensureBasePermissions();         // ✅ permission iOS/Android < 13
 
   // Cold start: l’app a été ouverte via une notif
   try {
@@ -252,12 +244,8 @@ export function attachNotificationListeners({ onReceive, onResponse } = {}) {
   });
 
   return () => {
-    try {
-      sub1?.remove?.();
-    } catch {}
-    try {
-      sub2?.remove?.();
-    } catch {}
+    try { sub1?.remove?.(); } catch {}
+    try { sub2?.remove?.(); } catch {}
   };
 }
 
@@ -284,9 +272,7 @@ export async function getFcmDeviceTokenAsync() {
     await initNotifications();
     const { data: token } = await Notifications.getDevicePushTokenAsync({ type: 'fcm' });
     log('FCM device token =', token);
-    if (token) {
-      await saveFcmTokenForUser(token);
-    }
+    // ⚠️ Pas de save ici. L’orchestrateur s’occupe de l’upsert Firestore.
     return token ?? null;
   } catch (e) {
     warn('getFcmDeviceTokenAsync error:', e?.message || e);

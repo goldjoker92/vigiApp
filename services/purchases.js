@@ -1,63 +1,101 @@
 /* =============================================================
- RevenueCat services
- - initRevenueCat()
- - getCurrentOfferingWithRetry()
- - buyWithFallback()
- - restoreWithRetry()
- - Tous logs commentés
+  RevenueCat services (v8+ safe, singleton-guard)
+  - initRevenueCat(appUserID?)
+  - getCurrentOfferingWithRetry()
+  - buyWithFallback(packageToBuy)
+  - restoreWithRetry()
 ============================================================= */
 
-import Purchases from 'react-native-purchases';
+import Purchases, { LOG_LEVEL } from 'react-native-purchases';
 import { retryAsync } from '../utils/safeTokens';
 
-// Init global RC
-export async function initRevenueCat() {
+let purchasesInstance = null;   // instance configurée (ou singleton v7)
+let configuring = null;         // promesse de config en cours (anti double-call)
+
+// ---- Récup clé (ENV -> Expo extra) ----
+function getApiKey() {
+  // priorité à la clé publique d’ENV
+  const envKey = process.env.EXPO_PUBLIC_RC_API_KEY || null;
+
+  // fallback (optionnel) via app.config(.js).extra
+  // importé dynamiquement pour ne pas coupler au bundle Expo Constants
   try {
-    const apiKey = process.env.EXPO_PUBLIC_RC_API_KEY || null;
-    if (!apiKey) {
-      // console.warn('[RC] init: pas de clé API RevenueCat');
-      return;
-    }
-    await Purchases.configure({ apiKey });
-    // console.log('[RC] configured with key');
+    const Constants = require('expo-constants').default;
+    const extra = Constants?.expoConfig?.extra ?? {};
+    return envKey || extra.RC_API_KEY || extra.RC_ANDROID_SDK_KEY || extra.RC_IOS_SDK_KEY || null;
   } catch {
-    // console.error('[RC] init error');
+    return envKey;
   }
 }
 
-// Offering
+// ---- Initialise (une seule fois) ----
+export async function initRevenueCat(appUserID = null) {
+  if (purchasesInstance) { return purchasesInstance; }
+  if (configuring) { return configuring; }
+
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    // console.warn('[RC] init: pas de clé API RevenueCat');
+    return null;
+  }
+
+  configuring = (async () => {
+    try {
+      Purchases.setLogLevel?.(LOG_LEVEL.WARN); // optionnel
+      // v8+: configure retourne une instance; v7: retourne void et on utilise le singleton
+      const maybeInstance = await Purchases.configure({ apiKey, appUserID: appUserID ?? null });
+      purchasesInstance = maybeInstance || Purchases;
+      return purchasesInstance;
+    } catch (e) {
+      // console.error('[RC] init error:', e?.message || e);
+      throw e;
+    } finally {
+      configuring = null;
+    }
+  })();
+
+  return configuring;
+}
+
+// ---- S’assure que RC est prêt avant d’appeler des méthodes ----
+async function ensureConfigured() {
+  if (purchasesInstance) { return purchasesInstance; }
+  if (configuring) { return configuring; }
+  return initRevenueCat(); // appUserID optionnel, on ne le force pas ici
+}
+
+// ---- Offering ----
 export async function getCurrentOfferingWithRetry() {
   return retryAsync(
     async () => {
-      const offerings = await Purchases.getOfferings();
-      // console.log('[RC] offerings reçu:', offerings?.current?.identifier);
-      return offerings.current;
+      const rc = await ensureConfigured();
+      const offerings = await rc.getOfferings();
+      return offerings?.current ?? null;
     },
-    { retries: 2, delay: 800 },
+    { retries: 2, delay: 800 }
   );
 }
 
-// Achat
+// ---- Achat ----
 export async function buyWithFallback(packageToBuy) {
   return retryAsync(
     async () => {
-      const { customerInfo } = await Purchases.purchasePackage(packageToBuy);
-      // console.log('[RC] achat ok, entitlements:', customerInfo?.entitlements?.active);
+      const rc = await ensureConfigured();
+      const { customerInfo } = await rc.purchasePackage(packageToBuy);
       return customerInfo;
     },
-    { retries: 1, delay: 1500 },
+    { retries: 1, delay: 1500 }
   );
 }
 
-// Restore
+// ---- Restore ----
 export async function restoreWithRetry() {
   return retryAsync(
     async () => {
-      const { customerInfo } = await Purchases.restorePurchases();
-      // console.log('[RC] restore ok:', customerInfo?.entitlements?.active);
+      const rc = await ensureConfigured();
+      const { customerInfo } = await rc.restorePurchases();
       return customerInfo;
     },
-    { retries: 2, delay: 1000 },
+    { retries: 2, delay: 1000 }
   );
 }
-// ============================================================

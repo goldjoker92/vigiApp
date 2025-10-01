@@ -38,6 +38,18 @@ function dedupeTokens(list){
   return out;
 }
 
+// -----------------------------
+// Normalize token extraction
+// tolère fcmToken, fcmDeviceToken, fcmTokens[] (compatibilité)
+// -----------------------------
+function normalizeDeviceToken(d) {
+  if (!d) { return null; }
+  if (typeof d.fcmToken === 'string' && d.fcmToken) { return d.fcmToken; }
+  if (typeof d.fcmDeviceToken === 'string' && d.fcmDeviceToken) { return d.fcmDeviceToken; }
+  if (Array.isArray(d.fcmTokens) && d.fcmTokens.length) { return d.fcmTokens[0]; }
+  return null;
+}
+
 async function queryGeoWindow({ lat, lng, radiusM }){
   const db = admin.firestore();
   const col = db.collection('devices');
@@ -54,12 +66,21 @@ async function queryGeoWindow({ lat, lng, radiusM }){
 
   const candidates=[];
   snap.forEach(doc=>{
-    const d=doc.data();
-    if(!d?.fcmToken) {return;}
-    if(typeof d?.lat!=='number' || typeof d?.lng!=='number') {return;}
-    if(!isFresh(d.updatedAt)) {return;}
-    if(d.lng<minLng || d.lng>maxLng) {return;}
-    candidates.push({ id: doc.id, ...d });
+    const d = doc.data();
+    const token = normalizeDeviceToken(d);
+    if(!token) { return; }
+    if(typeof d?.lat!=='number' || typeof d?.lng!=='number') { return; }
+    if(!isFresh(d.updatedAt)) { return; }
+    if(d.lng<minLng || d.lng>maxLng) { return; }
+
+    // on ne pousse que les champs utiles pour la passe suivante
+    candidates.push({
+      id: doc.id,
+      token,
+      lat: d.lat,
+      lng: d.lng,
+      updatedAt: d.updatedAt,
+    });
   });
 
   console.log('[PUSH_INFRA][GEO] candidates', candidates.length);
@@ -67,7 +88,7 @@ async function queryGeoWindow({ lat, lng, radiusM }){
   const recipients=[];
   for(const c of candidates){
     const dist = haversineMeters(lat,lng,c.lat,c.lng);
-    if(dist<=radiusM) {recipients.push({ token: c.fcmToken, distance_m: Math.round(dist) });}
+    if(dist<=radiusM) {recipients.push({ token: c.token, distance_m: Math.round(dist) });}
   }
   const unique = dedupeTokens(recipients);
   console.log('[PUSH_INFRA][GEO] unique', unique.length);
@@ -99,15 +120,16 @@ async function selectRecipientsFallbackScan({ lat, lng, radiusM, cep }){
   const snap = await col.where('active','==',true).where('cep','==',String(cep)).get();
   const out=[];
   snap.forEach(doc=>{
-    const d=doc.data();
-    if(!d?.fcmToken) {return;}
-    if(!isFresh(d.updatedAt)) {return;}
+    const d = doc.data();
+    const token = normalizeDeviceToken(d);
+    if(!token) { return; }
+    if(!isFresh(d.updatedAt)) { return; }
     if(typeof d.lat==='number' && typeof d.lng==='number'){
       const dist=haversineMeters(lat,lng,d.lat,d.lng);
-      if(dist<=radiusM) {out.push({ token:d.fcmToken, distance_m:Math.round(dist) });}
+      if(dist<=radiusM) {out.push({ token, distance_m:Math.round(dist) });}
     } else {
       // fallback “soft” si pas de coords
-      out.push({ token:d.fcmToken });
+      out.push({ token });
     }
   });
 
@@ -124,10 +146,11 @@ async function selectRecipientsCitySample({ city }){
   const snap = await col.where('active','==',true).where('city','==',String(city)).limit(CITY_SAMPLE_LIMIT).get();
   const out=[];
   snap.forEach(doc=>{
-    const d=doc.data();
-    if(!d?.fcmToken) {return;}
-    if(!isFresh(d.updatedAt)) {return;}
-    out.push({ token:d.fcmToken });
+    const d = doc.data();
+    const token = normalizeDeviceToken(d);
+    if(!token) { return; }
+    if(!isFresh(d.updatedAt)) { return; }
+    out.push({ token });
   });
   const unique=dedupeTokens(out);
   console.warn('[PUSH_INFRA][CITY] sample', { city, count: unique.length });
