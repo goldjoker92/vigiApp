@@ -6,8 +6,7 @@
 // - Notifications locales (immédiate & 5s)
 // - UI/UX VigiApp: clair, gros boutons, responsive
 // -------------------------------------------------------------
-import '../firebase'; // ⚡ Assure l'init Firebase côté client
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -20,6 +19,8 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import '../firebase'; // ⚡ Assure l'init Firebase côté client
+import { upsertDevice } from '../libs/registerDevice';
 import {
   attachNotificationListeners,
   cancelAll,
@@ -27,8 +28,7 @@ import {
   registerForPushNotificationsAsync,
   scheduleLocalIn,
   sendExpoTestPushAsync,
-} from '../libs/notifications';
-import { upsertDevice } from '../libs/registerDevice';
+} from '../src/notifications';
 
 export default function PushTestScreen() {
   const { width } = useWindowDimensions();

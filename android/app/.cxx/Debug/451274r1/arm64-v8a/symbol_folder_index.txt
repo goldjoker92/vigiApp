@@ -1,1 +1,0 @@
-C:\Users\Oscar\vigiApp\android\app\build\intermediates\cxx\Debug\451274r1\obj\arm64-v8a

@@ -1,621 +1,472 @@
 // app/public-alerts/[id].jsx
-import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+// ---------------------------------------------------------
+// VigiApp — Alertas Públicas (UI restaurée)
+// - Pin rouge + cercle de propagation (radius_m)
+// - Card sombre avec mêmes labels/icônes que ta version
+// - Adresse multi-lignes, date crééeAt -> DD/MM HH:mm (fallback date)
+// - Distance user↔incident + loader
+// - Bouton recentrage rouge, logs clairs
+// ---------------------------------------------------------
+
+import { db } from '../../firebase';
+import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
+import * as Location from 'expo-location';
+import { useLocalSearchParams } from 'expo-router';
+import { doc, getDoc } from 'firebase/firestore';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View,
-  Text,
-  ActivityIndicator,
+  Animated,
+  Dimensions,
+  Easing,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
+  SafeAreaView,
   ScrollView,
   StyleSheet,
-  Platform,
-  Linking,
+  Text,
+  View,
 } from 'react-native';
-import { Stack, useLocalSearchParams } from 'expo-router';
-import { doc, getDoc, onSnapshot } from 'firebase/firestore';
-import MapView, { Marker, Circle, PROVIDER_GOOGLE } from 'react-native-maps';
-import * as Location from 'expo-location';
-import { db } from '@/firebase';
+import MapView, { Circle, Marker } from 'react-native-maps';
 
-const theme = {
-  bg: '#0B0F14',
-  card: '#12171E',
-  cardAlt: '#141B24',
-  text: '#E7EEF7',
-  textMuted: '#94A2B8',
-  accent: '#0AA8FF',
-  warn: '#FFC857',
-  danger: '#FF5A60',
-  divider: 'rgba(255,255,255,0.06)',
+const { width: W } = Dimensions.get('window');
+const scale = (s) => Math.round((W / 375) * s);
+
+// Palette
+const C = {
+  bg: '#0E0F10',
+  card: '#17191C',
+  text: '#E9ECF1',
+  sub: '#AFB6C2',
+  border: '#2A2E34',
+  ok: '#28a745',
+  warn: '#ffc107',
+  danger: '#dc3545',
+  mute: '#6c757d',
 };
 
-const isFiniteNum = (v) => typeof v === 'number' && Number.isFinite(v);
-const DEFAULT_DELTA = 0.003;
+// --- utils
+const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
+const safeCoord = (lat, lng) =>
+  isNum(lat) && isNum(lng) ? { latitude: lat, longitude: lng } : null;
 
-function distanceMeters(lat1, lon1, lat2, lon2) {
-  const R = 6371000;
-  const toRad = (x) => (x * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(a));
-}
-function fmtDistance(m) {
-  if (!Number.isFinite(m)) {
+const normalizeToDate = (v) => {
+  try {
+    if (!v) {
+      return null;
+    }
+    if (v instanceof Date) {
+      return v;
+    }
+    if (typeof v?.toDate === 'function') {
+      return v.toDate();
+    }
+    if (typeof v === 'object' && 'seconds' in v) {
+      return new Date(v.seconds * 1000);
+    }
+    if (typeof v === 'number') {
+      return new Date(v);
+    }
+    if (typeof v === 'string') {
+      return new Date(v);
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
+const pad = (n) => (n < 10 ? `0${n}` : `${n}`);
+const fmtDate = (inp) => {
+  const d = normalizeToDate(inp);
+  if (!d || Number.isNaN(d.getTime())) {
     return '—';
   }
-  return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`;
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
+function haversineM(lat1, lon1, lat2, lon2) {
+  if (![lat1, lon1, lat2, lon2].every(isNum)) {
+    return NaN;
+  }
+  const R = 6371000,
+    toRad = (x) => (x * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1),
+    dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+const distanciaTxt = (u, a) => {
+  if (!u || !a) {
+    return '—';
+  }
+  const d = haversineM(u.latitude, u.longitude, a.latitude, a.longitude);
+  if (!isNum(d)) {
+    return '—';
+  }
+  return d < 1000 ? `${Math.round(d)} m` : `${(d / 1000).toFixed(1)} km`;
+};
+
+// --- mapping Firestore (compatible avec tes champs existants)
+const pickTipo = (a) => a?.tipo || a?.categoria || a?.type || '—';
+const pickEstado = (a) => a?.uf || a?.estado || a?.state || '—';
+const pickCidade = (a) => a?.cidade || a?.city || '—';
+const pickCreated = (a) => a?.createdAt || a?.date || null;
+const pickReports = (a) =>
+  a?.reportsCount ?? a?.declaracoes ?? (a?.declarantsMap ? Object.keys(a.declarantsMap).length : 1);
+const pickCoords = (a) => {
+  if (a?.location) {
+    return safeCoord(a.location.latitude, a.location.longitude);
+  }
+  return safeCoord(a?.lat, a?.lng);
+};
+const buildEndereco = (a) => {
+  // priorité: `endereco`/`ruaNumero` si présent
+  if (typeof a?.endereco === 'string' && a.endereco.trim()) {
+    return a.endereco.trim();
+  }
+  if (typeof a?.ruaNumero === 'string' && a.ruaNumero.trim()) {
+    return a.ruaNumero.trim();
+  }
+  const rua = a?.rua || a?.street || '';
+  const numero = a?.numero || a?.number || '';
+  const left = [rua, numero].filter(Boolean).join(', ');
+  const right = [a?.cidade && `${a.cidade}/${a?.uf || a?.estado || ''}`.replace(/\/$/, ''), a?.cep]
+    .filter(Boolean)
+    .join(' - ');
+  const final = [left, right].filter(Boolean).join(' - ');
+  return final || '—';
+};
+
+// Rayon → deltas carte (pour bien voir le cercle)
+function radiusToDeltas(radiusM, lat) {
+  const R_LAT = 111000; // ~m par degré lat
+  const latDelta = Math.max(0.0025, (radiusM / R_LAT) * 2.2);
+  const lngDelta = Math.max(
+    0.0025,
+    latDelta / Math.max(0.25, Math.cos(((lat || 0) * Math.PI) / 180)),
+  );
+  return { latitudeDelta: latDelta, longitudeDelta: lngDelta };
 }
 
-export default function PublicAlertDetail() {
-  const { id: alertIdParam } = useLocalSearchParams();
-  const alertId = useMemo(() => String(alertIdParam || '').trim(), [alertIdParam]);
+// Loader 3 points
+function LoaderDots() {
+  const dot0 = useRef(new Animated.Value(0));
+  const dot1 = useRef(new Animated.Value(0));
+  const dot2 = useRef(new Animated.Value(0));
+  const a = useMemo(() => [dot0.current, dot1.current, dot2.current], []);
 
-  const [loading, setLoading] = useState(true);
-  const [notFound, setNotFound] = useState(false);
-  const [expired, setExpired] = useState(false);
-  const [data, setData] = useState(null);
-  const [lastCheckedAt, setLastCheckedAt] = useState(null);
-  const [firestorePath, setFirestorePath] = useState('');
+  useEffect(() => {
+    a.forEach((val, i) => {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(val, {
+            toValue: 1,
+            duration: 230,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: true,
+            delay: i * 120,
+          }),
+          Animated.timing(val, {
+            toValue: 0,
+            duration: 230,
+            easing: Easing.in(Easing.quad),
+            useNativeDriver: true,
+          }),
+        ]),
+      ).start();
+    });
+  }, [a]);
+  const dotStyle = (val) => ({
+    transform: [{ translateY: val.interpolate({ inputRange: [0, 1], outputRange: [0, -5] }) }],
+    opacity: val.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1] }),
+    color: C.sub,
+    fontSize: scale(16),
+    marginHorizontal: scale(1),
+  });
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+      <Animated.Text style={dotStyle(a[0])}>•</Animated.Text>
+      <Animated.Text style={dotStyle(a[1])}>•</Animated.Text>
+      <Animated.Text style={dotStyle(a[2])}>•</Animated.Text>
+    </View>
+  );
+}
 
+// --- Firestore
+async function fetchAlertDoc(id) {
+  console.log('[ALERT_PAGE] fetch', id);
+  const snap = await getDoc(doc(db, 'publicAlerts', id));
+  if (!snap.exists()) {
+    console.warn('[ALERT_PAGE] not found', id);
+    return null;
+  }
+  const data = { id: snap.id, ...snap.data() };
+  console.log('[ALERT_PAGE] data', data);
+  return data;
+}
+
+// =========================================================
+export default function PublicAlertPage() {
+  const { id } = useLocalSearchParams();
+  const [raw, setRaw] = useState(null);
   const [userLoc, setUserLoc] = useState(null);
-  const [locDenied, setLocDenied] = useState(false);
-
   const mapRef = useRef(null);
-  const [mapReady, setMapReady] = useState(false);
-  const [mapError, setMapError] = useState(null);
 
-  const isExpired = useCallback((docData) => {
-    const statusExpired = docData?.status === 'expired';
-    const expiresAtDate = docData?.expiresAt?.toDate ? docData.expiresAt.toDate() : null;
-    const timeExpired = expiresAtDate ? expiresAtDate.getTime() < Date.now() : false;
-    return statusExpired || timeExpired;
-  }, []);
-
-  const fetchOnce = useCallback(async () => {
-    if (!alertId) {
-      setLoading(false);
-      setNotFound(true);
-      return;
-    }
-    setLoading(true);
-    try {
-      const ref = doc(db, 'publicAlerts', alertId);
-      setFirestorePath(`publicAlerts/${alertId}`);
-      const snap = await getDoc(ref);
-
-      setLastCheckedAt(new Date().toISOString());
-
-      if (!snap.exists()) {
-        setNotFound(true);
-        setExpired(false);
-        setData(null);
-        return;
-      }
-
-      const docData = snap.data();
-      setExpired(isExpired(docData));
-      setNotFound(false);
-      setData({ id: snap.id, ...docData });
-    } catch (e) {
-      console.warn('[public-alerts/[id]] getDoc error:', e);
-      setNotFound(true);
-      setData(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [alertId, isExpired]);
-
-  useEffect(() => {
-    if (!alertId) {
-      return;
-    }
-    const ref = doc(db, 'publicAlerts', alertId);
-    const unsub = onSnapshot(
-      ref,
-      (snap) => {
-        setLastCheckedAt(new Date().toISOString());
-        if (!snap.exists()) {
-          setNotFound(true);
-          setExpired(false);
-          setData(null);
-          return;
-        }
-        const docData = snap.data();
-        setExpired(isExpired(docData));
-        setNotFound(false);
-        setData({ id: snap.id, ...docData });
-      },
-      (err) => console.warn('[public-alerts/[id]] onSnapshot:', err)
-    );
-    return () => unsub();
-  }, [alertId, isExpired]);
-
-  useEffect(() => {
-    fetchOnce();
-  }, [fetchOnce]);
-
+  // fetch
   useEffect(() => {
     (async () => {
       try {
+        const d = await fetchAlertDoc(id);
+        setRaw(d);
+      } catch (e) {
+        console.error('[ALERT_PAGE] fetch error', e?.message || e);
+      }
+    })();
+  }, [id]);
+
+  // geoloc
+  useEffect(() => {
+    (async () => {
+      try {
+        console.log("[public-alerts/[id].jsx] geo: request permission");
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
-          setLocDenied(true);
           return;
         }
-        const pos = await Location.getCurrentPositionAsync({});
-        const { latitude, longitude } = pos?.coords || {};
-        if (isFiniteNum(latitude) && isFiniteNum(longitude)) {
-          setUserLoc({ lat: latitude, lng: longitude });
-        }
-      } catch {
-        setLocDenied(true);
+        const { coords } = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        setUserLoc({ latitude: coords.latitude, longitude: coords.longitude });
+      } catch (e) {
+        console.warn('[ALERT_PAGE] geo error', e?.message || e);
       }
     })();
   }, []);
 
-  useEffect(() => {
-    const lat = data?.lat;
-    const lng = data?.lng;
-    if (!mapReady || !mapRef.current || !isFiniteNum(lat) || !isFiniteNum(lng)) {
-      return;
-    }
+  // mapping (safe même si raw null)
+  const alert = {
+    tipo: pickTipo(raw || {}),
+    endereco: buildEndereco(raw || {}),
+    cidade: pickCidade(raw || {}),
+    estado: pickEstado(raw || {}),
+    createdAt: pickCreated(raw || {}),
+    reports: pickReports(raw || {}),
+    coords: pickCoords(raw || {}),
+    radiusM: Number(raw?.radius_m ?? raw?.radius ?? 1000),
+    descricao: (raw && (raw.descricao || raw.description)) || '—',
+  };
 
-    try {
-      if (userLoc?.lat && userLoc?.lng) {
-        mapRef.current.fitToCoordinates(
-          [
-            { latitude: lat, longitude: lng },
-            { latitude: userLoc.lat, longitude: userLoc.lng },
-          ],
-          { edgePadding: { top: 60, right: 60, bottom: 60, left: 60 }, animated: true }
-        );
-      } else {
-        mapRef.current.animateToRegion(
-          {
-            latitude: lat,
-            longitude: lng,
-            latitudeDelta: DEFAULT_DELTA,
-            longitudeDelta: DEFAULT_DELTA,
-          },
-          450
-        );
-      }
-    } catch (e) {
-      setMapError(e?.message || String(e));
-    }
-  }, [mapReady, data?.lat, data?.lng, userLoc?.lat, userLoc?.lng]);
-
-  const distanceText = useMemo(() => {
-    if (!userLoc || !isFiniteNum(data?.lat) || !isFiniteNum(data?.lng)) {
+  // région carte
+  const region = useMemo(() => {
+    if (!alert.coords) {
       return null;
     }
-    const m = distanceMeters(userLoc.lat, userLoc.lng, data.lat, data.lng);
-    return fmtDistance(m);
-  }, [userLoc, data?.lat, data?.lng]);
+    const deltas = radiusToDeltas(alert.radiusM, alert.coords.latitude);
+    return { ...alert.coords, ...deltas };
+  }, [alert.coords, alert.radiusM]);
 
-  const title = data?.titulo || data?.descricao || 'Alerta';
+  // skeleton simple
+  if (!raw) {
+    return (
+      <SafeAreaView style={S.container}>
+        <View style={S.header}>
+          <Text style={S.title}>Alertas Públicas</Text>
+        </View>
+        <View style={[S.card, { marginTop: scale(12) }]}>
+          <View style={S.skel} />
+          <View style={[S.skel, { width: '60%' }]} />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
-  const recenterToIncident = () => {
-    if (!mapRef.current || !isFiniteNum(data?.lat) || !isFiniteNum(data?.lng)) {
-      return;
-    }
-    mapRef.current.animateToRegion(
-      {
-        latitude: data.lat,
-        longitude: data.lng,
-        latitudeDelta: DEFAULT_DELTA,
-        longitudeDelta: DEFAULT_DELTA,
-      },
-      350
-    );
-  };
-  const fitUserAndIncident = () => {
-    if (!mapRef.current || !userLoc || !isFiniteNum(data?.lat) || !isFiniteNum(data?.lng)) {
-      return;
-    }
-    mapRef.current.fitToCoordinates(
-      [
-        { latitude: data.lat, longitude: data.lng },
-        { latitude: userLoc.lat, longitude: userLoc.lng },
-      ],
-      { edgePadding: { top: 60, right: 60, bottom: 60, left: 60 }, animated: true }
-    );
-  };
-  const openNav = () => {
-    if (!isFiniteNum(data?.lat) || !isFiniteNum(data?.lng)) {
-      return;
-    }
-    const lat = data.lat;
-    const lng = data.lng;
-    const label = encodeURIComponent(title || 'Incident');
-    const url =
-      Platform.select({
-        ios: `http://maps.apple.com/?daddr=${lat},${lng}&q=${label}`,
-        android: `geo:0,0?q=${lat},${lng}(${label})`,
-        default: `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`,
-      }) || `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
-    Linking.openURL(url).catch(() => {});
-  };
+  const distance = userLoc && alert.coords ? distanciaTxt(userLoc, alert.coords) : null;
 
   return (
-    <View style={[styles.screen, { backgroundColor: theme.bg }]}>
-      <Stack.Screen
-        options={{
-          title: 'Alerta público',
-          headerStyle: { backgroundColor: theme.bg },
-          headerTitleStyle: { color: theme.text },
-          headerTintColor: theme.accent,
-        }}
-      />
-
-      {loading ? (
-        <Centered>
-          <ActivityIndicator />
-          <Text style={styles.loadingText}>Carregando…</Text>
-        </Centered>
-      ) : notFound ? (
-        <ScrollView contentContainerStyle={styles.container}>
-          <StatusBanner
-            tone="danger"
-            title="Este alerta não está mais disponível."
-            subtitle={`Documento: ${firestorePath}`}
-          />
-          <PrimaryButton label="Recarregar" onPress={fetchOnce} />
-          <DebugPanel
-            alertId={alertId}
-            firestorePath={firestorePath}
-            lastCheckedAt={lastCheckedAt}
-            flags={{ loading, notFound, expired }}
-            data={null}
-          />
-        </ScrollView>
-      ) : expired ? (
-        <ScrollView contentContainerStyle={styles.container}>
-          <StatusBanner
-            tone="warn"
-            title="Alerta expirado"
-            subtitle="Status 'expired' ou 'expiresAt' ultrapassado."
-          />
-        </ScrollView>
-      ) : (
-        <ScrollView contentContainerStyle={styles.container}>
-          {/* Header / titre */}
-          <View style={styles.headerCard}>
-            <Text numberOfLines={2} style={styles.title}>
-              {title}
-            </Text>
-
-            <View style={styles.badgeRow}>
-              <Badge emoji="🧭" label={`${data?.cidade || '—'}${data?.uf ? `/${data.uf}` : ''}`} />
-              {data?.radius_m ? <Badge emoji="🛟" label={`${data.radius_m} m`} /> : null}
-              {distanceText ? <Badge emoji="📏" label={distanceText} /> : null}
-              <StatusPill status={data?.status} severity={data?.gravidade} />
-            </View>
+    <SafeAreaView style={S.container}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+      >
+        <ScrollView contentContainerStyle={{ paddingBottom: scale(24) }}>
+          {/* header */}
+          <View style={S.header}>
+            <Text style={S.title}>Alertas Públicas</Text>
           </View>
 
-          {/* Carte ou fallback PT-BR */}
-          {isFiniteNum(data?.lat) && isFiniteNum(data?.lng) ? (
-            <View style={styles.mapWrap}>
-              <MapView
-                ref={mapRef}
-                provider={PROVIDER_GOOGLE}
-                style={styles.map}
-                initialRegion={{
-                  latitude: data.lat,
-                  longitude: data.lng,
-                  latitudeDelta: DEFAULT_DELTA,
-                  longitudeDelta: DEFAULT_DELTA,
-                }}
-                onMapReady={() => setMapReady(true)}
-                onError={(e) => setMapError(e?.nativeEvent?.message || 'Map error')}
-                scrollEnabled
-                zoomEnabled
-                rotateEnabled
-                pitchEnabled
-                showsUserLocation={!!userLoc}
-                showsMyLocationButton={false}
-                toolbarEnabled={false}
-              >
-                <Marker coordinate={{ latitude: data.lat, longitude: data.lng }} />
-                <Circle
-                  center={{ latitude: data.lat, longitude: data.lng }}
-                  radius={Number(data.radius_m) || 500}
-                  strokeWidth={2}
-                  strokeColor={data?.color || theme.accent}
-                  fillColor="rgba(10,168,255,0.12)"
+          {/* Map + cercle propagation + bouton recentrage */}
+          {region ? (
+            <View style={S.mapWrap}>
+              <MapView ref={mapRef} style={S.map} initialRegion={region} pointerEvents="auto">
+                <Marker
+                  coordinate={alert.coords}
+                  title={alert.tipo || 'Incidente'}
+                  pinColor="red"
                 />
+                <Circle
+                  center={alert.coords}
+                  radius={alert.radiusM}
+                  strokeColor="rgba(255,0,0,0.85)"
+                  strokeWidth={2}
+                  fillColor="rgba(255,0,0,0.18)"
+                />
+                {userLoc && <Marker coordinate={userLoc} title="Você" pinColor={C.ok} />}
               </MapView>
-
-              <View style={styles.fabCol}>
-                <SmallFab label="Recentrar" onPress={recenterToIncident} />
-                {userLoc ? (
-                  <SmallFab label="Ajustar 2 pontos" onPress={fitUserAndIncident} />
-                ) : null}
-                <SmallFab label="Traçar rota" onPress={openNav} />
-              </View>
-
-              {mapError ? (
-                <View style={styles.mapErrorOverlay}>
-                  <Text style={styles.mapErrorText}>Mapa indisponível ({mapError})</Text>
-                </View>
-              ) : null}
+              <Pressable
+                onPress={() => mapRef.current?.animateToRegion(region, 300)}
+                style={({ pressed }) => [S.recenter, pressed && { opacity: 0.85 }]}
+              >
+                <Icon name="crosshairs-gps" size={scale(18)} color={C.bg} />
+              </Pressable>
             </View>
           ) : (
-            <StatusBanner
-              tone="warn"
-              title="Localização indisponível para este alerta"
-              subtitle="Sem latitude/longitude — a ficha continua acessível."
-            />
+            <View style={S.banner}>
+              <Icon name="map-marker-off" size={scale(18)} color={C.sub} />
+              <Text style={S.bannerText}>Localização indisponível para este alerta.</Text>
+            </View>
           )}
 
-          {/* Localisation */}
-          <SectionCard>
-            {data?.endereco ? <InfoRow emoji="📍" label="Endereço" value={data.endereco} /> : null}
-            {data?.cidade || data?.uf ? (
-              <InfoRow
-                emoji="🗺️"
-                label="Localidade"
-                value={`${data?.cidade || '—'}${data?.uf ? `/${data.uf}` : ''}`}
-              />
-            ) : null}
-            {isFiniteNum(data?.lat) && isFiniteNum(data?.lng) ? (
-              <InfoRow
-                emoji="🧿"
-                label="Coordenadas"
-                value={`${Number(data.lat).toFixed(5)}, ${Number(data.lng).toFixed(5)}`}
-              />
-            ) : null}
-            {data?.radius_m ? (
-              <InfoRow emoji="🎯" label="Raio" value={`${data.radius_m} m`} />
-            ) : null}
-            {distanceText ? <InfoRow emoji="📏" label="Distância" value={distanceText} /> : null}
-            {locDenied ? (
-              <InfoRow emoji="🔒" label="Localização" value="Permissão recusada (opcional)." />
-            ) : null}
-          </SectionCard>
+          {/* Détails – mêmes lignes que ton UI */}
+          <View style={S.card}>
+            <Row label="🚨  Tipo" value={alert.tipo} color={C.danger} />
+            <Row
+              label="📍  Endereço"
+              value={alert.endereco}
+              color={C.warn}
+              multiline
+              extraGap={scale(10)}
+            />
+            <Row label="🏙️  Cidade" value={alert.cidade} color={C.ok} />
+            <Row label="🗺️  Estado" value={alert.estado} color={C.mute} />
+            <Row
+              label="📏  Distância"
+              value={distance || undefined}
+              valueNode={distance ? null : <LoaderDots />}
+              color={C.warn}
+            />
+            <Row label="🕒  Data & hora" value={fmtDate(alert.createdAt)} color={C.ok} />
+            <Row label="👥  Declarações" value={`${alert.reports}`} color={C.ok} />
+          </View>
 
           {/* Description */}
-          <SectionCard>
-            <InfoRow emoji="📝" label="Descrição" value={data?.descricao || 'Sem descrição.'} />
-          </SectionCard>
-
-          {/* Dates */}
-          <SectionCard>
-            {data?.createdAt?.toDate && (
-              <InfoRow emoji="⏱️" label="Criado" value={data.createdAt.toDate().toLocaleString()} />
-            )}
-            {data?.expiresAt?.toDate && (
-              <InfoRow emoji="⌛" label="Expira" value={data.expiresAt.toDate().toLocaleString()} />
-            )}
-            {data?.status ? (
-              <InfoRow emoji="🏷️" label="Status" value={String(data.status)} />
-            ) : null}
-          </SectionCard>
-
-          <DebugPanel
-            alertId={alertId}
-            firestorePath={firestorePath}
-            lastCheckedAt={lastCheckedAt}
-            flags={{ loading, notFound, expired, mapReady, locDenied }}
-            data={data}
-          />
+          <View style={S.card}>
+            <Text style={[S.cardTitle, { color: C.danger }]}>Descrição</Text>
+            <Text style={S.body}>{alert.descricao}</Text>
+          </View>
         </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+}
+
+// sous-composant ligne (adresse multi-lignes, loader possible)
+function Row({ label, value, valueNode, color, multiline = false, extraGap = 0 }) {
+  return (
+    <View style={S.row}>
+      <Text style={[S.rowLabel, { color }]} numberOfLines={3} ellipsizeMode="clip">
+        {label}
+      </Text>
+      {valueNode ? (
+        <View style={{ flex: 1, alignItems: 'flex-end', marginLeft: extraGap }}>{valueNode}</View>
+      ) : (
+        <Text
+          style={[
+            S.rowValue,
+            multiline && { textAlign: 'left', lineHeight: scale(20) },
+            extraGap ? { marginLeft: extraGap } : null,
+          ]}
+        >
+          {value ?? '—'}
+        </Text>
       )}
     </View>
   );
 }
 
-/* ===== UI bits ===== */
-function Centered({ children }) {
-  return <View style={styles.centered}>{children}</View>;
-}
-function Divider() {
-  return <View style={styles.divider} />;
-}
-function Badge({ emoji, label }) {
-  return (
-    <View style={styles.badge}>
-      <Text style={styles.badgeText}>
-        {emoji} {label}
-      </Text>
-    </View>
-  );
-}
-function StatusPill({ status, severity }) {
-  const color =
-    status === 'expired'
-      ? theme.warn
-      : severity === 'grave' || severity === 'high'
-        ? theme.danger
-        : severity === 'minor' || severity === 'low'
-          ? theme.warn
-          : theme.accent;
-  return (
-    <View style={[styles.pill, { backgroundColor: color }]}>
-      <Text style={styles.pillText}>
-        {status === 'expired' ? 'Expirado' : severity ? `Gravidade: ${severity}` : 'Ativo'}
-      </Text>
-    </View>
-  );
-}
-function StatusBanner({ tone = 'info', title, subtitle }) {
-  const map = {
-    info: { bg: theme.cardAlt, emoji: 'ℹ️' },
-    warn: { bg: '#2D2414', emoji: '⚠️' },
-    danger: { bg: '#2B1E21', emoji: '⛔' },
-    success: { bg: '#14261C', emoji: '✅' },
-  };
-  const t = map[tone] || map.info;
-  return (
-    <View style={[styles.banner, { backgroundColor: t.bg }]}>
-      <Text style={styles.bannerTitle}>
-        {t.emoji} {title}
-      </Text>
-      {subtitle ? <Text style={styles.bannerSub}>{subtitle}</Text> : null}
-    </View>
-  );
-}
-function SectionCard({ children }) {
-  return <View style={styles.card}>{children}</View>;
-}
-function InfoRow({ emoji, label, value }) {
-  return (
-    <>
-      <View style={styles.row}>
-        <Text style={styles.rowLabel}>
-          {emoji} {label}
-        </Text>
-        <Text style={styles.rowValue} numberOfLines={3}>
-          {value}
-        </Text>
-      </View>
-      <Divider />
-    </>
-  );
-}
-function PrimaryButton({ label, onPress }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [styles.primaryBtn, pressed && styles.btnPressed]}
-    >
-      <Text style={styles.primaryBtnText}>{label}</Text>
-    </Pressable>
-  );
-}
-function SmallFab({ label, onPress }) {
-  return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.fab, pressed && { opacity: 0.9 }]}>
-      <Text style={styles.fabText}>{label}</Text>
-    </Pressable>
-  );
-}
-function DebugPanel({ alertId, firestorePath, lastCheckedAt, flags, data }) {
-  return (
-    <View style={styles.debug}>
-      <Text style={styles.debugTitle}>Debug</Text>
-      <Text style={styles.debugText}>ID: {alertId}</Text>
-      <Text style={styles.debugText}>Path: {firestorePath}</Text>
-      <Text style={styles.debugText}>Flags: {JSON.stringify(flags)}</Text>
-      <Text style={styles.debugText}>LastCheckedAt: {lastCheckedAt || '—'}</Text>
-      <Text style={styles.debugText}>Fields: {data ? Object.keys(data).join(', ') : '—'}</Text>
-    </View>
-  );
-}
-
-/* ===== Styles ===== */
-const styles = StyleSheet.create({
-  screen: { flex: 1 },
-  container: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 40, gap: 12 },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.bg },
-  loadingText: { color: theme.textMuted, marginTop: 8 },
-
-  headerCard: { backgroundColor: theme.card, borderRadius: 16, padding: 16, ...shadow(), gap: 8 },
-  title: { color: theme.text, fontSize: 22, fontWeight: '800', letterSpacing: 0.3 },
-  badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 2 },
-  badge: {
-    backgroundColor: theme.cardAlt,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: theme.divider,
+// styles
+const S = StyleSheet.create({
+  container: { flex: 1, backgroundColor: C.bg },
+  header: {
+    paddingHorizontal: scale(20),
+    paddingTop: scale(16),
+    paddingBottom: scale(6),
+    alignItems: 'center',
   },
-  badgeText: { color: theme.text, fontSize: 13 },
-
-  pill: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
-  pillText: { color: '#081018', fontWeight: '700', fontSize: 12 },
-
-  banner: {
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: theme.divider,
-    ...shadow(1),
-  },
-  bannerTitle: { color: theme.text, fontWeight: '700', fontSize: 16, marginBottom: 4 },
-  bannerSub: { color: theme.textMuted, fontSize: 13, lineHeight: 18 },
-
-  card: {
-    backgroundColor: theme.card,
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: theme.divider,
-    ...shadow(),
-  },
-  row: { paddingVertical: 10, gap: 6 },
-  rowLabel: {
-    color: theme.textMuted,
-    fontSize: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-  rowValue: { color: theme.text, fontSize: 15.5, lineHeight: 22 },
-  divider: { height: 1, backgroundColor: theme.divider },
+  title: { color: C.ok, fontSize: scale(24), fontWeight: '700' },
 
   mapWrap: {
-    height: 220,
-    borderRadius: 16,
+    height: Math.max(scale(240), 220),
+    borderRadius: scale(12),
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: theme.divider,
-    backgroundColor: theme.card,
-    ...shadow(),
+    marginHorizontal: scale(20),
+    marginTop: scale(14),
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: C.border,
+    backgroundColor: C.card,
   },
   map: { flex: 1 },
-  fabCol: { position: 'absolute', right: 10, top: 10, gap: 8 },
-  fab: {
-    backgroundColor: theme.accent,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 10,
-    ...shadow(2),
-  },
-  fabText: { color: '#07131B', fontWeight: '800', fontSize: 12 },
-  mapErrorOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  mapErrorText: { color: '#fff', fontWeight: '700' },
-
-  primaryBtn: {
-    flex: 1,
-    backgroundColor: theme.accent,
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-    ...shadow(2),
-  },
-  primaryBtnText: { color: '#07131B', fontWeight: '800', fontSize: 15 },
-  btnPressed: { opacity: 0.85 },
-
-  debug: {
-    marginTop: 12,
-    backgroundColor: theme.cardAlt,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: theme.divider,
-  },
-  debugTitle: { color: theme.text, fontWeight: '800', marginBottom: 6 },
-  debugText: { color: theme.textMuted, fontSize: 12, lineHeight: 18 },
-});
-
-function shadow(level = 3) {
-  const e = Math.max(1, Math.min(level, 4));
-  if (Platform.OS === 'android') {
-    return { elevation: 2 * e };
-  }
-  return {
+  recenter: {
+    position: 'absolute',
+    right: scale(12),
+    bottom: scale(12),
+    backgroundColor: C.danger,
+    borderRadius: 999,
+    paddingVertical: scale(8),
+    paddingHorizontal: scale(10),
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#D5D7DB',
     shadowColor: '#000',
-    shadowOpacity: 0.15 + e * 0.05,
-    shadowRadius: 4 + e * 2,
-    shadowOffset: { width: 0, height: 2 + e },
-  };
-}
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 6,
+  },
+
+  banner: {
+    marginHorizontal: scale(20),
+    marginTop: scale(14),
+    backgroundColor: C.card,
+    borderRadius: scale(12),
+    padding: scale(12),
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: C.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(10),
+  },
+  bannerText: { color: C.text, fontSize: scale(14), flex: 1 },
+
+  card: {
+    backgroundColor: C.card,
+    marginHorizontal: scale(20),
+    marginTop: scale(12),
+    borderRadius: scale(12),
+    padding: scale(14),
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: C.border,
+  },
+  cardTitle: { color: C.text, fontWeight: '700', fontSize: scale(16), marginBottom: scale(8) },
+
+  row: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: scale(8),
+    gap: scale(14),
+  },
+  rowLabel: { fontSize: scale(14), fontWeight: '700', width: '50%' },
+  rowValue: { color: C.text, fontSize: scale(14), flex: 1, textAlign: 'right', flexShrink: 1 },
+
+  body: { color: C.text, fontSize: scale(14), lineHeight: scale(20) },
+
+  skel: {
+    height: scale(12),
+    backgroundColor: '#22262c',
+    borderRadius: 6,
+    marginVertical: scale(6),
+    width: '85%',
+  },
+});

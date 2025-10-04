@@ -8,8 +8,9 @@
 // -----------------------------------------------------------------------------
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { db } from '@/firebase';
+import { db } from '../../../firebase';
 import { collection, onSnapshot, orderBy, query, where, Timestamp } from 'firebase/firestore';
+import { safeForEach } from '../../../utils/safeEach';
 
 export const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -69,7 +70,7 @@ export default function usePublicAlerts24h() {
     const q = query(
       collection(db, 'publicAlerts'),
       where('createdAt', '>=', since),
-      orderBy('createdAt', 'desc')
+      orderBy('createdAt', 'desc'),
     );
 
     if (__DEV__) {
@@ -80,7 +81,7 @@ export default function usePublicAlerts24h() {
       q,
       (snap) => {
         const items = [];
-        snap.forEach((d) => items.push({ id: d.id, ...d.data() }));
+        safeForEach(snap, (d) => items.push({ id: d.id, ...d.data() }));
         setAlerts(items);
         if (__DEV__) {
           console.log('[usePublicAlerts24h] received', items.length, 'items');
@@ -91,7 +92,7 @@ export default function usePublicAlerts24h() {
           console.log('[usePublicAlerts24h] onSnapshot error:', err?.message || err);
         }
         setAlerts([]);
-      }
+      },
     );
 
     // Tick local (1/min) pour recalcul des libellés temporels

@@ -16,6 +16,7 @@
 
 const { onRequest } = require('firebase-functions/v2/https');
 const geofire = require('geofire-common');
+const { safeForEach } = require('../../safeEach');
 
 // Utils centralisés (logs, db, fcm, helpers…)
 const {
@@ -69,8 +70,8 @@ async function selectRecipientsGeohash({ lat, lng, radiusM }) {
   // Requêtes Firestore en // sur chaque borne
   const snaps = await Promise.all(
     bounds.map(([start, end]) =>
-      db.collection('users').orderBy('geohash').startAt(start).endAt(end).get()
-    )
+      db.collection('users').orderBy('geohash').startAt(start).endAt(end).get(),
+    ),
   );
 
   const out = [];
@@ -78,7 +79,7 @@ async function selectRecipientsGeohash({ lat, lng, radiusM }) {
   const seenUid = new Set(); // dédupe uid si nécessaire (pas critique)
 
   for (const snap of snaps) {
-    snap.forEach((doc) => {
+    safeForEach(snap, (doc) => {
       const u = doc.data() || {};
       const tokens = Array.isArray(u.fcmTokens) ? u.fcmTokens.filter(Boolean) : [];
       if (tokens.length === 0) {
@@ -94,7 +95,7 @@ async function selectRecipientsGeohash({ lat, lng, radiusM }) {
       const d = distanceMeters(lat, lng, uLat, uLng);
       if (d <= radiusM) {
         const uniq = tokens.filter((t) => t && !seenToken.has(t));
-        uniq.forEach((t) => seenToken.add(t));
+        safeForEach(uniq, (t) => seenToken.add(t));
         if (uniq.length) {
           // on peut garder multi-entrées par uid si distances diff, mais on dédupe léger
           if (!seenUid.has(doc.id)) {
@@ -115,7 +116,7 @@ async function selectRecipientsFallbackScan({ lat, lng, radiusM, cep }) {
   const seen = new Set();
   const snap = await db.collection('users').limit(3000).get();
 
-  snap.forEach((doc) => {
+  safeForEach(snap, (doc) => {
     const u = doc.data() || {};
     const tokens = Array.isArray(u.fcmTokens) ? u.fcmTokens.filter(Boolean) : [];
     if (tokens.length === 0) {
@@ -130,7 +131,7 @@ async function selectRecipientsFallbackScan({ lat, lng, radiusM, cep }) {
       const d = distanceMeters(lat, lng, uLat, uLng);
       if (d <= radiusM) {
         const uniq = tokens.filter((t) => t && !seen.has(t));
-        uniq.forEach((t) => seen.add(t));
+        safeForEach(uniq, (t) => seen.add(t));
         if (uniq.length) {
           out.push({ uid: doc.id, tokens: uniq, _distance_m: d });
         }
@@ -140,7 +141,7 @@ async function selectRecipientsFallbackScan({ lat, lng, radiusM, cep }) {
 
     if (cep && uCep && uCep === cep) {
       const uniq = tokens.filter((t) => t && !seen.has(t));
-      uniq.forEach((t) => seen.add(t));
+      safeForEach(uniq, (t) => seen.add(t));
       if (uniq.length) {
         out.push({ uid: doc.id, tokens: uniq, _distance_m: NaN });
       }
@@ -425,7 +426,7 @@ module.exports.sendPublicAlertByAddress = onRequest(
                   ack: '0',
                 },
               },
-            })
+            }),
           );
         }
       }
@@ -439,5 +440,5 @@ module.exports.sendPublicAlertByAddress = onRequest(
       err('[PUBLIC ALERT] ERROR', e);
       return res.status(500).json({ ok: false, error: e?.message || String(e) });
     }
-  }
+  },
 );

@@ -27,7 +27,7 @@ const firebaseConfig = {
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 console.log(
   getApps().length ? '♻️ [firebase] app réutilisée' : '✅ [firebase] app initialisée',
-  firebaseConfig.projectId
+  firebaseConfig.projectId,
 );
 
 // --- Auth: initializeAuth (persistence AsyncStorage) une seule fois
@@ -37,7 +37,7 @@ try {
     persistence: getReactNativePersistence(ReactNativeAsyncStorage),
   });
   console.log('✅ [firebase] auth initialisée (AsyncStorage)');
-} catch (e) {
+} catch {
   // Si déjà initialisée (Fast Refresh), on récupère l’instance existante
   auth = getAuth(app);
   console.log('ℹ️ [firebase] auth réutilisée');

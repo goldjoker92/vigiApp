@@ -57,7 +57,7 @@ export default function PublicAlertsFeedCore() {
       }
       router.push(`/public-alerts/${id}`);
     },
-    [router]
+    [router],
   );
 
   const renderItem = useCallback(
@@ -141,7 +141,7 @@ export default function PublicAlertsFeedCore() {
         </TouchableOpacity>
       );
     },
-    [onPressItem]
+    [onPressItem],
   );
 
   // ----------- UI States -----------

@@ -1,2 +1,29 @@
-﻿android/
+﻿# Forcer Expo en workflow managed (ne pas uploader les projets natifs)
+android/
 ios/
+
+# Répertoires lourds ou inutiles
+node_modules
+.expo
+.expo-shared
+web-build
+dist
+build
+coverage
+
+# Versioning
+.git
+*.log
+
+# Certificats et secrets sensibles
+**/*.keystore
+**/*.jks
+**/*.p8
+**/*.p12
+**/*.mobileprovision
+**/*.pem
+**/*.der
+**/*.csr
+**/*.key
+**/*.crt
+.eas/*.json

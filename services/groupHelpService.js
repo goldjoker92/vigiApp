@@ -115,7 +115,7 @@ export async function countUserRequests({ userId, groupId, since }) {
     collection(db, 'groupHelps'),
     where('userId', '==', userId),
     where('groupId', '==', groupId),
-    where('createdAt', '>=', sinceTimestamp)
+    where('createdAt', '>=', sinceTimestamp),
   );
   const snapshot = await getDocs(q);
   return snapshot.size;
@@ -209,7 +209,7 @@ export async function getUserRequests({ userId, groupId }) {
     collection(db, 'groupHelps'),
     where('userId', '==', userId),
     where('groupId', '==', groupId),
-    orderBy('createdAt', 'desc')
+    orderBy('createdAt', 'desc'),
   );
   const snapshot = await getDocs(q);
   const result = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
@@ -224,7 +224,7 @@ export async function getGroupRequests({ groupId, userId }) {
   const q = query(
     collection(db, 'groupHelps'),
     where('groupId', '==', groupId),
-    orderBy('createdAt', 'desc')
+    orderBy('createdAt', 'desc'),
   );
   const snapshot = await getDocs(q);
   const result = snapshot.docs

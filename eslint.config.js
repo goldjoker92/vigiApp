@@ -1,7 +1,7 @@
 // eslint.config.js — Flat config (ESLint v9)
 const expo = require('eslint-config-expo/flat');
 
-const isCI = process.env.CI === 'true';
+const _isCI = process.env.CI === 'true';
 
 // Front: on tolère console.* totalement (plus aucun warning)
 const frontConsoleRule = 'off';
@@ -59,16 +59,16 @@ module.exports = [
       semi: ['error', 'always'],
       'comma-dangle': 'off',
       'arrow-parens': 'off',
-    // Hooks
-    'react-hooks/rules-of-hooks': 'error',
-    'react-hooks/exhaustive-deps': 'warn',
-    // Additional rules
-    'no-unused-expressions': 'warn',
-    'import/no-duplicates': 'warn',
-    'react/prop-types': 'off',
-    'react/react-in-jsx-scope': 'off',
+      // Hooks
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
+      // Additional rules
+      'no-unused-expressions': 'warn',
+      'import/no-duplicates': 'warn',
+      'react/prop-types': 'off',
+      'react/react-in-jsx-scope': 'off',
+    },
   },
-},
 
   // FRONT (app/, src/…) : console tolérées
   {

@@ -122,8 +122,8 @@ const fanoutPublicAlert = onDocumentCreated('publicAlerts/{alertId}', async (eve
           ttlSeconds: ttl,
         })
           .then(() => true)
-          .catch(() => false)
-      )
+          .catch(() => false),
+      ),
     );
     delivered += results.filter(Boolean).length;
   }

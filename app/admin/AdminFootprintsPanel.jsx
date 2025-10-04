@@ -21,7 +21,13 @@
  */
 
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import gw, { BRAZIL_BOUNDS, renderLeafletCircles } from '@/services/footprintsGateway';
+import {
+  BRAZIL_BOUNDS,
+  renderLeafletCircles,
+  loadBrazilFootprints,
+  getFootprintsByBBox,
+} from '../../services/footprintsGateway';
+import { safeForEach } from '../../utils/safeEach';
 
 // BBox approximatives des UFs (lat/lng décimaux)
 // NB: ce sont des bornes larges (suffisantes pour stats/heatmap).
@@ -70,7 +76,7 @@ export default function AdminFootprintsPanel({ map, L, apiKey }) {
     if (!map || !circleLayersRef.current?.length) {
       return;
     }
-    circleLayersRef.current.forEach((layer) => {
+    safeForEach(circleLayersRef.current, (layer) => {
       try {
         map.removeLayer(layer);
       } catch {}
@@ -147,7 +153,7 @@ export default function AdminFootprintsPanel({ map, L, apiKey }) {
       });
       circleLayersRef.current = layers;
     },
-    [L, map, clearLayers]
+    [L, map, clearLayers],
   );
 
   // Loaders
@@ -155,7 +161,7 @@ export default function AdminFootprintsPanel({ map, L, apiKey }) {
     try {
       setLoading(true);
       setError('');
-      const res = await gw.loadBrazilFootprints({ limit: 10000, apiKey });
+      const res = await loadBrazilFootprints({ limit: 10000, apiKey });
       setItems(res.items || []);
       renderCircles(res.items || []);
       // ajuste la vue sur le pays
@@ -163,8 +169,8 @@ export default function AdminFootprintsPanel({ map, L, apiKey }) {
         map.fitBounds(
           L.latLngBounds(
             [BRAZIL_BOUNDS.south, BRAZIL_BOUNDS.west],
-            [BRAZIL_BOUNDS.north, BRAZIL_BOUNDS.east]
-          )
+            [BRAZIL_BOUNDS.north, BRAZIL_BOUNDS.east],
+          ),
         );
       }
     } catch (e) {
@@ -184,7 +190,7 @@ export default function AdminFootprintsPanel({ map, L, apiKey }) {
         }
         setLoading(true);
         setError('');
-        const res = await gw.getFootprintsByBBox({
+        const res = await getFootprintsByBBox({
           ...box,
           sinceDays: 90,
           limit: 6000,
@@ -201,7 +207,7 @@ export default function AdminFootprintsPanel({ map, L, apiKey }) {
         setLoading(false);
       }
     },
-    [apiKey, map, L, renderCircles]
+    [apiKey, map, L, renderCircles],
   );
 
   const loadViewport = useCallback(async () => {
@@ -218,7 +224,7 @@ export default function AdminFootprintsPanel({ map, L, apiKey }) {
         east: b.getEast(),
         west: b.getWest(),
       };
-      const res = await gw.getFootprintsByBBox({
+      const res = await getFootprintsByBBox({
         ...box,
         sinceDays: 90,
         limit: 6000,

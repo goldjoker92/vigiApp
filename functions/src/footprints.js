@@ -225,7 +225,7 @@ async function queryByGeohashBounds({ bounds, sinceTs, limitCap }) {
       .endAt(end)
       .where('createdAt', '>=', sinceTs)
       .limit(limitCap) // sécurité locale
-      .get()
+      .get(),
   );
   const snaps = await Promise.all(queries);
   const all = [];
@@ -403,5 +403,5 @@ module.exports.getAlertFootprints = onRequest(
       err('[FOOTPRINTS] ERROR', e?.message || e);
       return res.status(500).json({ ok: false, error: e?.message || String(e) });
     }
-  }
+  },
 );

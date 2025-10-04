@@ -21,7 +21,7 @@ export function useGrupoDetails(groupId) {
         '[HOOK][useGrupoDetails] snapshot exists:',
         docSnap.exists(),
         '| data:',
-        docSnap.data()
+        docSnap.data(),
       );
       if (docSnap.exists()) {
         setGrupo({ id: docSnap.id, ...docSnap.data() });
