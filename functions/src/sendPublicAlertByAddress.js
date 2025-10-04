@@ -1,14 +1,16 @@
 // ============================================================================
-// VigiApp — Public Alert (HTTP Cloud Function, prod-grade)
+// VigiApp — Public Alert (HTTP Cloud Function, prod-grade, Android-first)
 // ----------------------------------------------------------------------------
 // - Admin init idempotent
 // - Upsert Firestore publicAlerts/{alertId}
 // - Sélection destinataires prioritaire GEO → widen → CEP → city sample
-// - Envoi FCM robuste: batch 500, retry transitoires, DLQ tokens morts
-// - Logs & métriques: counts, % succès, moy. tentatives, byCode, samples
+// - Envoi **hybride** : FCM (prioritaire) + fallback Expo Push si présent
+// - Retry transitoires, DLQ tokens morts, micro-yield entre batchs
+// - Logs & métriques clairs: counts, %, moy. tentatives, byCode, samples, split FCM/Expo
 // - Audit Firestore pushAudits/{autoId}
-// - Anti-timeout: fast-exit si 0 dest., micro-yield entre batchs
+// - Anti-timeout: fast-exit si 0 dest.
 // - Couleur Android: normalisée et envoyée SEULEMENT si valide + non désactivée
+// - Mode test : testToken seul OU testToken + blast si ?testIncludePublic=1
 // ============================================================================
 
 const { onRequest } = require('firebase-functions/v2/https');
@@ -20,7 +22,7 @@ try {
   admin.initializeApp();
 }
 
-// -- Méta config
+// --- Méta config
 const DEFAULT_TTL_SECONDS = 3600; // 1h
 const MAX_RADIUS_M = 3000;
 const MIN_RADIUS_M = 50;
@@ -30,7 +32,7 @@ const BATCH_SIZE = 500;
 
 const DISABLE_FCM_COLOR = process.env.DISABLE_FCM_COLOR === 'true';
 
-// -- Helpers optionnels (défauts sûrs si absents)
+// --- Helpers optionnels (défauts sûrs si absents)
 let textsBySeverity, resolveAccentColor, localLabel;
 try {
   ({ textsBySeverity, resolveAccentColor, localLabel } = require('../lib/alert-utils'));
@@ -50,6 +52,7 @@ let selectRecipientsGeohash,
   selectRecipientsCitySample,
   auditPushBlastResult,
   enqueueDLQ;
+
 try {
   ({
     selectRecipientsGeohash,
@@ -59,10 +62,14 @@ try {
     enqueueDLQ,
   } = require('../lib/push-infra'));
 } catch {
-  /* soft-fail, les helpers resteront undefined → recipients=0 */
+  // soft-fail: helpers undefined → recipients=0
 }
 
-// -- Utils
+// ============================================================================
+// Utils
+// ============================================================================
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 function clampRadiusM(m) {
   const n = Number(m);
   if (!Number.isFinite(n)) {
@@ -71,7 +78,7 @@ function clampRadiusM(m) {
   return Math.max(MIN_RADIUS_M, Math.min(n, MAX_RADIUS_M));
 }
 
-// FCM exige "#RRGGBB". Si invalide → undefined (on n'envoie pas la propriété).
+// FCM exige "#RRGGBB". Si invalide → undefined (on n’envoie pas la propriété).
 function normalizeAndroidColor(color) {
   if (!color || DISABLE_FCM_COLOR) {
     return undefined;
@@ -89,7 +96,18 @@ function maskToken(tok) {
   return s.length <= 12 ? s : `${s.slice(0, 6)}…${s.slice(-4)}`;
 }
 
-// -- FCM bas niveau
+const isExpoToken = (t) => typeof t === 'string' && t.startsWith('ExponentPushToken');
+const pickExpoToken = (u) => u?.expoPushToken || (isExpoToken(u?.token) ? u?.token : null);
+const pickFcmToken = (u) =>
+  !isExpoToken(u?.token) && typeof u?.token === 'string'
+    ? u?.token
+    : typeof u?.fcmToken === 'string'
+      ? u?.fcmToken
+      : u?.fcmDeviceToken || null;
+
+// ============================================================================
+// Envoi FCM (admin.messaging())
+// ============================================================================
 async function sendFCM(token, message) {
   try {
     const id = await admin.messaging().send(message, /* dryRun */ false);
@@ -115,10 +133,9 @@ async function sendFCM(token, message) {
   }
 }
 
-// Retry exponentiel + jitter pour erreurs transitoires, avec rapport d’attentes
-async function sendWithRetry(token, message, { max = 3 } = {}) {
-  let attempt = 0;
-  let last;
+async function sendFCMWithRetry(token, message, { max = 3 } = {}) {
+  let attempt = 0,
+    last;
   while (attempt < max) {
     attempt += 1;
     const r = await sendFCM(token, message);
@@ -126,16 +143,73 @@ async function sendWithRetry(token, message, { max = 3 } = {}) {
       return { ...r, attempts: attempt };
     }
     last = r; // transient
-    const base = 200 * Math.pow(2, attempt - 1); // 200, 400, 800...
+    const base = 200 * Math.pow(2, attempt - 1); // 200, 400, 800…
     const jitter = Math.floor(Math.random() * 100);
     const wait = Math.min(2000, base + jitter);
-    console.warn('[ALERT_API] retry', { token: maskToken(token), attempt, code: r.code, wait });
-    await new Promise((res) => setTimeout(res, wait));
+    console.warn('[ALERT_API] FCM retry', { token: maskToken(token), attempt, code: r.code, wait });
+    await sleep(wait);
   }
   return { ...(last || {}), attempts: max };
 }
 
-// -- Firestore upsert
+// ============================================================================
+// Envoi Expo Push (fallback) — Node18+ dispose de fetch global dans CF v2
+// ============================================================================
+async function sendExpoPushOnce(expoToken, payload) {
+  try {
+    const resp = await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: { accept: 'application/json', 'content-type': 'application/json' },
+      body: JSON.stringify([{ to: expoToken, ...payload }]),
+    });
+    const json = await resp.json().catch(() => ({}));
+    // Réponse Expo: { data: [{ status: 'ok' | 'error', details, ... }] }
+    const item = Array.isArray(json?.data) ? json.data[0] : json?.data || json;
+    if (item?.status === 'ok') {
+      return { ok: true, id: item.id || null };
+    }
+    const code = item?.details?.error || item?.status || 'expo_error';
+    const msg = item?.message || JSON.stringify(item).slice(0, 200);
+    console.warn('[ALERT_API] EXPO SEND FAIL', code, maskToken(expoToken), msg);
+    return { ok: false, fatal: false, transient: true, code, msg };
+  } catch (e) {
+    return {
+      ok: false,
+      fatal: false,
+      transient: true,
+      code: 'expo_network',
+      msg: String(e?.message || e),
+    };
+  }
+}
+
+async function sendExpoWithRetry(expoToken, payload, { max = 3 } = {}) {
+  let attempt = 0,
+    last;
+  while (attempt < max) {
+    attempt += 1;
+    const r = await sendExpoPushOnce(expoToken, payload);
+    if (r.ok) {
+      return { ...r, attempts: attempt };
+    }
+    last = r;
+    const base = 200 * Math.pow(2, attempt - 1);
+    const jitter = Math.floor(Math.random() * 100);
+    const wait = Math.min(2000, base + jitter);
+    console.warn('[ALERT_API] EXPO retry', {
+      token: maskToken(expoToken),
+      attempt,
+      code: r.code,
+      wait,
+    });
+    await sleep(wait);
+  }
+  return { ...(last || {}), attempts: max };
+}
+
+// ============================================================================
+// Firestore upsert
+// ============================================================================
 async function upsertPublicAlertDoc({
   alertId,
   endereco,
@@ -170,7 +244,9 @@ async function upsertPublicAlertDoc({
   console.log('[ALERT_API] Firestore upsert publicAlerts/', alertId, '→ OK');
 }
 
-// -- Handler principal
+// ============================================================================
+// Handler principal
+// ============================================================================
 async function handleSendPublicAlertByAddress(req, res) {
   const t0 = Date.now();
   console.log('[ALERT_API] START sendPublicAlertByAddress');
@@ -185,7 +261,10 @@ async function handleSendPublicAlertByAddress(req, res) {
     const severity = String(b.severidade || 'medium').trim();
     const formColor = b.color ? String(b.color).trim() : null;
     const cep = String(b.cep || '').replace(/\D+/g, '');
+
+    // Mode test
     const testToken = b.testToken ? String(b.testToken).trim() : null;
+    const testIncludePublic = String(b.testIncludePublic || b.testPublic || '').trim() === '1';
 
     const lat = Number.parseFloat(b.lat);
     const lng = Number.parseFloat(b.lng);
@@ -216,9 +295,10 @@ async function handleSendPublicAlertByAddress(req, res) {
       severity,
       cep: cep || '(vide)',
       hasTestToken: !!testToken,
+      testIncludePublic,
     });
 
-    // -- upsert doc (page /public-alerts/[id])
+    // Upsert doc (page /public-alerts/[id])
     await upsertPublicAlertDoc({
       alertId,
       endereco,
@@ -232,7 +312,10 @@ async function handleSendPublicAlertByAddress(req, res) {
       color: accent,
     });
 
-    // -- Mode test : un seul device (n’affecte pas la sélection publique)
+    // -------------------------------------------
+    // Mode test: envoi ciblé + retour rapide
+    // (option testIncludePublic=1 pour continuer avec le blast public)
+    // -------------------------------------------
     if (testToken) {
       const { title, body } = textsBySeverity(severity, local, '');
       const androidNotif = {
@@ -257,14 +340,33 @@ async function handleSendPublicAlertByAddress(req, res) {
           radius_m: String(radiusM),
           lat: String(lat),
           lng: String(lng),
-          ack: '0',
+          ack: '1',
           channelId: ANDROID_CHANNEL_ID,
         },
       };
-      const r = await sendWithRetry(testToken, msg, { max: 3 });
+      const r = isExpoToken(testToken)
+        ? await sendExpoWithRetry(
+            testToken,
+            {
+              title,
+              body,
+              data: msg.data,
+              sound: 'default',
+              priority: 'high',
+              ttl: DEFAULT_TTL_SECONDS,
+              channelId: ANDROID_CHANNEL_ID,
+            },
+            { max: 3 },
+          )
+        : await sendFCMWithRetry(testToken, msg, { max: 3 });
+
       console.log('[ALERT_API] testToken result', r);
-      // On continue le flux public en parallèle (pas de return ici) ? Non: tests unitaires → on return.
-      return res.status(200).json({ ok: true, mode: 'testToken', result: r, ms: Date.now() - t0 });
+      if (!testIncludePublic) {
+        return res
+          .status(200)
+          .json({ ok: true, mode: 'testToken', result: r, ms: Date.now() - t0 });
+      }
+      console.log('[ALERT_API] testIncludePublic=1 → on poursuit avec le blast public');
     }
 
     // -------------------------
@@ -280,6 +382,10 @@ async function handleSendPublicAlertByAddress(req, res) {
       otherErr: 0,
       attemptsTotal: 0,
       byCode: {},
+      // split transport
+      sentFCM: 0,
+      sentExpo: 0,
+      // samples limitées
       samples: { fatal: [], transient: [], other: [] }, // max 20 chacun
     };
 
@@ -314,6 +420,9 @@ async function handleSendPublicAlertByAddress(req, res) {
       console.warn('[ALERT_API] Sélection destinataires NON branchée → recipients=0');
     }
 
+    // Filtrer/normaliser: on garde les entrées ayant au moins 1 token (FCM ou Expo)
+    recipients = (recipients || []).filter((u) => !!(pickFcmToken(u) || pickExpoToken(u)));
+
     metrics.recipients = recipients.length;
     console.log('[ALERT_METRICS] selection', {
       alertId,
@@ -337,10 +446,11 @@ async function handleSendPublicAlertByAddress(req, res) {
         byCode: {},
         attemptsAvg: 0,
         successPct: 0,
+        sentFCM: 0,
+        sentExpo: 0,
         ms: ms0,
       };
       console.log('[ALERT_METRICS] summary', summary0);
-      // Audit minimal
       try {
         if (typeof auditPushBlastResult === 'function') {
           await auditPushBlastResult({
@@ -374,91 +484,235 @@ async function handleSendPublicAlertByAddress(req, res) {
 
     // -- Envoi batché (avec retry & métriques)
     const { title, body } = textsBySeverity(severity, local, '');
+
     for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
       const batch = recipients.slice(i, i + BATCH_SIZE);
 
       const results = await Promise.allSettled(
         batch.map(async (u) => {
-          const androidNotif = {
-            channelId: ANDROID_CHANNEL_ID,
-            ...(androidColor ? { color: androidColor } : {}),
-          };
-          const msg = {
-            token: u.token,
-            notification: { title, body },
-            android: {
-              priority: 'high',
-              ttl: DEFAULT_TTL_SECONDS * 1000,
-              notification: androidNotif,
-            },
-            data: {
-              type: 'alert_public',
-              alertId,
-              deepLink,
-              endereco: local,
-              bairro,
-              cidade,
-              uf,
-              cep,
-              severidade: severity,
-              color: accent,
-              radius_m: String(radiusM),
-              lat: String(lat),
-              lng: String(lng),
-              ack: '0',
-              channelId: ANDROID_CHANNEL_ID,
-              distancia: u.distance_m ? String(Math.round(u.distance_m)) : '',
-            },
-          };
-          const r = await sendWithRetry(u.token, msg, { max: 3 });
-          metrics.attemptsTotal += r.attempts || 1;
+          const fcmTok = pickFcmToken(u);
+          const expoTok = pickExpoToken(u);
 
-          if (r.ok) {
-            return { kind: 'sent' };
+          // Corps commun "data" (toujours)
+          const dataPayload = {
+            type: 'alert_public',
+            alertId,
+            deepLink,
+            endereco: local,
+            bairro,
+            cidade,
+            uf,
+            cep,
+            severidade: severity,
+            color: accent,
+            radius_m: String(radiusM),
+            lat: String(lat),
+            lng: String(lng),
+            ack: '1',
+            channelId: ANDROID_CHANNEL_ID,
+            distancia: u.distance_m ? String(Math.round(u.distance_m)) : '',
+          };
+
+          // 1) On privilégie FCM si disponible (Android-first)
+          if (fcmTok) {
+            const androidNotif = {
+              channelId: ANDROID_CHANNEL_ID,
+              ...(androidColor ? { color: androidColor } : {}),
+            };
+            const msg = {
+              token: fcmTok,
+              notification: { title, body },
+              android: {
+                priority: 'high',
+                ttl: DEFAULT_TTL_SECONDS * 1000,
+                notification: androidNotif,
+              },
+              data: dataPayload,
+            };
+            const r = await sendFCMWithRetry(fcmTok, msg, { max: 3 });
+            metrics.attemptsTotal += r.attempts || 1;
+            if (r.ok) {
+              metrics.sent += 1;
+              metrics.sentFCM += 1;
+              return { kind: 'sent', via: 'fcm' };
+            }
+
+            const code = r.code || 'unknown';
+            metrics.byCode[code] = (metrics.byCode[code] || 0) + 1;
+
+            if (r.transient) {
+              if (metrics.samples.transient.length < 20) {
+                metrics.samples.transient.push({
+                  token: maskToken(fcmTok),
+                  code,
+                  msg: r.msg?.slice(0, 120),
+                });
+              }
+              // Fallback Expo si dispo
+              if (expoTok) {
+                const rr = await sendExpoWithRetry(
+                  expoTok,
+                  {
+                    title,
+                    body,
+                    data: dataPayload,
+                    sound: 'default',
+                    priority: 'high',
+                    ttl: DEFAULT_TTL_SECONDS,
+                    channelId: ANDROID_CHANNEL_ID,
+                  },
+                  { max: 3 },
+                );
+                metrics.attemptsTotal += rr.attempts || 1;
+                if (rr.ok) {
+                  metrics.sent += 1;
+                  metrics.sentExpo += 1;
+                  return { kind: 'sent', via: 'expo-fallback' };
+                }
+                const c2 = rr.code || 'expo_unknown';
+                metrics.byCode[c2] = (metrics.byCode[c2] || 0) + 1;
+                if (metrics.samples.transient.length < 20) {
+                  metrics.samples.transient.push({
+                    token: maskToken(expoTok),
+                    code: c2,
+                    msg: rr.msg?.slice(0, 120),
+                  });
+                }
+              }
+              return { kind: 'transient', code };
+            }
+
+            if (r.fatal) {
+              if (enqueueDLQ && code === 'messaging/registration-token-not-registered') {
+                await enqueueDLQ({
+                  kind: 'alert_public',
+                  alertId,
+                  token: fcmTok,
+                  reason: r.msg || r.code,
+                });
+              }
+              if (metrics.samples.fatal.length < 20) {
+                metrics.samples.fatal.push({
+                  token: maskToken(fcmTok),
+                  code,
+                  msg: r.msg?.slice(0, 120),
+                });
+              }
+              // Fallback Expo si dispo
+              if (expoTok) {
+                const rr = await sendExpoWithRetry(
+                  expoTok,
+                  {
+                    title,
+                    body,
+                    data: dataPayload,
+                    sound: 'default',
+                    priority: 'high',
+                    ttl: DEFAULT_TTL_SECONDS,
+                    channelId: ANDROID_CHANNEL_ID,
+                  },
+                  { max: 3 },
+                );
+                metrics.attemptsTotal += rr.attempts || 1;
+                if (rr.ok) {
+                  metrics.sent += 1;
+                  metrics.sentExpo += 1;
+                  return { kind: 'sent', via: 'expo-fallback' };
+                }
+                const c2 = rr.code || 'expo_unknown';
+                metrics.byCode[c2] = (metrics.byCode[c2] || 0) + 1;
+                if (metrics.samples.fatal.length < 20) {
+                  metrics.samples.fatal.push({
+                    token: maskToken(expoTok),
+                    code: c2,
+                    msg: rr.msg?.slice(0, 120),
+                  });
+                }
+              }
+              return { kind: 'fatal', code };
+            }
+
+            // other (non transient/fatal)
+            if (metrics.samples.other.length < 20) {
+              metrics.samples.other.push({
+                token: maskToken(fcmTok),
+                code,
+                msg: r.msg?.slice(0, 120),
+              });
+            }
+            // Fallback Expo si dispo
+            if (expoTok) {
+              const rr = await sendExpoWithRetry(
+                expoTok,
+                {
+                  title,
+                  body,
+                  data: dataPayload,
+                  sound: 'default',
+                  priority: 'high',
+                  ttl: DEFAULT_TTL_SECONDS,
+                  channelId: ANDROID_CHANNEL_ID,
+                },
+                { max: 3 },
+              );
+              metrics.attemptsTotal += rr.attempts || 1;
+              if (rr.ok) {
+                metrics.sent += 1;
+                metrics.sentExpo += 1;
+                return { kind: 'sent', via: 'expo-fallback' };
+              }
+              const c2 = rr.code || 'expo_unknown';
+              metrics.byCode[c2] = (metrics.byCode[c2] || 0) + 1;
+              if (metrics.samples.other.length < 20) {
+                metrics.samples.other.push({
+                  token: maskToken(expoTok),
+                  code: c2,
+                  msg: rr.msg?.slice(0, 120),
+                });
+              }
+            }
+            return { kind: 'other', code };
           }
 
-          const code = r.code || 'unknown';
-          metrics.byCode[code] = (metrics.byCode[code] || 0) + 1;
-
-          if (r.transient) {
+          // 2) Pas de FCM → on tente Expo direct (si dispo)
+          if (expoTok) {
+            const rr = await sendExpoWithRetry(
+              expoTok,
+              {
+                title,
+                body,
+                data: dataPayload,
+                sound: 'default',
+                priority: 'high',
+                ttl: DEFAULT_TTL_SECONDS,
+                channelId: ANDROID_CHANNEL_ID,
+              },
+              { max: 3 },
+            );
+            metrics.attemptsTotal += rr.attempts || 1;
+            if (rr.ok) {
+              metrics.sent += 1;
+              metrics.sentExpo += 1;
+              return { kind: 'sent', via: 'expo-only' };
+            }
+            const code = rr.code || 'expo_unknown';
+            metrics.byCode[code] = (metrics.byCode[code] || 0) + 1;
             if (metrics.samples.transient.length < 20) {
               metrics.samples.transient.push({
-                token: maskToken(u.token),
+                token: maskToken(expoTok),
                 code,
-                msg: r.msg?.slice(0, 120),
+                msg: rr.msg?.slice(0, 120),
               });
             }
-            return { kind: 'transient', code };
+            return { kind: rr.fatal ? 'fatal' : 'transient', code };
           }
-          if (r.fatal) {
-            if (enqueueDLQ && code === 'messaging/registration-token-not-registered') {
-              await enqueueDLQ({
-                kind: 'alert_public',
-                alertId,
-                token: u.token,
-                reason: r.msg || r.code,
-              });
-            }
-            if (metrics.samples.fatal.length < 20) {
-              metrics.samples.fatal.push({
-                token: maskToken(u.token),
-                code,
-                msg: r.msg?.slice(0, 120),
-              });
-            }
-            return { kind: 'fatal', code };
-          }
-          if (metrics.samples.other.length < 20) {
-            metrics.samples.other.push({
-              token: maskToken(u.token),
-              code,
-              msg: r.msg?.slice(0, 120),
-            });
-          }
-          return { kind: 'other', code };
+
+          // Aucun token exploitable (ne devrait pas arriver à cause du filtre amont)
+          return { kind: 'other', code: 'no_usable_token' };
         }),
       );
 
+      // Agrégation résultats
       for (const rr of results) {
         if (rr.status !== 'fulfilled') {
           metrics.otherErr += 1;
@@ -466,8 +720,9 @@ async function handleSendPublicAlertByAddress(req, res) {
         }
         const k = rr.value?.kind;
         if (k === 'sent') {
-          metrics.sent += 1;
-        } else if (k === 'transient') {
+          metrics.sent += 0;
+        } // déjà incrémenté in-band
+        else if (k === 'transient') {
           metrics.transient += 1;
         } else if (k === 'fatal') {
           metrics.fatal += 1;
@@ -479,10 +734,13 @@ async function handleSendPublicAlertByAddress(req, res) {
       console.log('[ALERT_METRICS] batch', {
         i,
         sent: metrics.sent,
+        sentFCM: metrics.sentFCM,
+        sentExpo: metrics.sentExpo,
         transient: metrics.transient,
         fatal: metrics.fatal,
         otherErr: metrics.otherErr,
       });
+
       await new Promise((r) => setImmediate(r));
     }
 
@@ -500,6 +758,8 @@ async function handleSendPublicAlertByAddress(req, res) {
       geo: { lat, lng, radiusM },
       recipients: metrics.recipients,
       sent: metrics.sent,
+      sentFCM: metrics.sentFCM,
+      sentExpo: metrics.sentExpo,
       notSent,
       transient: metrics.transient,
       fatal: metrics.fatal,
@@ -541,18 +801,7 @@ async function handleSendPublicAlertByAddress(req, res) {
       console.warn('[ALERT_METRICS] audit_write_fail', String(e?.message || e));
     }
 
-    return res.status(200).json({
-      ok: true,
-      recipients: metrics.recipients,
-      sent: metrics.sent,
-      transient: metrics.transient,
-      fatal: metrics.fatal,
-      otherErr: metrics.otherErr,
-      byCode: metrics.byCode,
-      attemptsAvg,
-      successPct,
-      ms,
-    });
+    return res.status(200).json({ ok: true, ...summary });
   } catch (e) {
     console.error('[ALERT_API] FATAL', e?.stack || e?.message || e);
     return res.status(500).json({ ok: false, error: 'internal', detail: String(e?.message || e) });

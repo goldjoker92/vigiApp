@@ -15,11 +15,11 @@
 
 // ------- AJOUT: niveau global + anti-spam -------
 const _rank = { error: 0, warn: 1, info: 2, debug: 3, verbose: 4 };
-let _GLOBAL_LEVEL = typeof __DEV__ !== "undefined" && __DEV__ ? "info" : "warn";
-const _lastAt = new Map();   // throttle par clé
+let _GLOBAL_LEVEL = typeof __DEV__ !== 'undefined' && __DEV__ ? 'info' : 'warn';
+const _lastAt = new Map(); // throttle par clé
 const _lastHash = new Map(); // dédup par clé
 
-export function setMapLogLevel(level = "info") {
+export function setMapLogLevel(level = 'info') {
   _GLOBAL_LEVEL = level;
 }
 
@@ -30,14 +30,20 @@ function _should(level) {
 function _throttle(key, ms) {
   const now = Date.now();
   const prev = _lastAt.get(key) ?? 0;
-  if (now - prev < ms) { return true; } // skip
+  if (now - prev < ms) {
+    return true;
+  } // skip
   _lastAt.set(key, now);
   return false;
 }
 
 function _same(key, payload) {
   let h;
-  try { h = JSON.stringify(payload ?? ""); } catch { h = String(payload); }
+  try {
+    h = JSON.stringify(payload ?? '');
+  } catch {
+    h = String(payload);
+  }
   if (_lastHash.get(key) === h) {
     return true;
   }
@@ -60,19 +66,25 @@ export function createMapLogger(screen = 'MAP') {
 
   // Wrapper centralisé (niveau + throttle + dédup)
   const _log = (level, msg, obj, { throttleMs = 800 } = {}) => {
-    if (!_should(level)) { return; }
+    if (!_should(level)) {
+      return;
+    }
     const key = `${tag}:${level}:${msg}`;
-    if (_throttle(key, throttleMs)) { return; }
-    if (_same(key, obj ?? msg)) { return; }
+    if (_throttle(key, throttleMs)) {
+      return;
+    }
+    if (_same(key, obj ?? msg)) {
+      return;
+    }
 
     const line = `${tag} ${msg}`;
-    if (level === "error") {
+    if (level === 'error') {
       if (obj !== undefined) {
         console.error(line, obj);
       } else {
         console.error(line);
       }
-    } else if (level === "warn") {
+    } else if (level === 'warn') {
       if (obj !== undefined) {
         console.warn(line, obj);
       } else {
@@ -100,22 +112,26 @@ export function createMapLogger(screen = 'MAP') {
     }
   };
 
-  const info = (msg, obj) => _log("info", msg, obj);
-  const warn = (msg, obj) => _log("warn", `⚠️ ${msg}`, obj);
-  const err  = (msg, obj) => _log("error", `❌ ${msg}`, obj, { throttleMs: 200 }); // erreurs moins throttlées
+  const info = (msg, obj) => _log('info', msg, obj);
+  const warn = (msg, obj) => _log('warn', `⚠️ ${msg}`, obj);
+  const err = (msg, obj) => _log('error', `❌ ${msg}`, obj, { throttleMs: 200 }); // erreurs moins throttlées
 
   // ✅ Nouveau: 1 seul log d’entrée
   const enter = () => {
-    if (_entered) { return; }
+    if (_entered) {
+      return;
+    }
     _entered = true;
-    info("ENTER");
+    info('ENTER');
   };
 
   // ✅ Nouveau: 1 seul résumé quand tout est prêt
   const summaryOnce = (state) => {
-    if (_summarized) { return; }
+    if (_summarized) {
+      return;
+    }
     _summarized = true;
-    info("SUMMARY", state);
+    info('SUMMARY', state);
   };
 
   // Handlers prêts à l’emploi pour <MapView />
@@ -142,7 +158,7 @@ export function createMapLogger(screen = 'MAP') {
 
     if (!same) {
       _lastRegion = next;
-      _log("debug", `[EVENT] onRegionChangeComplete`, next); // sera throttlé + dédupliqué
+      _log('debug', `[EVENT] onRegionChangeComplete`, next); // sera throttlé + dédupliqué
     }
   };
 

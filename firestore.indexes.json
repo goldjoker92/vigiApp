@@ -1,11 +1,29 @@
 {
   "indexes": [
-    { "collectionGroup": "devices", "queryScope": "COLLECTION",
-      "fields": [ { "fieldPath": "active", "order": "ASCENDING" }, { "fieldPath": "lat", "order": "ASCENDING" } ] },
-    { "collectionGroup": "devices", "queryScope": "COLLECTION",
-      "fields": [ { "fieldPath": "active", "order": "ASCENDING" }, { "fieldPath": "cep", "order": "ASCENDING" } ] },
-    { "collectionGroup": "devices", "queryScope": "COLLECTION",
-      "fields": [ { "fieldPath": "active", "order": "ASCENDING" }, { "fieldPath": "city", "order": "ASCENDING" } ] }
+    {
+      "collectionGroup": "devices",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "active", "order": "ASCENDING" },
+        { "fieldPath": "lat", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "devices",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "active", "order": "ASCENDING" },
+        { "fieldPath": "cep", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "devices",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "active", "order": "ASCENDING" },
+        { "fieldPath": "city", "order": "ASCENDING" }
+      ]
+    }
   ],
   "fieldOverrides": []
 }

@@ -41,12 +41,12 @@ import { auth } from '../firebase';
 // ----------------------------------------------------------------------------
 // Logs homogènes
 // ----------------------------------------------------------------------------
-const log    = (...a) => console.log('[LAYOUT]', ...a);
-const warn   = (...a) => console.warn('[LAYOUT] ⚠️', ...a);
-const logN   = (...a) => console.log('[NOTIF]', ...a);
-const warnN  = (...a) => console.warn('[NOTIF] ⚠️', ...a);
-const logRC  = (...a) => console.log('[RC]', ...a);
-const errRC  = (...a) => console.error('[RC] ❌', ...a);
+const log = (...a) => console.log('[LAYOUT]', ...a);
+const warn = (...a) => console.warn('[LAYOUT] ⚠️', ...a);
+const logN = (...a) => console.log('[NOTIF]', ...a);
+const warnN = (...a) => console.warn('[NOTIF] ⚠️', ...a);
+const logRC = (...a) => console.log('[RC]', ...a);
+const errRC = (...a) => console.error('[RC] ❌', ...a);
 const logAds = (...a) => console.log('[ADS]', ...a);
 
 // Flag global pour éviter toute double init RC sur Fast Refresh
@@ -81,7 +81,7 @@ export default function Layout() {
   // Sélecteurs user / profil
   // -------------------------
   const storeUid = useUserStore((s) => s?.user?.uid);
-  const userCep  = useUserStore((s) => s?.user?.cep ?? s?.profile?.cep ?? null);
+  const userCep = useUserStore((s) => s?.user?.cep ?? s?.profile?.cep ?? null);
   const userCity = useUserStore((s) => s?.user?.cidade ?? s?.profile?.cidade ?? null);
 
   // UID effectif pour l’enregistrement device (Auth prioritaire sur store)
@@ -154,8 +154,8 @@ export default function Layout() {
         if (userId) {
           detachDevice = attachDeviceAutoRefresh({
             userId,
-            userCep,   // peut être null → normalisé côté orchestrateur
-            userCity,  // idem
+            userCep, // peut être null → normalisé côté orchestrateur
+            userCity, // idem
             groups: [], // optionnel
           });
           logN('Device auto-refresh attached ✅');

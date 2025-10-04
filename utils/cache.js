@@ -15,17 +15,29 @@ import { createLogger } from './logger';
 const log = createLogger('MAP:CACHE', { throttleMs: 1000 });
 
 // 🔇 Anti-bruit (mets à false si tu veux débug plus verbeux ponctuellement)
-const QUIET_HOT_HIT = true;   // coupe "GET HOT HIT"
-const QUIET_SET      = true;  // coupe "SET"
-const QUIET_READ_HIT = true;  // coupe "GET DISK HIT"
+const QUIET_HOT_HIT = true; // coupe "GET HOT HIT"
+const QUIET_SET = true; // coupe "SET"
+const QUIET_READ_HIT = true; // coupe "GET DISK HIT"
 
 // Store mémoire (hot)
 const mem = new Map(); // nkey -> { value, expiresAt }
-const NS  = (k) => `vigi:${k}`;
+const NS = (k) => `vigi:${k}`;
 
 const j = (v) => JSON.stringify(v);
-const p = (v, d = null) => { try { return JSON.parse(v); } catch { return d; } };
-const sizeOf = (x) => { try { return JSON.stringify(x).length; } catch { return -1; } };
+const p = (v, d = null) => {
+  try {
+    return JSON.parse(v);
+  } catch {
+    return d;
+  }
+};
+const sizeOf = (x) => {
+  try {
+    return JSON.stringify(x).length;
+  } catch {
+    return -1;
+  }
+};
 
 // (optionnel) résumé unique par clé utile pour sanity-check
 const summarized = new Set();
@@ -92,10 +104,14 @@ export async function cacheGet(key) {
 
   // 2) DISK
   const tKey = `[MAP:CACHE] read:${nkey}`;
-  if (__DEV__) { console.time(tKey); }
+  if (__DEV__) {
+    console.time(tKey);
+  }
   try {
     const raw = await AsyncStorage.getItem(nkey);
-    if (__DEV__) { console.timeEnd(tKey); }
+    if (__DEV__) {
+      console.timeEnd(tKey);
+    }
 
     if (!raw) {
       log.info('GET DISK MISS', { key: nkey });
@@ -124,7 +140,9 @@ export async function cacheGet(key) {
 
     return value;
   } catch (e) {
-    if (__DEV__) { console.timeEnd(tKey); }
+    if (__DEV__) {
+      console.timeEnd(tKey);
+    }
     log.warn('GET error', { key: nkey, err: e?.message || String(e) });
     return null;
   }
@@ -149,10 +167,14 @@ export async function cacheGetOrSet(key, ttlSec, producer) {
     return hit;
   }
   const label = `[MAP:CACHE] fill:${nkey}`;
-  if (__DEV__) { console.time(label); }
+  if (__DEV__) {
+    console.time(label);
+  }
   const val = await producer();
   await cacheSet(key, val, ttlSec);
-  if (__DEV__) { console.timeEnd(label); }
+  if (__DEV__) {
+    console.timeEnd(label);
+  }
   log.info('FILLED', { key: nkey, ttlSec, size: sizeOf(val) });
   return val;
 }

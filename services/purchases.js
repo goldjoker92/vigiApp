@@ -9,8 +9,8 @@
 import Purchases, { LOG_LEVEL } from 'react-native-purchases';
 import { retryAsync } from '../utils/safeTokens';
 
-let purchasesInstance = null;   // instance configurée (ou singleton v7)
-let configuring = null;         // promesse de config en cours (anti double-call)
+let purchasesInstance = null; // instance configurée (ou singleton v7)
+let configuring = null; // promesse de config en cours (anti double-call)
 
 // ---- Récup clé (ENV -> Expo extra) ----
 function getApiKey() {
@@ -30,8 +30,12 @@ function getApiKey() {
 
 // ---- Initialise (une seule fois) ----
 export async function initRevenueCat(appUserID = null) {
-  if (purchasesInstance) { return purchasesInstance; }
-  if (configuring) { return configuring; }
+  if (purchasesInstance) {
+    return purchasesInstance;
+  }
+  if (configuring) {
+    return configuring;
+  }
 
   const apiKey = getApiKey();
   if (!apiKey) {
@@ -59,8 +63,12 @@ export async function initRevenueCat(appUserID = null) {
 
 // ---- S’assure que RC est prêt avant d’appeler des méthodes ----
 async function ensureConfigured() {
-  if (purchasesInstance) { return purchasesInstance; }
-  if (configuring) { return configuring; }
+  if (purchasesInstance) {
+    return purchasesInstance;
+  }
+  if (configuring) {
+    return configuring;
+  }
   return initRevenueCat(); // appUserID optionnel, on ne le force pas ici
 }
 
@@ -72,7 +80,7 @@ export async function getCurrentOfferingWithRetry() {
       const offerings = await rc.getOfferings();
       return offerings?.current ?? null;
     },
-    { retries: 2, delay: 800 }
+    { retries: 2, delay: 800 },
   );
 }
 
@@ -84,7 +92,7 @@ export async function buyWithFallback(packageToBuy) {
       const { customerInfo } = await rc.purchasePackage(packageToBuy);
       return customerInfo;
     },
-    { retries: 1, delay: 1500 }
+    { retries: 1, delay: 1500 },
   );
 }
 
@@ -96,6 +104,6 @@ export async function restoreWithRetry() {
       const { customerInfo } = await rc.restorePurchases();
       return customerInfo;
     },
-    { retries: 2, delay: 1000 }
+    { retries: 2, delay: 1000 },
   );
 }
