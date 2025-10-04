@@ -1,5 +1,8 @@
 import '@testing-library/jest-native/extend-expect';
 
+// Ensure 'jest' is available in the global scope
+/* global jest */
+
 // Désactive les warnings Animated Native
 jest.mock('react-native/Libraries/Animated/NativeAnimatedHelper');
 
@@ -33,7 +36,11 @@ jest.mock('react-native-maps', () => {
 jest.mock('lucide-react-native', () => {
   const React = require('react');
   const { View } = require('react-native');
-  const make = (name) => (p) => React.createElement(View, { ...p, testID: name });
+  const make = (name) => {
+    const MockComponent = (p) => React.createElement(View, { ...p, testID: name });
+    MockComponent.displayName = name;
+    return MockComponent;
+  };
   return new Proxy({}, { get: (_, prop) => make(prop) });
 });
 

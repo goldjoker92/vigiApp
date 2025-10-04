@@ -35,7 +35,7 @@ export default function SideDrawer({ visible, onClose }) {
           style: 'destructive',
           onPress: handleLogout,
         },
-      ]
+      ],
     );
   };
 

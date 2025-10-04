@@ -6,7 +6,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, FlatList } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Bell, MapPin, Clock } from 'lucide-react-native';
-import usePublicAlerts24h, { timeLeft } from '@/app/public-alerts/parts/usePublicAlerts24h';
+import usePublicAlerts24h, { timeLeft } from '../../app/public-alerts/parts/usePublicAlerts24h';
 
 export default function PublicAlertsPreview({ limit = 3, containerStyle }) {
   const router = useRouter();

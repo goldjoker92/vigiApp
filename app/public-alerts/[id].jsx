@@ -1,81 +1,93 @@
 // app/public-alerts/[id].jsx
 // ---------------------------------------------------------
-// VigiApp — Alertas Públicas (FULL FIXED)
-// - Mapping Firestore flexible
-// - Map + bouton recentrage rouge (CORES.critico)
-// - Géoloc utilisateur + distance (evento ~ usuário) avec loader 3 points
-// - UI/UX alignée, labels 3 lignes, rien ne déborde
-// - Hooks toujours appelés (pas d’erreur "Rendered more hooks")
-// - Logs du flux (start/end, fetch, geo, map, distance)
+// VigiApp — Alertas Públicas (UI restaurée)
+// - Pin rouge + cercle de propagation (radius_m)
+// - Card sombre avec mêmes labels/icônes que ta version
+// - Adresse multi-lignes, date crééeAt -> DD/MM HH:mm (fallback date)
+// - Distance user↔incident + loader
+// - Bouton recentrage rouge, logs clairs
 // ---------------------------------------------------------
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { db } from '../../firebase';
+import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
+import * as Location from 'expo-location';
+import { useLocalSearchParams } from 'expo-router';
+import { doc, getDoc } from 'firebase/firestore';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View,
-  Text,
-  ScrollView,
-  StyleSheet,
+  Animated,
   Dimensions,
-  SafeAreaView,
+  Easing,
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  Animated,
-  Easing,
-} from "react-native";
-import MapView, { Marker, Circle } from "react-native-maps";
-import { MaterialCommunityIcons as Icon } from "@expo/vector-icons";
-import { useLocalSearchParams } from "expo-router";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "@/firebase";
-import * as Location from "expo-location";
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import MapView, { Circle, Marker } from 'react-native-maps';
 
-// ---------- responsive
-const { width: W } = Dimensions.get("window");
+const { width: W } = Dimensions.get('window');
 const scale = (s) => Math.round((W / 375) * s);
 
-// ---------- palette
-const CORES = {
-  bg: "#0E0F10",
-  card: "#1A1C1F",
-  text: "#E9ECF1",
-  sub: "#B8C0CC",
-  border: "#2A2E34",
-  vigi: "#28a745",
-  atencao: "#ffc107",
-  critico: "#dc3545", // rouge (Tipo & bouton recentrage)
-  neutro: "#6c757d",
+// Palette
+const C = {
+  bg: '#0E0F10',
+  card: '#17191C',
+  text: '#E9ECF1',
+  sub: '#AFB6C2',
+  border: '#2A2E34',
+  ok: '#28a745',
+  warn: '#ffc107',
+  danger: '#dc3545',
+  mute: '#6c757d',
 };
 
-// ---------- utils
-const isNum = (v) => typeof v === "number" && Number.isFinite(v);
+// --- utils
+const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 const safeCoord = (lat, lng) =>
   isNum(lat) && isNum(lng) ? { latitude: lat, longitude: lng } : null;
 
 const normalizeToDate = (v) => {
   try {
-    if (!v) {return null;}
-    if (v instanceof Date) {return v;}
-    if (typeof v?.toDate === "function") {return v.toDate();} // Firestore Timestamp
-    if (typeof v === "object" && "seconds" in v) {return new Date(v.seconds * 1000);}
-    if (typeof v === "number") {return new Date(v);}
-    if (typeof v === "string") {return new Date(v);}
+    if (!v) {
+      return null;
+    }
+    if (v instanceof Date) {
+      return v;
+    }
+    if (typeof v?.toDate === 'function') {
+      return v.toDate();
+    }
+    if (typeof v === 'object' && 'seconds' in v) {
+      return new Date(v.seconds * 1000);
+    }
+    if (typeof v === 'number') {
+      return new Date(v);
+    }
+    if (typeof v === 'string') {
+      return new Date(v);
+    }
     return null;
   } catch {
     return null;
   }
 };
 const pad = (n) => (n < 10 ? `0${n}` : `${n}`);
-const formatarData = (v) => {
-  const d = normalizeToDate(v);
-  if (!d || Number.isNaN(d.getTime())) {return "—";}
-  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(
-    d.getHours()
-  )}:${pad(d.getMinutes())}`;
+const fmtDate = (inp) => {
+  const d = normalizeToDate(inp);
+  if (!d || Number.isNaN(d.getTime())) {
+    return '—';
+  }
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
-function haversineMetros(lat1, lon1, lat2, lon2) {
-  if (![lat1, lon1, lat2, lon2].every(isNum)) {return NaN;}
+function haversineM(lat1, lon1, lat2, lon2) {
+  if (![lat1, lon1, lat2, lon2].every(isNum)) {
+    return NaN;
+  }
   const R = 6371000,
     toRad = (x) => (x * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1),
@@ -87,415 +99,263 @@ function haversineMetros(lat1, lon1, lat2, lon2) {
       Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(a));
 }
-const distanciaTexto = (u, a) => {
-  if (!u || !a) {return "—";}
-  const d = haversineMetros(u.latitude, u.longitude, a.latitude, a.longitude);
-  if (!isNum(d)) {return "—";}
+const distanciaTxt = (u, a) => {
+  if (!u || !a) {
+    return '—';
+  }
+  const d = haversineM(u.latitude, u.longitude, a.latitude, a.longitude);
+  if (!isNum(d)) {
+    return '—';
+  }
   return d < 1000 ? `${Math.round(d)} m` : `${(d / 1000).toFixed(1)} km`;
 };
 
-// ---------- mapping Firestore (flex)
-const pickTipo = (a) => a?.categoria || a?.categorias || a?.type || a?.tipo || "—";
-const pickEstado = (a) => a?.estado || a?.uf || a?.state || "—";
-const pickCidade = (a) => a?.cidade || a?.city || "—";
-const pickStatus = (a) => a?.status || a?.estadoStatus || "ativo";
-const pickGravidade = (a) => a?.gravidade || a?.gravidadeNivel || "médio";
-const pickCriadoEm = (a) => a?.createdAt || a?.date || a?.criadoEm || null;
-const pickDeclaracoes = (a) => a?.declaracoes || a?.declaracoesCount || a?.reportsCount || 1;
-
+// --- mapping Firestore (compatible avec tes champs existants)
+const pickTipo = (a) => a?.tipo || a?.categoria || a?.type || '—';
+const pickEstado = (a) => a?.uf || a?.estado || a?.state || '—';
+const pickCidade = (a) => a?.cidade || a?.city || '—';
+const pickCreated = (a) => a?.createdAt || a?.date || null;
+const pickReports = (a) =>
+  a?.reportsCount ?? a?.declaracoes ?? (a?.declarantsMap ? Object.keys(a.declarantsMap).length : 1);
 const pickCoords = (a) => {
-  const loc = a?.location;
-  const fromLoc = loc && safeCoord(loc.latitude, loc.longitude);
-  if (fromLoc) {return fromLoc;}
+  if (a?.location) {
+    return safeCoord(a.location.latitude, a.location.longitude);
+  }
   return safeCoord(a?.lat, a?.lng);
 };
 const buildEndereco = (a) => {
-  const full1 = a?.address || a?.endereco || a?.enderec || null;
-  if (full1 && typeof full1 === "string" && full1.trim()) {return full1.trim();}
-  const ruaNumero = a?.ruaNumero || null; // "Rua Seis de Março, 128"
-  const rua = a?.rua || a?.street || null;
-  const numero = a?.numero || a?.number || null;
-  const cidade = a?.cidade || a?.city || null;
-  const estado = a?.estado || a?.uf || null;
-  const cep = a?.cep || null;
-  const left = ruaNumero || [rua, numero].filter(Boolean).join(", ");
-  const right = [cidade && `${cidade}/${estado || ""}`.replace(/\/$/, ""), cep]
+  // priorité: `endereco`/`ruaNumero` si présent
+  if (typeof a?.endereco === 'string' && a.endereco.trim()) {
+    return a.endereco.trim();
+  }
+  if (typeof a?.ruaNumero === 'string' && a.ruaNumero.trim()) {
+    return a.ruaNumero.trim();
+  }
+  const rua = a?.rua || a?.street || '';
+  const numero = a?.numero || a?.number || '';
+  const left = [rua, numero].filter(Boolean).join(', ');
+  const right = [a?.cidade && `${a.cidade}/${a?.uf || a?.estado || ''}`.replace(/\/$/, ''), a?.cep]
     .filter(Boolean)
-    .join(" - ");
-  const final = [left, right].filter(Boolean).join(" - ").trim();
-  return final || "—";
+    .join(' - ');
+  const final = [left, right].filter(Boolean).join(' - ');
+  return final || '—';
 };
 
-// ---------- badges
-function BadgeStatus({ status }) {
-  const map = {
-    ativo: { label: "Ativo", bg: CORES.vigi },
-    resolvido: { label: "Resolvido", bg: CORES.neutro },
-    em_analise: { label: "Em análise", bg: CORES.atencao },
-  };
-  const s = map[status] || map.ativo;
-  return (
-    <View style={[estilos.badge, { backgroundColor: s.bg }]}>
-      <Text style={estilos.badgeText}>{s.label}</Text>
-    </View>
+// Rayon → deltas carte (pour bien voir le cercle)
+function radiusToDeltas(radiusM, lat) {
+  const R_LAT = 111000; // ~m par degré lat
+  const latDelta = Math.max(0.0025, (radiusM / R_LAT) * 2.2);
+  const lngDelta = Math.max(
+    0.0025,
+    latDelta / Math.max(0.25, Math.cos(((lat || 0) * Math.PI) / 180)),
   );
-}
-function BadgeGravidade({ nivel }) {
-  const map = {
-    baixo: { label: "Baixo", bg: CORES.vigi },
-    médio: { label: "Médio", bg: CORES.atencao },
-    alto: { label: "Alto", bg: CORES.critico },
-  };
-  const g = map[nivel] || map.médio;
-  return (
-    <View style={[estilos.badge, { backgroundColor: g.bg }]}>
-      <Text style={estilos.badgeText}>{g.label}</Text>
-    </View>
-  );
+  return { latitudeDelta: latDelta, longitudeDelta: lngDelta };
 }
 
-// ---------- Loader trois points
+// Loader 3 points
 function LoaderDots() {
-  const a1 = React.useRef(new Animated.Value(0)).current;
-  const a2 = React.useRef(new Animated.Value(0)).current;
-  const a3 = React.useRef(new Animated.Value(0)).current;
+  const dot0 = useRef(new Animated.Value(0));
+  const dot1 = useRef(new Animated.Value(0));
+  const dot2 = useRef(new Animated.Value(0));
+  const a = useMemo(() => [dot0.current, dot1.current, dot2.current], []);
 
   useEffect(() => {
-    const bounce = (val, delay) =>
+    a.forEach((val, i) => {
       Animated.loop(
         Animated.sequence([
           Animated.timing(val, {
             toValue: 1,
-            duration: 250,
+            duration: 230,
             easing: Easing.out(Easing.quad),
             useNativeDriver: true,
-            delay,
+            delay: i * 120,
           }),
           Animated.timing(val, {
             toValue: 0,
-            duration: 250,
+            duration: 230,
             easing: Easing.in(Easing.quad),
             useNativeDriver: true,
           }),
-        ])
+        ]),
       ).start();
-
-    bounce(a1, 0);
-    bounce(a2, 120);
-    bounce(a3, 240);
-  }, [a1, a2, a3]);
-
-  const dot = (val) => ({
-    transform: [
-      {
-        translateY: val.interpolate({
-          inputRange: [0, 1],
-          outputRange: [0, -5],
-        }),
-      },
-    ],
-    opacity: val.interpolate({
-      inputRange: [0, 1],
-      outputRange: [0.3, 1],
-    }),
-    color: CORES.sub,
+    });
+  }, [a]);
+  const dotStyle = (val) => ({
+    transform: [{ translateY: val.interpolate({ inputRange: [0, 1], outputRange: [0, -5] }) }],
+    opacity: val.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1] }),
+    color: C.sub,
     fontSize: scale(16),
     marginHorizontal: scale(1),
   });
-
   return (
-    <View
-      style={{
-        flexDirection: "row",
-        justifyContent: "flex-end",
-        alignItems: "center",
-      }}
-    >
-      <Animated.Text style={dot(a1)}>•</Animated.Text>
-      <Animated.Text style={dot(a2)}>•</Animated.Text>
-      <Animated.Text style={dot(a3)}>•</Animated.Text>
+    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+      <Animated.Text style={dotStyle(a[0])}>•</Animated.Text>
+      <Animated.Text style={dotStyle(a[1])}>•</Animated.Text>
+      <Animated.Text style={dotStyle(a[2])}>•</Animated.Text>
     </View>
   );
 }
 
-// ---------- Firestore
-async function fetchAlertaFirestore(alertId) {
-  console.log("[public-alerts/[id].jsx] START PAGE → id:", alertId);
-  console.time("[public-alerts/[id].jsx] FETCH");
-  const snap = await getDoc(doc(db, "publicAlerts", alertId));
-  console.timeEnd("[public-alerts/[id].jsx] FETCH");
+// --- Firestore
+async function fetchAlertDoc(id) {
+  console.log('[ALERT_PAGE] fetch', id);
+  const snap = await getDoc(doc(db, 'publicAlerts', id));
   if (!snap.exists()) {
-    console.warn(
-      "[public-alerts/[id].jsx] Firestore: aucun document pour id:",
-      alertId
-    );
+    console.warn('[ALERT_PAGE] not found', id);
     return null;
   }
   const data = { id: snap.id, ...snap.data() };
-  console.log("[public-alerts/[id].jsx] Firestore: données reçues:", data);
+  console.log('[ALERT_PAGE] data', data);
   return data;
 }
 
 // =========================================================
-export default function TelaAlertaPublica() {
-  const { id: alertId } = useLocalSearchParams();
+export default function PublicAlertPage() {
+  const { id } = useLocalSearchParams();
   const [raw, setRaw] = useState(null);
-  const [locUsuario, setLocUsuario] = useState(null);
+  const [userLoc, setUserLoc] = useState(null);
   const mapRef = useRef(null);
 
-  // 1) FETCH — hook toujours appelé
+  // fetch
   useEffect(() => {
-    console.time("[public-alerts/[id].jsx] PAGE LOAD");
     (async () => {
       try {
-        const data = await fetchAlertaFirestore(alertId);
-        setRaw(data);
+        const d = await fetchAlertDoc(id);
+        setRaw(d);
       } catch (e) {
-        console.error(
-          "[public-alerts/[id].jsx] ERREUR fetch:",
-          e?.message || e
-        );
-      } finally {
-        console.timeEnd("[public-alerts/[id].jsx] PAGE LOAD");
+        console.error('[ALERT_PAGE] fetch error', e?.message || e);
       }
     })();
-    return () => console.log("[public-alerts/[id].jsx] unmount → cleanup");
-  }, [alertId]);
+  }, [id]);
 
-  // 2) GEO — hook toujours appelé
+  // geoloc
   useEffect(() => {
     (async () => {
       try {
         console.log("[public-alerts/[id].jsx] geo: request permission");
         const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== "granted")
-          {return console.warn(
-            "[public-alerts/[id].jsx] geo: permission refusée"
-          );}
+        if (status !== 'granted') {
+          return;
+        }
         const { coords } = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
         });
-        const loc = { latitude: coords.latitude, longitude: coords.longitude };
-        console.log("[public-alerts/[id].jsx] geo: user coords:", loc);
-        setLocUsuario(loc);
+        setUserLoc({ latitude: coords.latitude, longitude: coords.longitude });
       } catch (e) {
-        console.error(
-          "[public-alerts/[id].jsx] geo error:",
-          e?.message || e
-        );
+        console.warn('[ALERT_PAGE] geo error', e?.message || e);
       }
     })();
   }, []);
 
-  // 3) MAPPING — sûr même si raw==null
-  const alerta = {
+  // mapping (safe même si raw null)
+  const alert = {
     tipo: pickTipo(raw || {}),
     endereco: buildEndereco(raw || {}),
     cidade: pickCidade(raw || {}),
     estado: pickEstado(raw || {}),
-    status: pickStatus(raw || {}),
-    gravidade: pickGravidade(raw || {}),
-    criadoEm: pickCriadoEm(raw || {}),
+    createdAt: pickCreated(raw || {}),
+    reports: pickReports(raw || {}),
     coords: pickCoords(raw || {}),
-    descricao: (raw && (raw.descricao || raw.description)) || "—",
-    declaracoes: pickDeclaracoes(raw || {}),
+    radiusM: Number(raw?.radius_m ?? raw?.radius ?? 1000),
+    descricao: (raw && (raw.descricao || raw.description)) || '—',
   };
 
-  // 4) HOOKS dérivés — avant tout return
-  const regiao = useMemo(() => {
-    if (!alerta.coords) {return null;}
-    const r = {
-      ...alerta.coords,
-      latitudeDelta: 0.004,
-      longitudeDelta: 0.004,
-    };
-    console.log("[public-alerts/[id].jsx] carte: REGIÃO calculada:", r);
-    return r;
-  }, [alerta.coords]);
-
-  useEffect(() => {
-    const u = locUsuario || null;
-    const i = alerta.coords || null;
-    if (u && i) {
-      const d = haversineMetros(u.latitude, u.longitude, i.latitude, i.longitude);
-      console.log("[public-alerts/[id].jsx] distance user↔incidente (m):", d);
-    } else {
-      console.log(
-        "[public-alerts/[id].jsx] distance non calculée — user:",
-        u,
-        " inc:",
-        i
-      );
+  // région carte
+  const region = useMemo(() => {
+    if (!alert.coords) {
+      return null;
     }
-  }, [
-    locUsuario,
-    alerta.coords,
-    locUsuario?.latitude,
-    locUsuario?.longitude,
-    alerta.coords?.latitude,
-    alerta.coords?.longitude,
-  ]);
+    const deltas = radiusToDeltas(alert.radiusM, alert.coords.latitude);
+    return { ...alert.coords, ...deltas };
+  }, [alert.coords, alert.radiusM]);
 
-  // 5) SKELETON (après TOUS les hooks)
+  // skeleton simple
   if (!raw) {
     return (
-      <SafeAreaView style={estilos.container}>
-        <View style={estilos.header}>
-          <Text style={estilos.titulo}>Alertas Públicas</Text>
-          <View style={estilos.badgeRow}>
-            <View style={[estilos.badge, { backgroundColor: CORES.neutro }]}>
-              <Text style={estilos.badgeText}>—</Text>
-            </View>
-            <View style={[estilos.badge, { backgroundColor: CORES.neutro }]}>
-              <Text style={estilos.badgeText}>—</Text>
-            </View>
-          </View>
+      <SafeAreaView style={S.container}>
+        <View style={S.header}>
+          <Text style={S.title}>Alertas Públicas</Text>
         </View>
-        <View style={[estilos.card, { marginTop: scale(14) }]}>
-          <View style={estilos.skelLine} />
-          <View style={[estilos.skelLine, { width: "70%" }]} />
+        <View style={[S.card, { marginTop: scale(12) }]}>
+          <View style={S.skel} />
+          <View style={[S.skel, { width: '60%' }]} />
         </View>
       </SafeAreaView>
     );
   }
 
-  // ========================================================= UI
-  const coordUsuario = locUsuario || null;
-  const coordIncidente = alerta.coords || null;
+  const distance = userLoc && alert.coords ? distanciaTxt(userLoc, alert.coords) : null;
 
   return (
-    <SafeAreaView style={estilos.container}>
+    <SafeAreaView style={S.container}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
       >
-        <ScrollView
-          contentInsetAdjustmentBehavior="automatic"
-          contentContainerStyle={{ paddingBottom: scale(24) }}
-        >
-          {/* Header */}
-          <View style={estilos.header}>
-            <Text style={estilos.titulo}>Alertas Públicas</Text>
-            <View style={estilos.badgeRow}>
-              <BadgeStatus status={alerta.status} />
-              <BadgeGravidade nivel={alerta.gravidade} />
-            </View>
+        <ScrollView contentContainerStyle={{ paddingBottom: scale(24) }}>
+          {/* header */}
+          <View style={S.header}>
+            <Text style={S.title}>Alertas Públicas</Text>
           </View>
 
-          {/* Map + bouton recentrage (rouge) */}
-          {regiao ? (
-            <View style={estilos.mapWrap}>
-              <MapView
-                ref={mapRef}
-                style={estilos.map}
-                initialRegion={regiao}
-                onMapReady={() =>
-                  console.log("[public-alerts/[id].jsx] carte: prête")
-                }
-              >
+          {/* Map + cercle propagation + bouton recentrage */}
+          {region ? (
+            <View style={S.mapWrap}>
+              <MapView ref={mapRef} style={S.map} initialRegion={region} pointerEvents="auto">
                 <Marker
-                  coordinate={regiao}
-                  title={alerta.tipo || "Incidente"}
+                  coordinate={alert.coords}
+                  title={alert.tipo || 'Incidente'}
+                  pinColor="red"
                 />
-                {coordUsuario && (
-                  <Marker
-                    coordinate={coordUsuario}
-                    title="Você"
-                    description="Sua localização"
-                    pinColor="#28a745"
-                  />
-                )}
                 <Circle
-                  center={regiao}
-                  radius={50}
-                  strokeWidth={1}
-                  strokeColor="rgba(220,53,69,0.6)"
-                  fillColor="rgba(220,53,69,0.18)"
+                  center={alert.coords}
+                  radius={alert.radiusM}
+                  strokeColor="rgba(255,0,0,0.85)"
+                  strokeWidth={2}
+                  fillColor="rgba(255,0,0,0.18)"
                 />
+                {userLoc && <Marker coordinate={userLoc} title="Você" pinColor={C.ok} />}
               </MapView>
               <Pressable
-                accessibilityRole="button"
-                onPress={() => {
-                  mapRef.current?.animateToRegion(regiao, 300);
-                  console.log("[public-alerts/[id].jsx] action: recentrer");
-                }}
-                style={({ pressed }) => [
-                  estilos.recenterBtn,
-                  pressed && { opacity: 0.85 },
-                ]}
+                onPress={() => mapRef.current?.animateToRegion(region, 300)}
+                style={({ pressed }) => [S.recenter, pressed && { opacity: 0.85 }]}
               >
-                <Icon name="crosshairs-gps" size={scale(18)} color={CORES.bg} />
+                <Icon name="crosshairs-gps" size={scale(18)} color={C.bg} />
               </Pressable>
             </View>
           ) : (
-            <View style={estilos.banner}>
-              <Icon name="map-marker-off" size={scale(18)} color={CORES.sub} />
-              <Text style={estilos.bannerText}>
-                Localização indisponível para este alerta.
-              </Text>
+            <View style={S.banner}>
+              <Icon name="map-marker-off" size={scale(18)} color={C.sub} />
+              <Text style={S.bannerText}>Localização indisponível para este alerta.</Text>
             </View>
           )}
 
-          {/* Détails */}
-          <View style={estilos.card}>
-            <Linha
-              label="🚨 Tipo"
-              valor={alerta.tipo}
-              cor={CORES.critico}
-              compact
-            />
-            <Linha
-              label="📍 Endereço"
-              valor={alerta.endereco}
-              cor={CORES.atencao}
+          {/* Détails – mêmes lignes que ton UI */}
+          <View style={S.card}>
+            <Row label="🚨  Tipo" value={alert.tipo} color={C.danger} />
+            <Row
+              label="📍  Endereço"
+              value={alert.endereco}
+              color={C.warn}
               multiline
-              extraGap={scale(12)}
+              extraGap={scale(10)}
             />
-            <Linha
-              label="🏙️ Cidade"
-              valor={alerta.cidade}
-              cor={CORES.vigi}
-              compact
+            <Row label="🏙️  Cidade" value={alert.cidade} color={C.ok} />
+            <Row label="🗺️  Estado" value={alert.estado} color={C.mute} />
+            <Row
+              label="📏  Distância"
+              value={distance || undefined}
+              valueNode={distance ? null : <LoaderDots />}
+              color={C.warn}
             />
-            <Linha
-              label="🗺️ Estado"
-              valor={alerta.estado}
-              cor={CORES.neutro}
-              compact
-            />
-            <Linha
-              label="📏 Distância (evento ~ usuário)"
-              valor={
-                coordUsuario && coordIncidente
-                  ? distanciaTexto(coordUsuario, coordIncidente)
-                  : null
-              }
-              valorNode={
-                coordUsuario && coordIncidente ? null : <LoaderDots />
-              }
-              cor={CORES.atencao}
-              compact
-            />
-            <Linha
-              label="🕒 Data & hora"
-              valor={formatarData(alerta.criadoEm)}
-              cor={CORES.vigi}
-              compact
-            />
-            <Linha
-              label="👥 Declarações"
-              valor={`${alerta.declaracoes}`}
-              cor={CORES.vigi}
-              compact
-            />
+            <Row label="🕒  Data & hora" value={fmtDate(alert.createdAt)} color={C.ok} />
+            <Row label="👥  Declarações" value={`${alert.reports}`} color={C.ok} />
           </View>
 
           {/* Description */}
-          <View style={estilos.card}>
-            <Text style={[estilos.cardTitle, { color: CORES.critico }]}>
-              Descrição
-            </Text>
-            <Text style={estilos.body}>{alerta.descricao}</Text>
+          <View style={S.card}>
+            <Text style={[S.cardTitle, { color: C.danger }]}>Descrição</Text>
+            <Text style={S.body}>{alert.descricao}</Text>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -503,86 +363,63 @@ export default function TelaAlertaPublica() {
   );
 }
 
-// ---------- sub-component (valorNode pour loader, extraGap pour décalage)
-function Linha({
-  label,
-  valor,
-  valorNode,
-  cor,
-  multiline = false,
-  compact = false,
-  extraGap = 0,
-}) {
+// sous-composant ligne (adresse multi-lignes, loader possible)
+function Row({ label, value, valueNode, color, multiline = false, extraGap = 0 }) {
   return (
-    <View style={[estilos.row, compact && estilos.rowCompact]}>
-      <Text
-        style={[estilos.rowLabel, { color: cor }]}
-        numberOfLines={3}
-        ellipsizeMode="clip"
-      >
+    <View style={S.row}>
+      <Text style={[S.rowLabel, { color }]} numberOfLines={3} ellipsizeMode="clip">
         {label}
       </Text>
-
-      {valorNode ? (
-        <View
-          style={{ flex: 1, alignItems: "flex-end", marginLeft: extraGap }}
-        >
-          {valorNode}
-        </View>
+      {valueNode ? (
+        <View style={{ flex: 1, alignItems: 'flex-end', marginLeft: extraGap }}>{valueNode}</View>
       ) : (
         <Text
           style={[
-            estilos.rowValue,
-            multiline && estilos.rowValueMultiline,
-            compact && estilos.rowValueCompact,
+            S.rowValue,
+            multiline && { textAlign: 'left', lineHeight: scale(20) },
             extraGap ? { marginLeft: extraGap } : null,
           ]}
         >
-          {valor}
+          {value ?? '—'}
         </Text>
       )}
     </View>
   );
 }
 
-// ---------- styles
-const estilos = StyleSheet.create({
-  container: { flex: 1, backgroundColor: CORES.bg },
-
+// styles
+const S = StyleSheet.create({
+  container: { flex: 1, backgroundColor: C.bg },
   header: {
     paddingHorizontal: scale(20),
     paddingTop: scale(16),
-    paddingBottom: scale(4),
-    alignItems: "center",
+    paddingBottom: scale(6),
+    alignItems: 'center',
   },
-  titulo: { color: CORES.vigi, fontSize: scale(24), fontWeight: "700" },
-  badgeRow: { flexDirection: "row", gap: scale(8), marginTop: scale(8) },
-
-  badge: { paddingHorizontal: scale(10), paddingVertical: scale(4), borderRadius: 999 },
-  badgeText: { color: "#081016", fontWeight: "800", fontSize: scale(12) },
+  title: { color: C.ok, fontSize: scale(24), fontWeight: '700' },
 
   mapWrap: {
     height: Math.max(scale(240), 220),
     borderRadius: scale(12),
-    overflow: "hidden",
+    overflow: 'hidden',
     marginHorizontal: scale(20),
     marginTop: scale(14),
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: CORES.border,
-    backgroundColor: CORES.card,
+    borderColor: C.border,
+    backgroundColor: C.card,
   },
   map: { flex: 1 },
-  recenterBtn: {
-    position: "absolute",
+  recenter: {
+    position: 'absolute',
     right: scale(12),
     bottom: scale(12),
-    backgroundColor: CORES.critico, // rouge
+    backgroundColor: C.danger,
     borderRadius: 999,
     paddingVertical: scale(8),
     paddingHorizontal: scale(10),
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "#D5D7DB",
-    shadowColor: "#000",
+    borderColor: '#D5D7DB',
+    shadowColor: '#000',
     shadowOpacity: 0.25,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 3 },
@@ -592,63 +429,44 @@ const estilos = StyleSheet.create({
   banner: {
     marginHorizontal: scale(20),
     marginTop: scale(14),
-    backgroundColor: CORES.card,
+    backgroundColor: C.card,
     borderRadius: scale(12),
     padding: scale(12),
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: CORES.border,
-    flexDirection: "row",
-    alignItems: "center",
+    borderColor: C.border,
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: scale(10),
   },
-  bannerText: { color: CORES.text, fontSize: scale(14), flex: 1 },
+  bannerText: { color: C.text, fontSize: scale(14), flex: 1 },
 
   card: {
-    backgroundColor: CORES.card,
+    backgroundColor: C.card,
     marginHorizontal: scale(20),
     marginTop: scale(12),
     borderRadius: scale(12),
     padding: scale(14),
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: CORES.border,
+    borderColor: C.border,
   },
-  cardTitle: {
-    color: CORES.text,
-    fontWeight: "700",
-    fontSize: scale(16),
-    marginBottom: scale(8),
-  },
+  cardTitle: { color: C.text, fontWeight: '700', fontSize: scale(16), marginBottom: scale(8) },
 
   row: {
-    flexDirection: "row",
-    alignItems: "flex-start",
+    flexDirection: 'row',
+    alignItems: 'flex-start',
     paddingVertical: scale(8),
-    gap: scale(14), // espace label/valeur augmenté
+    gap: scale(14),
   },
-  rowCompact: { alignItems: "center", minHeight: scale(28) },
-  rowLabel: {
-    fontSize: scale(14),
-    fontWeight: "700",
-    width: "50%", // élargi pour éviter la coupe de "Usuário"
-    color: CORES.sub,
-  },
-  rowValue: {
-    color: CORES.text,
-    fontSize: scale(14),
-    flex: 1,
-    textAlign: "right",
-    flexShrink: 1,
-  },
-  rowValueMultiline: { textAlign: "left", lineHeight: scale(20) },
-  rowValueCompact: { lineHeight: scale(18) },
+  rowLabel: { fontSize: scale(14), fontWeight: '700', width: '50%' },
+  rowValue: { color: C.text, fontSize: scale(14), flex: 1, textAlign: 'right', flexShrink: 1 },
 
-  body: { color: CORES.text, fontSize: scale(14), lineHeight: scale(20) },
+  body: { color: C.text, fontSize: scale(14), lineHeight: scale(20) },
 
-  skelLine: {
+  skel: {
     height: scale(12),
-    backgroundColor: "#22262c",
+    backgroundColor: '#22262c',
     borderRadius: 6,
     marginVertical: scale(6),
-    width: "85%",
+    width: '85%',
   },
 });

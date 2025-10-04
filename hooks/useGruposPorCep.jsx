@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { db } from '../firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { safeForEach } from '../utils/safeEach';
 
 /**
  * Retourne tous les groupes d’un CEP (en temps réel)
@@ -19,7 +20,7 @@ export function useGruposPorCep(cep) {
     const q = query(collection(db, 'groups'), where('cep', '==', cep));
     const unsub = onSnapshot(q, (snap) => {
       const arr = [];
-      snap.forEach((doc) => {
+      safeForEach(snap, (doc) => {
         const data = doc.data();
         arr.push({ id: doc.id, ...data });
       });

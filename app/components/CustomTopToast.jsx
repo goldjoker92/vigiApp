@@ -85,7 +85,7 @@ export default function CustomTopToast(props) {
           useNativeDriver: true,
         }).start();
       },
-      Math.max(0, duration - 180)
+      Math.max(0, duration - 180),
     );
 
     return () => clearTimeout(hide);

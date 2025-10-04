@@ -66,7 +66,7 @@ export default function VizinhosScreen() {
       (d) =>
         d.status === 'pending' &&
         d.volunteerId &&
-        (d.volunteerAccepted === undefined || d.volunteerAccepted === null)
+        (d.volunteerAccepted === undefined || d.volunteerAccepted === null),
     );
     if (demandeEnAttente) {
       setSelectedDemanda(demandeEnAttente);
@@ -138,7 +138,7 @@ export default function VizinhosScreen() {
         selectedDemanda.id,
         selectedDemanda.volunteerId,
         selectedDemanda.volunteerApelido,
-        true
+        true,
       );
       Toast.show({ type: 'success', text1: `Ajuda confirmada com sucesso!` });
       setConfirmModalVisible(false);

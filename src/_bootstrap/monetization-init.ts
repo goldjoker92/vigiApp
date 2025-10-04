@@ -29,7 +29,7 @@ async function initRevenueCat() {
     if (__DEV__) {
       Purchases.setLogLevel(LOG_LEVEL.DEBUG);
     }
-    await Purchases.configure({ apiKey, observerMode: false });
+    await Purchases.configure({ apiKey }); // Only pass supported properties
 
     const [offerings, info] = await Promise.all([
       Purchases.getOfferings(),

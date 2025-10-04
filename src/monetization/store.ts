@@ -6,8 +6,8 @@ type Offerings = any;
 type State = {
   proActive: boolean;
   offerings: Offerings | null;
-  setOfferings: (o: Offerings | null) => void;
-  applyCustomerInfo: (ci: CustomerInfo, entitlementId: string) => void;
+  setOfferings: (_o: Offerings | null) => void;
+  applyCustomerInfo: (_ci: CustomerInfo, _entitlementId: string) => void;
 };
 
 export const useMonetizationStore = create<State>((set) => ({

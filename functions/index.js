@@ -1,142 +1,139 @@
-/**
- * functions/index.js
- * -------------------------------------------------------------
- * Point d’entrée Functions (v2) — CommonJS
- * - Conserve la compat (exports existants)
- * - Init Firebase Admin (idempotent)
- * - Options globales (région, ressources)
- * - /ping de santé
- * - Lazy-load HTTP handlers (réduit le cold start)
- * - IMPORTANT: export direct des TRIGGERS (pas de lazy wrapper)
- * -------------------------------------------------------------
- */
+// functions/index.js
+// ============================================================================
+// VigiApp — Functions "default" (alerts, jobs, ACK)
+// Point d’entrée du codebase: alertes publiques + maintenance + ACK
+// - Options globales cohérentes
+// - Logger JSON uniforme
+// - safeRequire tolérant (src/ -> racine, variantes .cjs)
+// ============================================================================
 
-const { onRequest } = require('firebase-functions/v2/https');
-const { setGlobalOptions } = require('firebase-functions/v2');
-const admin = require('firebase-admin');
-
-// ---------- Healthcheck minimal (toujours dispo, pas de lazy-load) ----------
-exports.ping = onRequest((req, res) => {
-  const ts = Date.now();
-  console.log('[PING] ok', { ts, method: req.method, path: req.path });
-  res.status(200).json({ ok: true, ts });
-});
-
-// ---------- Initialisation Firebase Admin (idempotente) ----------
-try {
-  admin.initializeApp();
-  console.log('[BOOT] Firebase Admin initialisé');
-} catch (e) {
-  // Sous Functions, un double chargement peut se produire; on log sans casser.
-  console.warn('[BOOT] Firebase Admin déjà initialisé ?', e?.message || e);
-}
-
-// ---------- Options globales Functions v2 ----------
-const REGION = process.env.FUNCTIONS_REGION || 'southamerica-east1';
-const MAX_INSTANCES = Number(process.env.FUNCTIONS_MAX_INSTANCES || 10);
+const { setGlobalOptions } = require('firebase-functions/v2/options');
 
 setGlobalOptions({
-  region: REGION,
-  maxInstances: MAX_INSTANCES,
-  // memoryMiB: 256, // décommente si besoin
-  // timeoutSeconds: 60, // décommente si besoin
+  region: 'southamerica-east1',
+  cors: true,
+  timeoutSeconds: 60,
+  memory: '256MiB',
+  concurrency: 40,
 });
 
-console.log('[BOOT] Functions v2 configurées', {
-  region: REGION,
-  maxInstances: MAX_INSTANCES,
-  node: process.version,
-  env: {
-    FIREBASE_CONFIG: !!process.env.FIREBASE_CONFIG,
-    GCLOUD_PROJECT: process.env.GCLOUD_PROJECT,
-    FUNCTIONS_EMULATOR: !!process.env.FUNCTIONS_EMULATOR,
-  },
-});
+// Logger JSON uniforme
+function log(level, msg, extra = {}) {
+  const line = { ts: new Date().toISOString(), service: 'functions-default', level, msg, ...extra };
+  const text = JSON.stringify(line);
+  if (level === 'error') { console.error(text); }
+  else if (level === 'warn') { console.warn(text); }
+  else { console.log(text); }
+}
 
-// ============================================================================
-// L A Z Y   E X P O R T S  (HTTP UNIQUEMENT)
-// ----------------------------------------------------------------------------
-// Chaque export HTTP est un petit wrapper qui require le module au moment du call.
-// Avantages :
-//  - Cold start plus léger (pas de chargement massif au boot).
-//  - Isolation claire des responsabilités (src/*).
-// NB: Ne PAS utiliser ce pattern pour les triggers event-driven.
-// ============================================================================
+log('info', 'Loaded codebase: default');
 
-// ---------- Maintenance / purge ----------
-exports.purgeAndArchiveOldRequestsAndChats = (...args) => {
-  console.log('[LAZY-LOAD] ./src/purge -> purgeAndArchiveOldRequestsAndChats');
-  const { purgeAndArchiveOldRequestsAndChats } = require('./src/purge');
-  return purgeAndArchiveOldRequestsAndChats(...args);
-};
+// ---------------------------------------------------------------------------
+// Require helper avec fallback (src/ -> racine), tolère .js et .cjs
+// ---------------------------------------------------------------------------
+function safeRequire(paths, exportName = null, required = true) {
+  let mod = null;
+  let lastErr = null;
 
-// ---------- Public alerts par CEP (HTTP) ----------
-exports.sendPublicAlertByCEP = (...args) => {
-  console.log('[LAZY-LOAD] ./src/pushPublic -> sendPublicAlertByCEP');
-  const { sendPublicAlertByCEP } = require('./src/pushPublic');
-  return sendPublicAlertByCEP(...args);
-};
+  for (const p of paths) {
+    try {
+      const m = require(p);
+      mod = exportName ? m?.[exportName] : m;
+      if (!mod) { throw new Error(`Export "${exportName}" introuvable dans ${p}`); }
+      log('info', 'Module loaded', { path: p, exportName: exportName || '(module)' });
+      return mod;
+    } catch (e) {
+      lastErr = e;
+      log('warn', 'Module load failed, try next', { pathTried: p, error: String(e?.message || e) });
+    }
+  }
 
-// ---------- Private alerts par groupe (HTTP) ----------
-exports.sendPrivateAlertByGroup = (...args) => {
-  console.log('[LAZY-LOAD] ./src/pushPrivate -> sendPrivateAlertByGroup');
-  const { sendPrivateAlertByGroup } = require('./src/pushPrivate');
-  return sendPrivateAlertByGroup(...args);
-};
+  if (required) {
+    log('error', 'All module paths failed', { exportName, paths, error: String(lastErr?.message || lastErr) });
+    throw lastErr || new Error(`Cannot load ${exportName || 'module'}`);
+  }
 
-// ---------- Test FCM (HTTP) ----------
-exports.testFCM = (...args) => {
-  console.log('[LAZY-LOAD] ./src/test -> testFCM');
-  const { testFCM } = require('./src/test');
-  return testFCM(...args);
-};
+  log('warn', 'Optional module not loaded', { exportName, paths });
+  return null;
+}
 
-// ---------- Public alerts par adresse (HTTP) ----------
-exports.sendPublicAlertByAddress = (...args) => {
-  console.log('[LAZY-LOAD] ./src/pushPublic -> sendPublicAlertByAddress');
-  const { sendPublicAlertByAddress } = require('./src/pushPublic');
-  return sendPublicAlertByAddress(...args);
-};
+// ---------------------------------------------------------------------------
+// Exports — Public Alerts
+// ---------------------------------------------------------------------------
+try {
+  const sendPublicAlertByAddress = safeRequire(
+    [
+      './src/sendPublicAlertByAddress',
+      './sendPublicAlertByAddress',
+      './src/sendPublicAlertByAddress.cjs',
+      './sendPublicAlertByAddress.cjs',
+    ],
+    'sendPublicAlertByAddress',
+    true
+  );
+  exports.sendPublicAlertByAddress = sendPublicAlertByAddress;
+  log('info', 'Function exported', { fn: 'sendPublicAlertByAddress' });
+} catch (e) {
+  log('error', 'Export failed', { fn: 'sendPublicAlertByAddress', error: String(e?.message || e) });
+  throw e; // fail fast
+}
 
-// ---------- Public alerts générique (HTTP) ----------
-exports.sendPublicAlert = (...args) => {
-  console.log('[LAZY-LOAD] ./src/pushPublic -> sendPublicAlert');
-  const { sendPublicAlert } = require('./src/pushPublic');
-  return sendPublicAlert(...args);
-};
+// ---------------------------------------------------------------------------
+// Exports — ACK (réception / tap) des alertes publiques
+// ---------------------------------------------------------------------------
+try {
+  const ackPublicAlertReceipt = safeRequire(
+    [
+      './src/ackPublicAlert',
+      './ackPublicAlert',
+      './src/ackPublicAlert.cjs',
+      './ackPublicAlert.cjs',
+    ],
+    'ackPublicAlertReceipt',
+    true
+  );
+  exports.ackPublicAlertReceipt = ackPublicAlertReceipt;
+  log('info', 'Function exported', { fn: 'ackPublicAlertReceipt' });
+} catch (e) {
+  log('error', 'Export failed', { fn: 'ackPublicAlertReceipt', error: String(e?.message || e) });
+  throw e; // fail fast
+}
 
-// ---------- NEW: Footprints (HTTP) ----------
-exports.getAlertFootprints = (...args) => {
-  console.log('[LAZY-LOAD] ./src/footprints -> getAlertFootprints');
-  const { getAlertFootprints } = require('./src/footprints');
-  return getAlertFootprints(...args);
-};
+// ---------------------------------------------------------------------------
+// Exports — Maintenance (non bloquant si absent)
+// ---------------------------------------------------------------------------
+try {
+  const maintModule = safeRequire(
+    [
+      './src/maintenance',
+      './maintenance',
+      './src/maintenance.cjs',
+      './maintenance.cjs',
+    ],
+    null,
+    false
+  );
 
-// ============================================================================
-// T R I G G E R S   (E X P O R T   D I R E C T)
-// ----------------------------------------------------------------------------
-// IMPORTANT: Les triggers doivent être exportés DIRECTEMENT pour que la
-// plateforme puisse les enregistrer au chargement du module.
-// Pas de lazy wrapper ici.
-// ============================================================================
+  if (maintModule?.purgeStaleDevices) {
+    exports.purgeStaleDevices = maintModule.purgeStaleDevices;
+  }
+  if (maintModule?.cleanupDeadTokens) {
+    exports.cleanupDeadTokens = maintModule.cleanupDeadTokens;
+  }
 
-// ---------- NEW: Trigger Firestore (fan-out 1 km) ----------
-// - onDocumentCreated('publicAlerts/{alertId}')
-// - Sélection ≤ 1 km (geohash bbox + Haversine)
-// - Envoi FCM multicast
-// - Log de diffusion -> collection alertDeliveries
-// NB: Le trigger est créé dans ./src/alerts et exporté tel quel ici.
-exports.fanoutPublicAlert = require('./src/alerts').fanoutPublicAlert;
+  if (maintModule?.purgeStaleDevices || maintModule?.cleanupDeadTokens) {
+    log('info', 'Functions exported', {
+      fns: [
+        maintModule?.purgeStaleDevices ? 'purgeStaleDevices' : null,
+        maintModule?.cleanupDeadTokens ? 'cleanupDeadTokens' : null,
+      ].filter(Boolean),
+    });
+  } else {
+    log('warn', 'Maintenance module loaded but no exports found', {});
+  }
+} catch (e) {
+  log('warn', 'Maintenance exports failed (non-blocking)', { error: String(e?.message || e) });
+}
 
-// ---------- Fin de déclaration ----------
-console.log('[BOOT] Endpoints déclarés:', {
-  ping: true,
-  purgeAndArchiveOldRequestsAndChats: true,
-  sendPublicAlertByCEP: true,
-  sendPrivateAlertByGroup: true,
-  testFCM: true,
-  sendPublicAlertByAddress: true,
-  sendPublicAlert: true,
-  getAlertFootprints: true,
-  fanoutPublicAlert: true, // trigger Firestore (export direct)
-});
+// Sanity: liste finale des exports actifs
+log('info', 'Exports ready', { fns: Object.keys(exports) });

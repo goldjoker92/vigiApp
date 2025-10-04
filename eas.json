@@ -1,11 +1,16 @@
 {
-  "cli": { "version": ">= 12.0.0", "appVersionSource": "remote" },
+  "cli": { "version": ">= 13.2.0", "appVersionSource": "remote" },
   "build": {
     "development": {
       "developmentClient": true,
       "distribution": "internal",
       "channel": "dev",
-      "android": { "buildType": "apk", "image": "sdk-53" },
+      "resourceClass": "large",
+      "android": {
+        "buildType": "apk",
+        "image": "sdk-53",
+        "credentialsSource": "remote"
+      },
       "node": "20.19.4",
       "env": {
         "NODE_VERSION": "20.19.4",
@@ -14,9 +19,15 @@
       }
     },
     "preview": {
+      "autoIncrement": true,
       "distribution": "internal",
       "channel": "preview",
-      "android": { "buildType": "apk", "image": "sdk-53" },
+      "resourceClass": "large",
+      "android": {
+        "buildType": "apk",
+        "image": "sdk-53",
+        "credentialsSource": "remote"
+      },
       "node": "20.19.4",
       "env": {
         "NODE_VERSION": "20.19.4",
@@ -30,7 +41,8 @@
       "channel": "production",
       "android": {
         "buildType": "app-bundle",
-        "image": "sdk-53"
+        "image": "sdk-53",
+        "credentialsSource": "remote"
       },
       "node": "20.19.4",
       "env": {
@@ -41,6 +53,8 @@
     }
   },
   "submit": {
-    "production": { "android": { "track": "production" } }
+    "production": {
+      "android": { "track": "production" }
+    }
   }
 }

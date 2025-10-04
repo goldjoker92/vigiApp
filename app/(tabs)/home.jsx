@@ -1,16 +1,15 @@
 // app/(tabs)/home.jsx
 // -------------------------------------------------------------
-// HomeScreen
-// - Garde tout ce que tu avais (météo, groupes, etc.)
-// - Ajoute l'aperçu "Últimos alertas (24h)" (PublicAlertsPreview)
-// - Si on vient d'une notification (fromNotif=1&alertId=...):
-//     • Affiche un bandeau InlineAlertHighlight (CTA "Ver detalhes")
-//     • Scroll en douceur vers la section alertes (pas d'empilement de scroll)
-// - Code commenté en FR, UI en pt-BR
+// HomeScreen — version stable (sans régression UI/UX)
+// - Météo en premier (WeatherCard)
+// - Hub Rápido monté en différé (InteractionManager) → pas visible au boot
+// - Bandeau InlineAlertHighlight si fromNotif & alertId
+// - Scroll doux vers la section "Últimos alertas (24h)" si fromNotif
+// - Groupes : carte du groupe courant + carrousel des groupes dispos
+// - Logs modérés pour debug terrain (préfixe [Home])
 // -------------------------------------------------------------
 
 import React, { useEffect, useRef, useState } from 'react';
-
 import {
   Animated,
   View,
@@ -21,23 +20,28 @@ import {
   Platform,
   KeyboardAvoidingView,
   ActivityIndicator,
+  InteractionManager,
 } from 'react-native';
+
+import { useRouter, useLocalSearchParams, Link } from 'expo-router';
+import { FontAwesome, Feather, MaterialIcons } from '@expo/vector-icons';
+import { PlusCircle } from 'lucide-react-native';
+
+import Toast from 'react-native-toast-message';
+
 import { useUserStore } from '../../store/users';
 import { useGrupoDetails } from '../../hooks/useGrupoDetails';
 import { useGruposPorCep } from '../../hooks/useGruposPorCep';
-import { PlusCircle } from 'lucide-react-native';
-import { FontAwesome, Feather, MaterialIcons } from '@expo/vector-icons';
-import { useRouter, useLocalSearchParams, Link } from 'expo-router';
-import WeatherCard from '../components/WeatherCard';
 import { useUserGroupEffect } from '../../hooks/useUserGroupEffect';
-import Toast from 'react-native-toast-message';
-import AvailableGroupsCarousel from '../components/AvailableGroupsCarousel';
 
-// ✅ Nouveautés
+// Cartes / composants
+import WeatherCard from '../components/WeatherCard';
+import HubRapidoCard from '../components/HubRapidoCard';
 import PublicAlertsPreview from '../components/PublicAlertsPreview';
 import InlineAlertHighlight from '../components/InlineAlertHighlight';
+import AvailableGroupsCarousel from '../components/AvailableGroupsCarousel';
 
-// ---- Skeleton animé (inchangé)
+// ---- Skeleton animé léger (inchangé)
 function AnimatedSkeletonLine({ style, delay = 0 }) {
   const opacity = useRef(new Animated.Value(0.5)).current;
   useEffect(() => {
@@ -45,7 +49,7 @@ function AnimatedSkeletonLine({ style, delay = 0 }) {
       Animated.sequence([
         Animated.timing(opacity, { toValue: 1, duration: 600, delay, useNativeDriver: true }),
         Animated.timing(opacity, { toValue: 0.5, duration: 600, useNativeDriver: true }),
-      ])
+      ]),
     ).start();
   }, [delay, opacity]);
   return <Animated.View style={[style, { opacity }]} />;
@@ -80,22 +84,37 @@ function getCriador(grupo, user) {
   return 'Desconhecido';
 }
 
+const log = (...a) => console.log('[Home]', ...a);
+
 export default function HomeScreen() {
+  const router = useRouter();
   const { groupId, user, isGroupLoading } = useUserStore();
+
   const { grupo, loading: loadingGrupo } = useGrupoDetails(groupId);
   const { grupos, loading: loadingGrupos } = useGruposPorCep(user?.cep);
-  const router = useRouter();
-  console.log('[DEBUG][HomeScreen] Zustand user:', useUserStore.getState().user);
 
+  // Effet groupe (comme avant)
   useUserGroupEffect();
 
-  // ✅ On capte les params passés par la notif (libs/notifications.js)
+  // Params éventuels (depuis notif)
   const { quitGroup, fromNotif, alertId } = useLocalSearchParams();
 
-  // ✅ Réfs pour gérer le scroll doux vers la section alertes (pas d'empilement)
+  // Réf scroll + ancre section alertes
   const scrollRef = useRef(null);
   const [alertsSectionY, setAlertsSectionY] = useState(null);
 
+  // Hub différé (pas au boot → la météo garde la scène)
+  const [showHub, setShowHub] = useState(false);
+  useEffect(() => {
+    const task = InteractionManager.runAfterInteractions(() => {
+      // petit délai pour laisser WeatherCard sortir de son skeleton
+      const t = setTimeout(() => setShowHub(true), 700);
+      return () => clearTimeout(t);
+    });
+    return () => task?.cancel && task.cancel();
+  }, []);
+
+  // Toast si sortie de groupe
   useEffect(() => {
     if (quitGroup) {
       Toast.show({
@@ -107,14 +126,26 @@ export default function HomeScreen() {
     }
   }, [quitGroup]);
 
-  // --- GROUPES DISPOS À REJOINDRE (pas déjà membre)
+  // Scroll doux vers les alertes si on vient d'une notif
+  useEffect(() => {
+    if (fromNotif && alertsSectionY !== null && scrollRef.current?.scrollTo) {
+      log('fromNotif → smooth scroll to alerts at Y =', alertsSectionY);
+      const t = setTimeout(() => {
+        const y = Math.max(0, alertsSectionY - 12);
+        scrollRef.current.scrollTo({ y, animated: true });
+      }, 350);
+      return () => clearTimeout(t);
+    }
+  }, [fromNotif, alertsSectionY]);
+
+  // Groupes dispo (pas déjà membre)
   const outrosGrupos = (grupos || []).filter(
     (g) =>
       !(g.membersIds || []).includes(user?.id || user?.uid) &&
-      (g.members?.length || 0) < (g.maxMembers || 30)
+      (g.members?.length || 0) < (g.maxMembers || 30),
   );
 
-  // ---- Salutation dynamique
+  // Salutation dynamique (pt-BR)
   const horaBrasil = new Date().toLocaleTimeString('pt-BR', {
     hour: '2-digit',
     hour12: false,
@@ -127,33 +158,17 @@ export default function HomeScreen() {
   } else if (hora >= 18 || hora < 6) {
     saudacao = 'Boa noite';
   }
-
   const nome = user?.apelido || user?.username || 'Cidadão';
 
-  // ✅ Scroll automatique (doux) vers la section "Últimos alertas (24h)" si fromNotif
-  useEffect(() => {
-    if (fromNotif && alertsSectionY !== null && scrollRef.current?.scrollTo) {
-      console.log('[Home] fromNotif detected, smooth scroll to alerts at Y=', alertsSectionY);
-      const t = setTimeout(() => {
-        const y = Math.max(0, alertsSectionY - 12);
-        scrollRef.current.scrollTo({ y, animated: true });
-      }, 350); // on laisse le temps de peindre
-      return () => clearTimeout(t);
-    }
-  }, [fromNotif, alertsSectionY]);
-
-  // --- Loader user pas chargé
+  // Loaders
   if (!user) {
-    console.log('[DEBUG][HomeScreen] Zustand user:', useUserStore.getState().user);
-    console.trace();
-
+    log('user not ready → spinner');
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color="#00C859" />
       </View>
     );
   }
-  // --- Loader groupe loading
   if (isGroupLoading) {
     return <GroupSkeleton />;
   }
@@ -168,28 +183,32 @@ export default function HomeScreen() {
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}
       >
+        {/* Titre */}
         <Text style={styles.greeting}>
           {saudacao}, <Text style={styles.username}>{nome}</Text> 👋
         </Text>
 
-        {/* Météo (existant) */}
-        <WeatherCard cep={user?.cep} />
+        {/* 1) Météo — toujours en premier */}
+        <WeatherCard cep={user?.cep} showScrollHint />
 
-        {/* ✅ Bandeau si on vient d'une notif (pour minor/medium routées vers Home) */}
+        {/* 2) Hub Rápido — monté en différé (pas visible au démarrage) */}
+        {showHub ? <HubRapidoCard /> : null}
+
+        {/* 3) Bandeau si retour d’une notif (minor/medium routées vers Home) */}
         {fromNotif && alertId ? (
           <InlineAlertHighlight
             color="#FF3B30"
-            endereco={undefined /* tu peux charger le doc ici si tu veux afficher la rua/cidade */}
+            endereco={undefined /* charge le doc si tu veux afficher rua/cidade */}
             onPress={() => router.push(`/public-alerts/${alertId}`)}
           />
         ) : null}
 
-        {/* ✅ Section: Últimos alertas (24h) — preview (pas de scroll interne) */}
+        {/* 4) Últimos alertas (24h) — ancrage pour le scroll depuis notif */}
         <View onLayout={(e) => setAlertsSectionY(e.nativeEvent.layout.y)}>
           <PublicAlertsPreview />
         </View>
 
-        {/* --- PAS DE GROUPE --- */}
+        {/* 5) Groupe courant ou CTA créer groupe */}
         {!groupId && !loadingGrupo ? (
           <View style={styles.infoBox}>
             <Text style={{ color: '#bbb', fontSize: 16, marginBottom: 12, textAlign: 'center' }}>
@@ -207,12 +226,14 @@ export default function HomeScreen() {
           >
             <Text style={styles.groupTitle}>Seu grupo de vizinhança</Text>
             <Text style={styles.groupName}>{grupo.name}</Text>
+
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
               <MaterialIcons name="person-pin" size={18} color="#00C859" />
               <Text style={{ color: '#eee', fontSize: 15, marginLeft: 6 }}>
                 Criador : {getCriador(grupo, user)}
               </Text>
             </View>
+
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Feather name="map-pin" size={16} color="#60a5fa" />
               <Text style={{ color: '#eee', fontSize: 14, marginLeft: 4 }}>{grupo.cep}</Text>
@@ -222,14 +243,16 @@ export default function HomeScreen() {
                 {grupo.members?.length || 0} / {grupo.maxMembers || 30} vizinhos
               </Text>
             </View>
+
+            {/* zone démo / pub – inchangée */}
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-              <Text>pub</Text>
+              <Text style={{ color: '#9aa3ad', marginTop: 10, marginBottom: 4 }}>pub</Text>
               <Link href="/test-ads">Voir la bannière AdMob (test)</Link>
             </View>
           </TouchableOpacity>
         ) : null}
 
-        {/* --- GROUPES À REJOINDRE --- */}
+        {/* 6) Groupes à rejoindre */}
         <AvailableGroupsCarousel groups={outrosGrupos} loading={loadingGrupos} />
       </ScrollView>
     </KeyboardAvoidingView>
@@ -238,7 +261,9 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#181A20' },
+
   container: { backgroundColor: '#181A20', padding: 18, paddingBottom: 120 },
+
   greeting: {
     color: '#fff',
     fontSize: 27,
@@ -248,6 +273,8 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   username: { color: '#00C859', fontWeight: '900' },
+
+  // Carte groupe
   groupCard: {
     backgroundColor: '#202228',
     borderRadius: 15,
@@ -260,6 +287,8 @@ const styles = StyleSheet.create({
   },
   groupTitle: { color: '#6cffe5', fontWeight: 'bold', fontSize: 17, marginBottom: 4 },
   groupName: { color: '#00C859', fontWeight: '900', fontSize: 21, marginBottom: 3 },
+
+  // Boîte "aucun groupe"
   infoBox: {
     marginTop: 30,
     alignItems: 'center',
@@ -292,6 +321,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     flex: 1,
   },
+
+  // Skeleton groupe
   skeletonCard: {
     backgroundColor: '#23262F',
     borderRadius: 16,

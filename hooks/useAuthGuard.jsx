@@ -86,7 +86,7 @@ export function useAuthGuard() {
           if (__DEV__) {
             console.warn('[useAuthGuard] onSnapshot error:', err?.message || err);
           }
-        }
+        },
       );
     });
 

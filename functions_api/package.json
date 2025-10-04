@@ -1,0 +1,16 @@
+{
+  "name": "vigiapp-functions-authapi",
+  "type": "module",
+  "engines": {
+    "node": "20"
+  },
+  "dependencies": {
+    "argon2": "^0.41.1",
+    "express": "^4.19.2",
+    "firebase-admin": "^13.5.0",
+    "firebase-functions": "^6.4.0"
+  },
+  "scripts": {
+    "deploy": "firebase deploy --only functions:authapi"
+  }
+}

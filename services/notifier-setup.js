@@ -63,7 +63,7 @@ export async function ensureAndroidChannels() {
     const list = await Notifications.getNotificationChannelsAsync?.();
     console.log(
       '[NOTIF] channels:',
-      list?.map((c) => ({ id: c.id, importance: c.importance }))
+      list?.map((c) => ({ id: c.id, importance: c.importance })),
     );
   } catch {}
 }

@@ -1,0 +1,20 @@
+[
+  {
+    // Copie chemin ABSOLU d’un fichier/dossier
+    "key": "ctrl+alt+c",
+    "command": "copyFilePath",
+    "when": "explorerViewletVisible && filesExplorerFocus && !inputFocus"
+  },
+  {
+    // Copie chemin RELATIF au workspace
+    "key": "ctrl+alt+r",
+    "command": "copyRelativeFilePath",
+    "when": "explorerViewletVisible && filesExplorerFocus && !inputFocus"
+  },
+  {
+    // Shift + Double-clic dans l’explorer → copie chemin ABSOLU
+    "key": "shift+doubleclick",
+    "command": "copyFilePath",
+    "when": "explorerViewletVisible && filesExplorerFocus && !inputFocus"
+  }
+]

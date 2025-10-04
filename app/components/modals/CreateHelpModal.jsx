@@ -196,7 +196,7 @@ export default function CreateHelpModal({ visible, onClose, onCreate, loading = 
         .locale('pt-br')
         .format('dddd, D [de] MMMM [de] YYYY [às] HH:mm')
         .replace(/^./, (m) => m.toUpperCase()),
-    []
+    [],
   );
 
   const isToday = (d) => dayjs(d).isSame(dayjs(), 'day');
@@ -332,7 +332,7 @@ export default function CreateHelpModal({ visible, onClose, onCreate, loading = 
                     hour,
                     minute,
                     0,
-                    0
+                    0,
                   );
                   setPickedTime(final);
                 }}

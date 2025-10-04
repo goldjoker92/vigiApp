@@ -25,6 +25,7 @@ const functions = require('firebase-functions');
 const v1functions = require('firebase-functions/v1');
 const admin = require('firebase-admin');
 const geofire = require('geofire-common'); // NEW: geohash pour footprints
+const { safeForEach } = require('@/utils/safeEach');
 
 // ======================================================================
 // Init admin — idempotent
@@ -82,7 +83,7 @@ function assertRole(context, allowed = ['admin', 'moderator']) {
     warn('[assertRole] refusé — role:', role, 'required:', allowed);
     throw new functions.https.HttpsError(
       'permission-denied',
-      'Accès refusé: rôle requis (admin/moderator).'
+      'Accès refusé: rôle requis (admin/moderator).',
     );
   }
 }
@@ -264,7 +265,7 @@ async function expoPushSend(tokens, title, body, data = {}) {
       text = await res.text();
       log(
         `[expoPushSend] http ${res.status} ${res.statusText} (batch ${batchIndex}) body=`,
-        (text || '').slice(0, 700)
+        (text || '').slice(0, 700),
       );
     } catch (e) {
       err(`[expoPushSend] fetch failed (batch ${batchIndex})`, e?.message || e);
@@ -345,7 +346,7 @@ async function expoPushSendWithMap(tokens, title, body, data = {}) {
       text = await res.text();
       log(
         `[expoPushSendWithMap] http ${res.status} ${res.statusText} (batch ${batchIndex}) body=`,
-        (text || '').slice(0, 700)
+        (text || '').slice(0, 700),
       );
     } catch (e) {
       err(`[expoPushSendWithMap] fetch failed (batch ${batchIndex})`, e?.message || e);
@@ -359,7 +360,7 @@ async function expoPushSendWithMap(tokens, title, body, data = {}) {
     } catch {
       warn(
         `[expoPushSendWithMap] non-JSON response (batch ${batchIndex})`,
-        (text || '').slice(0, 256)
+        (text || '').slice(0, 256),
       );
       results.push({ raw: text });
     }
@@ -418,7 +419,7 @@ async function cleanInvalidTokens(expoResults, tokenMap) {
   log(
     '[cleanInvalidTokens] candidates:',
     invalidTokens.length,
-    invalidTokens.slice(0, 5).map(maskToken)
+    invalidTokens.slice(0, 5).map(maskToken),
   );
   const delField = admin.firestore.FieldValue.delete();
   let matchedDocs = 0;
@@ -430,7 +431,7 @@ async function cleanInvalidTokens(expoResults, tokenMap) {
     }
 
     const batch = db.batch();
-    snap.forEach((doc) => {
+    safeForEach(snap, (doc) => {
       matchedDocs += 1;
       batch.update(doc.ref, {
         expoPushToken: delField,
@@ -588,7 +589,7 @@ async function getTokensByCEP(cep) {
   log('[getTokensByCEP] cep=', cep);
   const snap = await db.collection('devices').where('cep', '==', cep).get();
   const tokens = [];
-  snap.forEach((doc) => {
+  safeForEach(snap, (doc) => {
     const t = doc.get('expoPushToken');
     if (t) {
       tokens.push(t);
@@ -606,7 +607,7 @@ async function getTokensByUserIds(userIds) {
   const tokens = [];
   for (const ids of chunk(userIds, 10)) {
     const snap = await db.collection('devices').where('userId', 'in', ids).get();
-    snap.forEach((doc) => {
+    safeForEach(snap, (doc) => {
       const t = doc.get('expoPushToken');
       if (t) {
         tokens.push(t);
@@ -617,7 +618,7 @@ async function getTokensByUserIds(userIds) {
     '[getTokensByUserIds] total tokens=',
     tokens.length,
     'sample=',
-    tokens.slice(0, 3).map(maskToken)
+    tokens.slice(0, 3).map(maskToken),
   );
   return tokens;
 }
@@ -627,7 +628,7 @@ async function getFcmTokensByCEP(cep) {
   log('[getFcmTokensByCEP] cep=', cep);
   const snap = await db.collection('devices').where('cep', '==', cep).get();
   const tokens = [];
-  snap.forEach((doc) => {
+  safeForEach(snap, (doc) => {
     const t = doc.get('fcmToken');
     if (t) {
       tokens.push(t);
@@ -645,7 +646,7 @@ async function getFcmTokensByUserIds(userIds) {
   const tokens = [];
   for (const ids of chunk(userIds, 10)) {
     const snap = await db.collection('devices').where('userId', 'in', ids).get();
-    snap.forEach((doc) => {
+    safeForEach(snap, (doc) => {
       const t = doc.get('fcmToken');
       if (t) {
         tokens.push(t);
@@ -656,7 +657,7 @@ async function getFcmTokensByUserIds(userIds) {
     '[getFcmTokensByUserIds] total tokens=',
     tokens.length,
     'sample=',
-    tokens.slice(0, 3).map(maskToken)
+    tokens.slice(0, 3).map(maskToken),
   );
   return tokens;
 }

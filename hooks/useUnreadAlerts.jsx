@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { db } from '../firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { useUserStore } from '../store/users';
+import { safeForEach } from '../utils/safeEach';
 
 export function useUnreadAlerts(user, groupId) {
   const [unread, setUnread] = useState(0);
@@ -14,7 +15,7 @@ export function useUnreadAlerts(user, groupId) {
     const q = query(collection(db, 'alerts'), where('groupId', '==', groupId));
     const unsub = onSnapshot(q, (snap) => {
       let count = 0;
-      snap.forEach((doc) => {
+      safeForEach(snap, (doc) => {
         const data = doc.data();
         if (!lastSeenAlert || data.createdAt?.toMillis?.() > lastSeenAlert) {
           count++;

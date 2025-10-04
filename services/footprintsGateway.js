@@ -93,7 +93,7 @@ async function httpGet(params = {}, { apiKey } = {}) {
   const base = getBaseUrl();
   const url = new URL(
     base,
-    typeof window !== 'undefined' ? window.location.origin : 'http://localhost'
+    typeof window !== 'undefined' ? window.location.origin : 'http://localhost',
   );
 
   Object.entries(params).forEach(([k, v]) => {

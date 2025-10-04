@@ -117,7 +117,7 @@ export default function GroupHelpSection({ groupId: groupIdProp }) {
         setIsLoading(false);
         Alert.alert(
           'Limite diário atingido',
-          'Você atingiu o limite de 2 pedidos por dia. Tente novamente amanhã.'
+          'Você atingiu o limite de 2 pedidos por dia. Tente novamente amanhã.',
         );
         return;
       }
@@ -137,7 +137,7 @@ export default function GroupHelpSection({ groupId: groupIdProp }) {
         setIsLoading(false);
         Alert.alert(
           'Limite semanal atingido',
-          'Você atingiu o limite de 8 pedidos por semana. Tente novamente na próxima semana.'
+          'Você atingiu o limite de 8 pedidos por semana. Tente novamente na próxima semana.',
         );
         return;
       }
