@@ -13,7 +13,7 @@ import * as Device from 'expo-device';
 import * as Location from 'expo-location';
 import * as Network from 'expo-network';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
@@ -90,6 +90,15 @@ const PhoneSatelliteLoader = memo(function PhoneSatelliteLoader() {
       <Animated.View style={[styles.phone, { transform: [{ scale: pulseScale }] }]}>
         <View style={styles.phoneScreen} />
       </Animated.View>
+      <Animated.View
+        style={[styles.wave, { opacity: ringOpacity, transform: [{ scale: pulseScale }] }]}
+      />
+      <Animated.View
+        style={[
+          styles.wave,
+          { opacity: ringOpacity, transform: [{ scale: Animated.add(0.6, pulse) }] },
+        ]}
+      />
 
       <Animated.View
         style={[styles.wave, { opacity: ringOpacity, transform: [{ scale: pulseScale }] }]}
@@ -108,6 +117,9 @@ const PhoneSatelliteLoader = memo(function PhoneSatelliteLoader() {
 
 /* ----------------------- Helpers ---------------------- */
 function normalizeCep(v) {
+  if (!v) {
+    return null;
+  }
   if (!v) {
     return null;
   }
@@ -248,6 +260,14 @@ async function lookupGroupByMembership(uid) {
     op: 'array-contains',
     value: uid,
   });
+  if (!uid) {
+    return undefined;
+  }
+  console.log('[SINALIZAR][GROUP][FS] query', {
+    field: 'membersIds',
+    op: 'array-contains',
+    value: uid,
+  });
   const q = query(collection(db, 'groups'), where('membersIds', 'array-contains', uid), limit(1));
   const snap = await getDocs(q);
   if (!snap.empty) {
@@ -261,9 +281,15 @@ async function lookupGroupByCep(cep8) {
   if (!cep8) {
     return null;
   }
+  if (!cep8) {
+    return null;
+  }
   const clauses = GROUPS_USE_ARRAY_OF_CEPS
     ? [where('ceps', 'array-contains', cep8)]
     : [where('cep', '==', cep8)];
+  if (ONLY_ACTIVE_GROUPS) {
+    clauses.push(where('isActive', '==', true));
+  }
   if (ONLY_ACTIVE_GROUPS) {
     clauses.push(where('isActive', '==', true));
   }
@@ -276,6 +302,9 @@ async function lookupGroupByCep(cep8) {
 
   const q = query(collection(db, 'groups'), ...clauses, limit(1));
   const snap = await getDocs(q);
+  if (snap.empty) {
+    return null;
+  }
   if (snap.empty) {
     return null;
   }
@@ -453,7 +482,13 @@ export default function GrupoSinalizarScreen() {
     if (rp?.groupId) {
       return String(rp.groupId);
     }
+    if (rp?.groupId) {
+      return String(rp.groupId);
+    }
     const direct = u?.groupId || u?.grupoId;
+    if (direct) {
+      return String(direct);
+    }
     if (direct) {
       return String(direct);
     }
@@ -525,6 +560,9 @@ export default function GrupoSinalizarScreen() {
       console.log('[SINALIZAR] Coords finales =', coords);
 
       // Watchdog après coords
+      if (watchdogRef.current) {
+        clearTimeout(watchdogRef.current);
+      }
       if (watchdogRef.current) {
         clearTimeout(watchdogRef.current);
       }
@@ -602,9 +640,15 @@ export default function GrupoSinalizarScreen() {
           if (g1) {
             finalGroupId = g1.id;
           }
+          if (g1) {
+            finalGroupId = g1.id;
+          }
         }
         if (!finalGroupId && currentCep8) {
           const g2 = await lookupGroupByCep(currentCep8);
+          if (g2) {
+            finalGroupId = g2.id;
+          }
           if (g2) {
             finalGroupId = g2.id;
           }
@@ -686,6 +730,12 @@ export default function GrupoSinalizarScreen() {
       Alert.alert('Erro', 'Não foi possível obter sua localização.');
       router.replace('/(tabs)/home');
     } finally {
+      if (watchdogRef.current) {
+        clearTimeout(watchdogRef.current);
+      }
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+      }
       if (watchdogRef.current) {
         clearTimeout(watchdogRef.current);
       }
