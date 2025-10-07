@@ -619,6 +619,128 @@ npm start
 
 Abra uma issue descrevendo o escopo. PRs são bem-vindos.
 
+
+🎯 VERSION PRODUIT (FR / EN / PT)
+🇫🇷 Français — Comment fonctionne une Alerte Publique dans VigiApp ?
+
+1️⃣ L’utilisateur clique sur 🛎️ “Sinalizar”
+2️⃣ VigiApp envoie l’alerte aux personnes à proximité
+3️⃣ Les gens reçoivent une notification push immédiate
+4️⃣ S’ils appuient dessus 👉 ils voient les détails de l’alerte
+5️⃣ Leur ouverture est automatiquement comptabilisée (ACK ✅)
+6️⃣ L’alerte s’affiche dans la liste publique pendant 24h
+
+⚡ Résultat : on peut signaler rapidement, être entendu instantanément, et mesurer l’impact en temps réel.
+
+🇬🇧 English — How a Public Alert works in VigiApp
+
+1️⃣ User taps 🛎️ “Sinalizar”
+2️⃣ VigiApp sends the alert to nearby users
+3️⃣ Devices receive an instant push notification
+4️⃣ Tapping it opens the alert details screen
+5️⃣ The app auto-sends an ACK (✅ view/tap recorded)
+6️⃣ The alert appears in the Home feed for 24h
+
+⚡ Fast report → instant visibility → real engagement.
+
+🇧🇷 Português — Como funciona um Alerta Público no VigiApp
+
+1️⃣ O usuário toca em 🛎️ “Sinalizar”
+2️⃣ O VigiApp envia o alerta para pessoas próximas
+3️⃣ Elas recebem uma notificação push imediata
+4️⃣ Ao tocar 👉 abre a tela com detalhes do alerta
+5️⃣ A visualização é registrada automaticamente (ACK ✅)
+6️⃣ O alerta aparece no feed por 24h
+
+⚡ Resultado: alerta rápido, resposta imediata, impacto visível.
+
+🛠️ VERSION TECHNIQUE (FR / EN / PT)
+🇫🇷 Français — Pipeline technique d’une Alerte Publique
+Étape	Action	Stack
+1️⃣ Emission	POST /sendPublicAlertByAddress	App → Cloud Function
+2️⃣ Sélection	Filtrage des devices via Firestore (/devices) + Haversine radius	Backend
+3️⃣ Notification	Envoi FCM (type:"public-alert", alertId, deepLink)	Firebase Messaging
+4️⃣ Ouverture	onNotificationOpenedApp → Navigation vers /public-alerts/{id}	React Navigation
+5️⃣ Tracking	App → POST /ackPublicAlertReceipt (receive / tap)	Cloud Function
+6️⃣ Feed	App lit /publicAlerts (24h) → affichage	Firestore Query
+🇬🇧 English — Public Alert Technical Pipeline
+Step	Action	Stack
+1️⃣ Emit	POST /sendPublicAlertByAddress	App → CF
+2️⃣ Select	Device scan (/devices) + Haversine filtering	Firestore
+3️⃣ Push	FCM send (public-alert, alertId, deepLink)	Firebase Messaging
+4️⃣ Open	onNotificationOpenedApp → Navigate(/public-alerts/{id})	React Native
+5️⃣ ACK	Auto POST /ackPublicAlertReceipt	Cloud Function
+6️⃣ Feed	Query /publicAlerts (24h range)	App Firestore hook
+🇧🇷 Português — Pipeline técnico de Alerta Público
+Etapa	Ação	Stack
+1️⃣ Emissão	POST /sendPublicAlertByAddress	App → CF
+2️⃣ Seleção	Filtro por raio (Haversine) em /devices	Firestore
+3️⃣ Notificação	FCM push (public-alert, alertId, deepLink)	Firebase Messaging
+4️⃣ Abertura	onNotificationOpenedApp → Navega para /public-alerts/{id}	React Native
+5️⃣ ACK	App envia /ackPublicAlertReceipt automaticamente	CF
+6️⃣ Feed	/publicAlerts últimos 24h → renderizado	Hook no app
+
+🎉 Dis-moi si tu veux ajouter :
+
+✅ Une version slide (PowerPoint / Canva)
+
+✅ Une image schéma exportable (PNG / SVG)
+
+✅ Une version A4 imprimable (Flowchart)
+
+Je te le génère en 1 clic 👇 Tu veux quoi comme style visuel ? (sobre / coloré / sombre ?)
+
+You said:
+et le schema 
+ChatGPT said:
+
+Voici le schéma d’architecture du flux d’une alerte publique VigiApp — en version ASCII claire, prêt à intégrer dans un README, un Slack ou un Notion.
+
+Si tu veux une version PNG / SVG graphique, dis-moi juste le style : sobre / coloré / cartoon / pro.
+
+                        🟦 UTILISATEUR
+                 (App mobile VigiApp - React Native)
+                                   │
+                                   │ 1️⃣ Sinalizar / Envoyer
+                                   ▼
+               🌐 Cloud Function: sendPublicAlertByAddress
+               ------------------------------------------------
+               | - Reçoit lat/lng, rayon, type d’alerte       |
+               | - Scan Firestore /devices                    |
+               | - Filtre par rayon (Haversine)               |
+               | - Envoie via Firebase Cloud Messaging (FCM)  |
+               ------------------------------------------------
+                                   │
+                                   │ 2️⃣ Push Notification
+                                   ▼
+                     📱 Téléphone(s) à proximité
+                    ---------------------------------
+                    | - Popup de notification         |
+                    | - onReceive / onTap             |
+                    ---------------------------------
+                                   │
+                                   │ 3️⃣ Ouverture
+                                   ▼
+          🔗 Deep Link → vigiapp://public-alerts/{alertId}
+                                   │
+                                   ▼
+                      🧭 App Route /public-alerts/[id].jsx
+                      Affiche la page d’alerte
+
+                                   │
+                                   │ 4️⃣ ACK automatique
+                                   ▼
+             🌐 Cloud Function: ackPublicAlertReceipt
+             -----------------------------------------
+             | - Enregistre dans /publicAlerts/{id}/acks/{tokenHash} |
+             | - Incrémente ackCount                                 |
+             -----------------------------------------
+
+                                   │
+                                   │ 5️⃣ Affichage feed
+                                   ▼
+                 📋 Liste publique 24h (hook usePublicAlerts24h)
+
 ---
 
 ### 📄 Licença
