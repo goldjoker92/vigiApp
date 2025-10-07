@@ -1,6 +1,8 @@
 {
   "name": "vigiapp-functions-authapi",
+  "version": "1.0.0",
   "type": "module",
+  "main": "index.js",
   "engines": {
     "node": "20"
   },

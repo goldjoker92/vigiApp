@@ -2,14 +2,13 @@
 // -------------------------------------------------------------
 // Rôle : création d’un signalement PUBLIC dans /publicAlerts
 // - Localisation (GPS) -> adresse + CEP (Google-first via utils/cep)
-// - Sauvegarde Firestore avec createdAt + expiresAt = now + 90j (TTL)
-// - Logs [REPORT] pour tout suivre (diagnostic production-friendly)
-// - Déclenchement non-bloquant de la Cloud Function d’alerte publique
+// - Sauvegarde via pipeline centralisé handleReportEvent (upsert + projections + métriques)
+// - Déclenchement non-bloquant de la Cloud Function d’alerte publique (notif FG/BG)
+// - Logs [REPORT] partout (diagnostic production-friendly)
 // - Toasters UX (queue) : success/info/erreur, 4s, barre de temps
 // - Flux MANUEL **ou** AUTO : bouton actif sans GPS si champs requis OK
-// - Séquencement toasts :
-//      AUTO: toasts de localisation d’abord, puis le vert “pronto” si formulaire complet
-//      MANUEL: le vert “pronto” sort auto quand tous les champs requis sont OK
+// - Tracing client : traceId + logs début/fin appui bouton + affichage modale
+// - Abonnement live (optionnel) à pushTraces/<traceId> si le back envoie des traces
 // -------------------------------------------------------------
 
 import React, { useMemo, useRef, useState, useEffect } from 'react';
@@ -29,8 +28,17 @@ import {
 } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import * as Location from 'expo-location';
-import { auth } from '../firebase';
-import { serverTimestamp, Timestamp } from 'firebase/firestore';
+import { auth, db } from '../firebase';
+import {
+  serverTimestamp,
+  Timestamp,
+  collection,
+  query,
+  where,
+  orderBy,
+  limit,
+  onSnapshot,
+} from 'firebase/firestore';
 import { useRouter } from 'expo-router';
 import {
   MapPin,
@@ -47,9 +55,9 @@ import {
 } from 'lucide-react-native';
 import { useAuthGuard } from '../hooks/useAuthGuard';
 import { resolveExactCepFromCoords, GOOGLE_MAPS_KEY } from '../utils/cep';
-import { upsertPublicAlert } from '../platform_services/incidents';
-
-// Observability / modération (dé-dupliqués)
+// 🔗 Nouveau pipeline (centralise upsert + projections + private + métriques)
+import { handleReportEvent } from '../platform_services/alertPipeline';
+// Observability / modération (dé-dupliqués côté back, on laisse la télémétrie front)
 import { reportNewLexemesRaw } from '../platform_services/observability/mod_signals';
 import { checkReportAcceptable } from '../platform_services/abuse_monitor';
 import { abuseState } from '../platform_services/observability/abuse_strikes';
@@ -58,7 +66,7 @@ import { abuseState } from '../platform_services/observability/abuse_strikes';
 // Constantes & utilitaires
 // -------------------------------------------------------------
 
-const DB_RETENTION_DAYS = 90; // TTL base (analytics)
+const DB_RETENTION_DAYS = 90; // TTL base (analytics/back)
 const ALERT_RADIUS_M = 1000; // Rayon fixe V1 pour "incident" (danger public)
 
 const categories = [
@@ -89,15 +97,52 @@ const severityToColor = (sev) => {
 const buildEnderecoLabel = (ruaNumero, cidade, estado) =>
   [ruaNumero, cidade && `${cidade}/${estado}`].filter(Boolean).join(' · ');
 
+// --- Trace helpers (client)
+function newTraceId() {
+  const t = Date.now().toString(36);
+  const r = Math.random().toString(36).slice(2, 8);
+  return `trace_${t}_${r}`;
+}
+
+function attachPushTracesLive(traceId) {
+  try {
+    if (!db || !traceId) {
+      return () => {};
+    }
+    const q = query(
+      collection(db, 'pushTraces'),
+      where('traceId', '==', traceId),
+      orderBy('ts', 'asc'),
+      limit(300),
+    );
+    console.log('[TRACE][CLIENT] subscribe start', traceId);
+    const unsub = onSnapshot(q, (snap) => {
+      snap.docChanges().forEach((ch) => {
+        const d = ch.doc.data();
+        console.log('[TRACE][CLIENT]', traceId, d.step, d);
+      });
+    });
+    return () => {
+      console.log('[TRACE][CLIENT] unsubscribe', traceId);
+      try {
+        unsub && unsub();
+      } catch {}
+    };
+  } catch (e) {
+    console.log('[TRACE][CLIENT] subscribe error', e?.message || String(e));
+    return () => {};
+  }
+}
+
 // -------------------------------------------------------------
 // Validation "format brésilien" pour flux MANUEL
 // -------------------------------------------------------------
 const isValidUF = (uf) => /^[A-Z]{2}$/.test(String(uf || '').trim());
-const hasStreetNumber = (ruaNumero) => /\d+/.test(String(ruaNumero || '')); // au moins un numéro
+const hasStreetNumber = (ruaNumero) => /\d+/.test(String(ruaNumero || ''));
 const isValidCidade = (cidade) => /^[\p{L}\s'.-]+$/u.test(String(cidade || '').trim());
 const isValidCepIfPresent = (cep) => {
   const d = onlyDigits(cep || '');
-  return !d || /^\d{8}$/.test(d); // ok vide OU 8 chiffres
+  return !d || /^\d{8}$/.test(d);
 };
 
 function validateBrazilianManualAddress({ ruaNumero, cidade, estado, cep }) {
@@ -133,18 +178,12 @@ async function geocodeAddressToCoords({ ruaNumero, cidade, estado, cep, googleKe
       const loc = first.geometry?.location;
       if (loc?.lat && loc?.lng) {
         console.log('[REPORT][MANUAL][GEO] OK lat/lng =', loc);
-        // Tentative d’extraire un CEP si pas fourni
         let cepOut = cep || '';
         const postal = first.address_components?.find((c) => c.types?.includes('postal_code'));
         if (!cepOut && postal?.long_name) {
           cepOut = postal.long_name;
         }
-        return {
-          ok: true,
-          latitude: loc.lat,
-          longitude: loc.lng,
-          cep: cepOut,
-        };
+        return { ok: true, latitude: loc.lat, longitude: loc.lng, cep: cepOut };
       }
     }
     console.log('[REPORT][MANUAL][GEO] KO :', json.status, json.error_message);
@@ -158,14 +197,14 @@ async function geocodeAddressToCoords({ ruaNumero, cidade, estado, cep, googleKe
 // -------------------------------------------------------------
 // Toast léger avec QUEUE (pas de chevauchement)
 // -------------------------------------------------------------
-const TOAST_DURATION_MS = 4000; // 4s
+const TOAST_DURATION_MS = 4000;
 
 function useToastQueue() {
-  const [current, setCurrent] = useState(null); // { type, text }
+  const [current, setCurrent] = useState(null);
   const queueRef = useRef([]);
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(-20)).current;
-  const progress = useRef(new Animated.Value(1)).current; // 1 -> 0
+  const progress = useRef(new Animated.Value(1)).current;
   const timerRef = useRef(null);
   const activeRef = useRef(false);
 
@@ -211,7 +250,7 @@ function useToastQueue() {
       ]).start(() => {
         setCurrent(null);
         activeRef.current = false;
-        play(); // lance le toast suivant
+        play();
       });
     }, TOAST_DURATION_MS);
   };
@@ -257,6 +296,9 @@ function useToastQueue() {
   return { show, ToastOverlay };
 }
 
+// -------------------------------------------------------------
+// Helpers validations UI
+// -------------------------------------------------------------
 function getMissingFields({ categoria, descricao, ruaNumero, cidade, estado }) {
   const missing = [];
   if (!categoria) {
@@ -299,13 +341,17 @@ export default function ReportScreen() {
   // État formulaire
   const [categoria, setCategoria] = useState(null);
   const [descricao, setDescricao] = useState('');
-  const [local, setLocal] = useState(null); // { latitude, longitude, ... } — GPS **ou** géocodage lors de l’envoi
+  const [local, setLocal] = useState(null);
   const [ruaNumero, setRuaNumero] = useState('');
   const [cidade, setCidade] = useState('');
   const [estado, setEstado] = useState('');
   const [cep, setCep] = useState('');
   const [loadingLoc, setLoadingLoc] = useState(false);
   const [cepPrecision, setCepPrecision] = useState('none');
+
+  // Tracing
+  const currentTraceIdRef = useRef(null);
+  const currentTraceUnsubRef = useRef(null);
 
   // Garde-fou pour le séquencement AUTO
   const autoFlowActiveRef = useRef(false);
@@ -317,7 +363,6 @@ export default function ReportScreen() {
   const selectedCategory = categories.find((c) => c.label === categoria);
   const severityColorUI = selectedCategory?.color || '#007AFF';
 
-  // Champs requis (sans GPS)
   const isBtnActive = !!(
     categoria &&
     descricao.trim().length > 0 &&
@@ -326,7 +371,6 @@ export default function ReportScreen() {
     estado.trim().length > 0
   );
 
-  // Toast "pronto" auto — en MANUEL uniquement (ou quand l’AUTO est fini)
   const readyToastShownRef = useRef(false);
   useEffect(() => {
     if (isBtnActive && !readyToastShownRef.current && !autoFlowActiveRef.current) {
@@ -338,7 +382,9 @@ export default function ReportScreen() {
     }
   }, [isBtnActive, show]);
 
-  // AUTO: Localisation -> reverse + CEP (flux AUTO)
+  // -----------------------------------------------------------
+  // AUTO: Localisation -> reverse + CEP
+  // -----------------------------------------------------------
   const handleLocationAutoFlow = async () => {
     console.log('[REPORT][AUTO] handleLocation START');
     setLoadingLoc(true);
@@ -357,7 +403,6 @@ export default function ReportScreen() {
       console.log('[REPORT][AUTO] coords =', coords);
       setLocal(coords);
 
-      // Reverse CEP via util Google-first
       console.log('[REPORT][AUTO] resolveExactCepFromCoords…');
       const res = await resolveExactCepFromCoords(coords.latitude, coords.longitude, {
         googleApiKey: GOOGLE_MAPS_KEY,
@@ -394,7 +439,6 @@ export default function ReportScreen() {
         });
       }
 
-      // Ensuite, si le formulaire est complet -> toast "pronto"
       const formNowComplete =
         categoria &&
         descricao.trim() &&
@@ -404,7 +448,7 @@ export default function ReportScreen() {
       if (formNowComplete) {
         console.log('[REPORT][AUTO] Form complete post-geo => enqueue ready toast');
         show({ type: 'success', text: '✅ Pronto pra enviar!' });
-        readyToastShownRef.current = true; // éviter un doublon via useEffect
+        readyToastShownRef.current = true;
       }
     } catch (e) {
       console.log('[REPORT][AUTO] ERREUR =', e?.message || e);
@@ -416,7 +460,9 @@ export default function ReportScreen() {
     }
   };
 
-  // Validation légère (toasts rouges si incomplet) — pour SEND
+  // -----------------------------------------------------------
+  // Validations — SEND
+  // -----------------------------------------------------------
   const validateForSendCommon = () => {
     const missing = getMissingFields({ categoria, descricao, ruaNumero, cidade, estado });
     if (missing.length) {
@@ -426,7 +472,9 @@ export default function ReportScreen() {
     return true;
   };
 
-  // MANUEL: envoi -> géocode si pas de coords ; vérif format BR
+  // -----------------------------------------------------------
+  // MANUEL: envoi -> géocode si pas de coords
+  // -----------------------------------------------------------
   const handleSendManualFlow = async () => {
     console.log('[REPORT][MANUAL] handleSendManualFlow');
     const fmt = validateBrazilianManualAddress({
@@ -468,7 +516,9 @@ export default function ReportScreen() {
     return coords;
   };
 
-  // AUTO: envoi — coords déjà présents via handleLocationAutoFlow
+  // -----------------------------------------------------------
+  // AUTO: envoi — coords déjà présents
+  // -----------------------------------------------------------
   const handleSendAutoFlow = async () => {
     console.log('[REPORT][AUTO] handleSendAutoFlow');
     if (local?.latitude && local?.longitude) {
@@ -478,30 +528,42 @@ export default function ReportScreen() {
     return await handleSendManualFlow();
   };
 
-  // Envoi du report (orchestrateur)
+  // -----------------------------------------------------------
+  // Envoi du report (orchestrateur) + TRACING
+  // -----------------------------------------------------------
   const handleSend = async () => {
+    // TRACE: début appui bouton
+    const traceId = newTraceId();
+    currentTraceIdRef.current = traceId;
+    currentTraceUnsubRef.current && currentTraceUnsubRef.current();
+    currentTraceUnsubRef.current = attachPushTracesLive(traceId);
+
+    console.log('🟢 [TRACE][CLIENT] START_PRESS', { traceId, at: new Date().toISOString() });
     console.log('[REPORT] handleSend START');
 
     // 1) Champs requis ?
     if (!validateForSendCommon()) {
+      console.log('🟡 [TRACE][CLIENT] ABORT_MISSING_FIELDS', { traceId });
       console.log('[REPORT] handleSend ABORT: missing required fields');
       return;
     }
 
-    // 2) Flux MANUEL ou AUTO suivant présence coords
+    // 2) Flux MANUEL ou AUTO
     const isAuto = !!(local?.latitude && local?.longitude);
     console.log('[REPORT] flow =', isAuto ? 'AUTO' : 'MANUAL');
 
     let coords = isAuto ? await handleSendAutoFlow() : await handleSendManualFlow();
     if (!coords) {
+      console.log('🟡 [TRACE][CLIENT] ABORT_NO_COORDS', { traceId });
       console.log('[REPORT] handleSend ABORT: coords unavailable');
       return;
     }
 
-    // 2.5) Modération / anti-abus (blocage progressif via strikes)
+    // 2.5) Modération / anti-abus
     const uid = auth.currentUser?.uid || 'anon';
     const verdict = checkReportAcceptable(descricao, uid);
     if (!verdict.ok) {
+      console.log('🟡 [TRACE][CLIENT] ABORT_ABUSE', { traceId, verdict });
       console.log('[REPORT][CONTENT] blocked_or_invalid ?', verdict, abuseState?.current);
       show({ type: 'error', text: verdict.msg });
       return;
@@ -540,13 +602,10 @@ export default function ReportScreen() {
         time: timeBR,
         createdAt: serverTimestamp(),
         expiresAt: Timestamp.fromDate(expires),
-
-        // V1 rayon fixe
-        radius: ALERT_RADIUS_M, // compat front si tu lis encore "radius"
-        radius_m: ALERT_RADIUS_M, // clé canonique back
+        radius: ALERT_RADIUS_M,
+        radius_m: ALERT_RADIUS_M,
       };
 
-      // Observabilité : détection lexicale (une fois, dé-dupliquée)
       await reportNewLexemesRaw(descricao, {
         feature: 'desc',
         catHint: 'slang',
@@ -554,58 +613,86 @@ export default function ReportScreen() {
         uf: estado.toUpperCase(),
       });
 
-      console.log('[REPORT] Firestore payload =', payload);
-      const { id: alertId } = await upsertPublicAlert({
-        user: { uid: auth.currentUser?.uid },
+      console.log('[REPORT] Payload =>', payload);
+
+      const { alertId } = await handleReportEvent({
+        user: { uid: auth.currentUser?.uid, apelido: user?.apelido, username: user?.username },
         coords,
         payload,
-        ttlDays: DB_RETENTION_DAYS,
       });
-      console.log('[REPORT] upsert OK => id:', alertId);
+      console.log('[REPORT] pipeline OK => id:', alertId);
 
-      // Cloud Function (non-bloquant)
-      (async () => {
-        try {
-          const body = {
-            alertId,
-            endereco: enderecoLabel,
-            bairro: '',
-            cidade,
-            uf: estado.toUpperCase(),
-            cep: onlyDigits(cep),
-            lat: coords.latitude,
-            lng: coords.longitude,
-            radius_m: ALERT_RADIUS_M,
-            severidade: sev,
-            color: mappedColor,
-          };
+      // ✅ Appel Cloud Function (avec traceId pour corréler)
+      try {
+        const body = {
+          alertId,
+          endereco: enderecoLabel,
+          bairro: '',
+          cidade,
+          uf: estado.toUpperCase(),
+          cep: onlyDigits(cep),
+          lat: coords.latitude,
+          lng: coords.longitude,
+          radius_m: ALERT_RADIUS_M,
+          severidade: sev,
+          color: mappedColor,
+          traceId, // <== CORRÉLATION
+          debug: '1', // <== pour forcer DIAG si 0
+        };
 
-          console.log('[REPORT] Calling sendPublicAlertByAddress with:', body);
-          const resp = await fetch(
-            'https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/sendPublicAlertByAddress',
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(body),
-            },
-          );
-          const json = await resp.json().catch(() => null);
-          console.log('[REPORT] sendPublicAlertByAddress response:', {
-            status: resp.status,
-            ok: resp.ok,
-            json,
+        console.log('[REPORT] Calling sendPublicAlertByAddress with:', body);
+        const resp = await fetch(
+          'https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/sendPublicAlertByAddress',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          },
+        );
+        const json = await resp.json().catch(() => null);
+        console.log('[REPORT] sendPublicAlertByAddress response:', {
+          status: resp.status,
+          ok: resp.ok,
+          json,
+        });
+
+        if (json?.traceId && json.traceId !== traceId) {
+          console.log('ℹ️ [TRACE][CLIENT] serverTraceId differs → switching listener', {
+            client: traceId,
+            server: json.traceId,
           });
-        } catch (err) {
-          console.log('[REPORT] sendPublicAlertByAddress ERROR:', err?.message || String(err));
+          currentTraceUnsubRef.current && currentTraceUnsubRef.current();
+          currentTraceUnsubRef.current = attachPushTracesLive(json.traceId);
+          currentTraceIdRef.current = json.traceId;
         }
-      })();
+      } catch (err) {
+        console.log('[REPORT] sendPublicAlertByAddress ERROR:', err?.message || String(err));
+      }
 
-      // Confirmation + retour
+      // ✅ Modale de confirmation (on trace le moment exact d’affichage)
+      console.log('✅ [TRACE][CLIENT] SHOW_MODAL_REGISTERED', {
+        traceId,
+        at: new Date().toISOString(),
+      });
       Alert.alert('Alerta enviado!', 'Seu alerta foi registrado.');
+
+      console.log('🟣 [TRACE][CLIENT] END_PRESS_SUCCESS', { traceId, navigate: 'home' });
       console.log('[REPORT] handleSend SUCCESS => navigate home');
+
+      // Option : garder l’abonnement 10s pour capter SUMMARY côté serveur
+      setTimeout(() => {
+        currentTraceUnsubRef.current && currentTraceUnsubRef.current();
+        currentTraceUnsubRef.current = null;
+      }, 10_000);
+
+      // Navigation
       router.replace('/(tabs)/home');
     } catch (e) {
-      console.log('[REPORT] Firestore ERROR =', e?.message || e);
+      console.log('🔴 [TRACE][CLIENT] END_PRESS_ERROR', {
+        traceId,
+        error: e?.message || String(e),
+      });
+      console.log('[REPORT] handleSend ERROR =', e?.message || e);
       Alert.alert('Erro', e.message);
     } finally {
       console.log('[REPORT] handleSend END');
@@ -613,7 +700,7 @@ export default function ReportScreen() {
   };
 
   // -----------------------------------------------------------
-  // RENDER (ordre de hooks stable; gating d’UI)
+  // RENDER
   // -----------------------------------------------------------
   return (
     <View style={{ flex: 1, backgroundColor: '#181A20' }}>
@@ -774,6 +861,8 @@ export default function ReportScreen() {
                 isBtnActive ? { color: 'rgba(255,255,255,0.2)', borderless: false } : null
               }
               onPress={() => {
+                // on trace explicitement le "touch" avant toute logique
+                console.log('👆 [TRACE][CLIENT] BUTTON_PRESS', { at: new Date().toISOString() });
                 if (!isBtnActive) {
                   const missing = getMissingFields({
                     categoria,
@@ -887,7 +976,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   sendBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 18 },
-
   // Toast styles
   toast: {
     position: 'absolute',

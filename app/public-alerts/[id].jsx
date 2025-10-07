@@ -94,9 +94,7 @@ function haversineM(lat1, lon1, lat2, lon2) {
     dLon = toRad(lon2 - lon1);
   const a =
     Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) *
-      Math.cos(toRad(lat2)) *
-      Math.sin(dLon / 2) ** 2;
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 const distanciaTxt = (u, a) => {
@@ -232,7 +230,7 @@ export default function PublicAlertPage() {
   useEffect(() => {
     (async () => {
       try {
-        console.log("[public-alerts/[id].jsx] geo: request permission");
+        console.log('[public-alerts/[id].jsx] geo: request permission');
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
           return;

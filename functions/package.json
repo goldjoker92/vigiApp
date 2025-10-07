@@ -1,15 +1,24 @@
 {
   "name": "vigiapp-functions-default",
-  "main": "index.js",
+  "private": true,
   "type": "commonjs",
+  "main": "index.js",
   "engines": {
     "node": "20"
   },
   "dependencies": {
+    "dotenv": "^17.2.1",
     "firebase-admin": "^13.5.0",
-    "firebase-functions": "^6.4.0"
+    "firebase-functions": "^6.4.0",
+    "geofire-common": "^6.0.0",
+    "module-alias": "^2.2.2"
+  },
+  "_moduleAliases": {
+    "@": "./src"
   },
   "scripts": {
-    "deploy": "firebase deploy --only functions:default"
+    "serve": "firebase emulators:start --only functions",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log"
   }
 }

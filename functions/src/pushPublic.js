@@ -36,7 +36,7 @@ const {
   isFatalFcmError,
   buildRetryJob, // optionnel retries
   recordPublicAlertFootprint, // NEW: empreinte 90j pour heatmap/stat
-} = require('../utils');
+} = require('./alert-utils');
 
 // ---------- Consts ----------
 const DEFAULT_TTL_SECONDS = 600; // NEW: notif “périssable” (10 min)

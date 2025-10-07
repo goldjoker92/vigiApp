@@ -1,16 +1,12 @@
-// functions/index.js
 // ============================================================================
 // VigiApp — Functions "default" (alerts, jobs, ACK)
-// Point d’entrée du codebase: alertes publiques + maintenance + ACK
-// - Options globales cohérentes
-// - Logger JSON uniforme
-// - safeRequire tolérant (src/ -> racine, variantes .cjs)
 // ============================================================================
+require('module-alias/register');          // alias "@"
+require('./bootstrap-config');             // hydrate process.env + logs
 
 const { setGlobalOptions } = require('firebase-functions/v2/options');
-
 setGlobalOptions({
-  region: 'southamerica-east1',
+  region: process.env.HTTP_REGION || 'southamerica-east1',
   cors: true,
   timeoutSeconds: 60,
   memory: '256MiB',
@@ -21,25 +17,20 @@ setGlobalOptions({
 function log(level, msg, extra = {}) {
   const line = { ts: new Date().toISOString(), service: 'functions-default', level, msg, ...extra };
   const text = JSON.stringify(line);
-  if (level === 'error') { console.error(text); }
-  else if (level === 'warn') { console.warn(text); }
-  else { console.log(text); }
+  if (level === 'error') {console.error(text);}
+  else if (level === 'warn') {console.warn(text);}
+  else {console.log(text);}
 }
-
 log('info', 'Loaded codebase: default');
 
-// ---------------------------------------------------------------------------
-// Require helper avec fallback (src/ -> racine), tolère .js et .cjs
-// ---------------------------------------------------------------------------
+// Require helper
 function safeRequire(paths, exportName = null, required = true) {
-  let mod = null;
   let lastErr = null;
-
   for (const p of paths) {
     try {
       const m = require(p);
-      mod = exportName ? m?.[exportName] : m;
-      if (!mod) { throw new Error(`Export "${exportName}" introuvable dans ${p}`); }
+      const mod = exportName ? m?.[exportName] : m;
+      if (!mod) {throw new Error(`Export "${exportName}" introuvable dans ${p}`);}
       log('info', 'Module loaded', { path: p, exportName: exportName || '(module)' });
       return mod;
     } catch (e) {
@@ -47,93 +38,66 @@ function safeRequire(paths, exportName = null, required = true) {
       log('warn', 'Module load failed, try next', { pathTried: p, error: String(e?.message || e) });
     }
   }
-
   if (required) {
     log('error', 'All module paths failed', { exportName, paths, error: String(lastErr?.message || lastErr) });
     throw lastErr || new Error(`Cannot load ${exportName || 'module'}`);
   }
-
   log('warn', 'Optional module not loaded', { exportName, paths });
   return null;
 }
 
 // ---------------------------------------------------------------------------
-// Exports — Public Alerts
+// Public Alerts (v2 onRequest)
 // ---------------------------------------------------------------------------
 try {
   const sendPublicAlertByAddress = safeRequire(
-    [
-      './src/sendPublicAlertByAddress',
-      './sendPublicAlertByAddress',
-      './src/sendPublicAlertByAddress.cjs',
-      './sendPublicAlertByAddress.cjs',
-    ],
+    ['./src/sendPublicAlertByAddress', './sendPublicAlertByAddress'],
     'sendPublicAlertByAddress',
-    true
+    true,
   );
   exports.sendPublicAlertByAddress = sendPublicAlertByAddress;
   log('info', 'Function exported', { fn: 'sendPublicAlertByAddress' });
 } catch (e) {
   log('error', 'Export failed', { fn: 'sendPublicAlertByAddress', error: String(e?.message || e) });
-  throw e; // fail fast
+  throw e;
 }
 
 // ---------------------------------------------------------------------------
-// Exports — ACK (réception / tap) des alertes publiques
+// ACK (v2 onRequest)
 // ---------------------------------------------------------------------------
 try {
   const ackPublicAlertReceipt = safeRequire(
-    [
-      './src/ackPublicAlert',
-      './ackPublicAlert',
-      './src/ackPublicAlert.cjs',
-      './ackPublicAlert.cjs',
-    ],
+    ['./src/ackPublicAlert', './ackPublicAlert'],
     'ackPublicAlertReceipt',
-    true
+    true,
   );
   exports.ackPublicAlertReceipt = ackPublicAlertReceipt;
   log('info', 'Function exported', { fn: 'ackPublicAlertReceipt' });
 } catch (e) {
   log('error', 'Export failed', { fn: 'ackPublicAlertReceipt', error: String(e?.message || e) });
-  throw e; // fail fast
+  throw e;
 }
 
 // ---------------------------------------------------------------------------
-// Exports — Maintenance (non bloquant si absent)
+// Maintenance (optionnel)
 // ---------------------------------------------------------------------------
 try {
-  const maintModule = safeRequire(
-    [
-      './src/maintenance',
-      './maintenance',
-      './src/maintenance.cjs',
-      './maintenance.cjs',
-    ],
-    null,
-    false
-  );
-
-  if (maintModule?.purgeStaleDevices) {
-    exports.purgeStaleDevices = maintModule.purgeStaleDevices;
-  }
-  if (maintModule?.cleanupDeadTokens) {
-    exports.cleanupDeadTokens = maintModule.cleanupDeadTokens;
-  }
-
-  if (maintModule?.purgeStaleDevices || maintModule?.cleanupDeadTokens) {
-    log('info', 'Functions exported', {
-      fns: [
-        maintModule?.purgeStaleDevices ? 'purgeStaleDevices' : null,
-        maintModule?.cleanupDeadTokens ? 'cleanupDeadTokens' : null,
-      ].filter(Boolean),
-    });
-  } else {
-    log('warn', 'Maintenance module loaded but no exports found', {});
-  }
+  const maint = safeRequire(['./src/maintenance', './maintenance'], null, false);
+  if (maint?.purgeStaleDevices) {exports.purgeStaleDevices = maint.purgeStaleDevices;}
+  if (maint?.cleanupDeadTokens) {exports.cleanupDeadTokens = maint.cleanupDeadTokens;}
+  log('info', 'Exports ready', { fns: Object.keys(exports) });
 } catch (e) {
   log('warn', 'Maintenance exports failed (non-blocking)', { error: String(e?.message || e) });
+  log('info', 'Exports ready', { fns: Object.keys(exports) });
 }
+console.log(JSON.stringify({
+  boot_env: {
+    HTTP_REGION: process.env.HTTP_REGION,
+    APP_ENV: process.env.APP_ENV,
+    ALERTS_CHAN: process.env.ALERTS_CHAN,
+    FCM_SERVER_KEY_len: (process.env.FCM_SERVER_KEY||'').length
+  }
+}));
 
-// Sanity: liste finale des exports actifs
-log('info', 'Exports ready', { fns: Object.keys(exports) });
+
+// ❗ Ne rajoute PAS d’exports manuels en bas.

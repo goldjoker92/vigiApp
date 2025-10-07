@@ -168,7 +168,7 @@
 const { onRequest } = require('firebase-functions/v2/https');
 const geofire = require('geofire-common');
 
-const { db, log, warn, err, fmtDist, distanceMeters } = require('../utils');
+const { db, log, warn, err, fmtDist, distanceMeters } = require('./alert-utils');
 
 // ---------- Utils parse & clamp ----------
 const toNum = (v) => {

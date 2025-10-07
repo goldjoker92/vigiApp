@@ -1,36 +1,46 @@
-// functions/ackPublicAlert.js
-// ============================================================================
-// VigiApp — ACK Public Alert Receipt (HTTP Cloud Function)
-// ----------------------------------------------------------------------------
+// functions/src/ackPublicAlert.js
+// =============================================================================
+// VigiApp — CF v2: ackPublicAlertReceipt
 // - Endpoint: /ackPublicAlertReceipt
-// - Idempotent par alertId + tokenHash
-// - Stockage: publicAlerts/{alertId}/acks/{tokenHash}
-// - Champs: userId, platform, reasons{receive,tap}, firstSeenAt, lastSeenAt, count
-// - Incrémente publicAlerts.{ackCount} (compteur global)
-// - Durci: validation d'entrée, reason normalisée, no-store, logs clairs
-// ============================================================================
+// - Idempotent: publicAlerts/{alertId}/acks/{tokenHash}
+// - Compteurs: publicAlerts.ackCount ++, devices.pushStats.ack ++ (si deviceId)
+// - Reasons: receive | tap | open
+// - Debug via debug=1
+// =============================================================================
 
 const { onRequest } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
+const { FieldValue } = require('firebase-admin/firestore');
 const crypto = require('crypto');
 
-try {
-  admin.app();
-} catch {
-  admin.initializeApp();
+let _init = false;
+function ensureInit() {
+  if (_init) {
+    return;
+  }
+  try {
+    admin.app();
+  } catch {
+    admin.initializeApp();
+  }
+  _init = true;
 }
+const db = () => admin.firestore();
 
-// --- Utils -------------------------------------------------------------------
-function sha256Hex(s) {
-  try { return crypto.createHash('sha256').update(String(s || ''), 'utf8').digest('hex'); }
-  catch { return null; }
-}
+const sha256Hex = (s) =>
+  crypto
+    .createHash('sha256')
+    .update(String(s || ''), 'utf8')
+    .digest('hex');
 
-function nowIso() {
-  try { return new Date().toISOString(); } catch { return String(Date.now()); }
-}
+const nowIso = () => {
+  try {
+    return new Date().toISOString();
+  } catch {
+    return String(Date.now());
+  }
+};
 
-// Firestore docId ne doit pas contenir '/'; on interdit aussi vide/space
 function sanitizeAlertId(s) {
   const v = String(s || '').trim();
   if (!v || v.includes('/')) {
@@ -39,90 +49,11 @@ function sanitizeAlertId(s) {
   return v;
 }
 
-// Force {receive|tap} (default receive)
 function normalizeReason(r) {
-  const v = String(r || '').trim().toLowerCase();
-  return v === 'tap' ? 'tap' : 'receive';
-}
-
-async function handleAck(req, res) {
-  // Anti-cache proxy/CDN
-  res.set('Cache-Control', 'no-store');
-
-  const t0 = Date.now();
-  try {
-    const b = req.method === 'POST' ? (req.body || {}) : (req.query || {});
-
-    // --- Lecture & normalisation d'entrée -----------------------------------
-    const alertId = sanitizeAlertId(b.alertId);
-    const reason = normalizeReason(b.reason);
-    const userId = String(b.userId || '').trim();
-    const platform = String(b.platform || '').trim();
-    const fcmToken = String(b.fcmToken || '').trim();
-    const channelId = String(b.channelId || '').trim();
-    const appOpenTarget = String(b.appOpenTarget || '').trim();
-
-    // (facultatif mais utile pour debug futur)
-    const appVersion = String(b.appVersion || '').trim();
-    const deviceModel = String(b.deviceModel || '').trim();
-
-    if (!alertId) {
-      return res.status(400).json({ ok: false, error: 'alertId invalide' });
-    }
-    if (!fcmToken) {
-      // Certains appareils peuvent ACK sans token lisible → on accepte mais on log
-      console.warn('[ACK] fcmToken manquant', { alertId, userId, platform });
-    }
-
-    // --- Idempotence par tokenHash (fallback userId|platform si pas de token) -
-    const tokenHash = sha256Hex(fcmToken || `${userId}|${platform}`) || 'nohash';
-
-    // --- Ecriture Firestore ---------------------------------------------------
-    const db = admin.firestore();
-    const ackRef = db.collection('publicAlerts').doc(alertId).collection('acks').doc(tokenHash);
-    const now = admin.firestore.FieldValue.serverTimestamp();
-
-    // Merge atomique des raisons + timestamps
-    const update = {
-      userId: userId || null,
-      platform: platform || null,
-      tokenHash,
-      channelId: channelId || null,
-      appOpenTarget: appOpenTarget || null,
-      appVersion: appVersion || null,
-      deviceModel: deviceModel || null,
-      lastSeenAt: now,
-      count: admin.firestore.FieldValue.increment(1),
-      [`reasons.${reason}`]: true, // reasons.receive=true / reasons.tap=true
-      updatedAtISO: nowIso(),       // inspection rapide utile
-    };
-
-    // Si premier passage: on garde firstSeenAt (idempotent grâce au docId = tokenHash)
-    await ackRef.set(
-      {
-        firstSeenAt: now,
-        ...update,
-      },
-      { merge: true },
-    );
-
-    // Incrément d’un compteur global best-effort (non bloquant)
-    try {
-      await db
-        .collection('publicAlerts')
-        .doc(alertId)
-        .set({ ackCount: admin.firestore.FieldValue.increment(1) }, { merge: true });
-    } catch (e) {
-      console.warn('[ACK] ackCount increment fail', e?.message || e);
-    }
-
-    const ms = Date.now() - t0;
-    console.log('[ACK] OK', { alertId, reason, tokenHash: tokenHash.slice(0, 10) + '…', ms });
-    return res.status(200).json({ ok: true, alertId, tokenHash, reason, ms });
-  } catch (e) {
-    console.error('[ACK] FATAL', e?.stack || e?.message || e);
-    return res.status(500).json({ ok: false, error: 'internal', detail: String(e?.message || e) });
-  }
+  const v = String(r || '')
+    .trim()
+    .toLowerCase();
+  return v === 'tap' || v === 'open' ? v : 'receive';
 }
 
 const ackPublicAlertReceipt = onRequest(
@@ -133,7 +64,112 @@ const ackPublicAlertReceipt = onRequest(
     memory: '128MiB',
     concurrency: 80,
   },
-  handleAck,
+  async (req, res) => {
+    ensureInit();
+    res.set('Cache-Control', 'no-store');
+    const t0 = Date.now();
+
+    try {
+      const b = req.method === 'POST' ? req.body || {} : req.query || {};
+      const wantDebug = String(b.debug ?? req.query?.debug) === '1';
+
+      // ---- Inputs
+      const alertId = sanitizeAlertId(b.alertId);
+      if (!alertId) {
+        return res.status(400).json({ ok: false, error: 'alertId invalide' });
+      }
+
+      const reason = normalizeReason(b.reason);
+      const userId = (b.userId && String(b.userId).trim()) || null;
+      const deviceId = (b.deviceId && String(b.deviceId).trim()) || null;
+      const platform = (b.platform && String(b.platform).trim()) || null;
+      const fcmToken = (b.fcmToken && String(b.fcmToken).trim()) || null;
+
+      const channelId = (b.channelId && String(b.channelId).trim()) || null;
+      const appOpenTarget = (b.appOpenTarget && String(b.appOpenTarget).trim()) || null;
+      const appVersion = (b.appVersion && String(b.appVersion).trim()) || null;
+      const deviceModel = (b.deviceModel && String(b.deviceModel).trim()) || null;
+
+      if (!fcmToken) {
+        // On accepte sans token, mais on le note (hash tombera sur fallback userId|platform)
+        console.warn('[ACK] fcmToken manquant', { alertId, userId, platform });
+      }
+
+      // ---- Idempotence key
+      const tokenHash =
+        sha256Hex(fcmToken || `${userId || 'nouser'}|${platform || 'unk'}`) || 'nohash';
+      const now = FieldValue.serverTimestamp();
+
+      // ---- Write ACK doc (idempotent via docId=tokenHash)
+      const ackRef = db().collection('publicAlerts').doc(alertId).collection('acks').doc(tokenHash);
+      await ackRef.set(
+        {
+          tokenHash,
+          userId,
+          platform,
+          channelId,
+          appOpenTarget,
+          appVersion,
+          deviceModel,
+          firstSeenAt: now, // ne sera posé qu'au premier passage (merge)
+          lastSeenAt: now,
+          updatedAtISO: nowIso(),
+          count: FieldValue.increment(1),
+          reasons: { [reason]: true },
+        },
+        { merge: true },
+      );
+
+      // ---- Global ackCount (best effort)
+      db()
+        .collection('publicAlerts')
+        .doc(alertId)
+        .set({ ackCount: FieldValue.increment(1) }, { merge: true })
+        .catch((e) => console.warn('[ACK] ackCount increment fail', e?.message || e));
+
+      // ---- Device counters (si fourni)
+      if (deviceId) {
+        await db()
+          .collection('devices')
+          .doc(deviceId)
+          .set(
+            {
+              updatedAt: now,
+              lastAckAt: now,
+              lastAckId: String(alertId),
+              pushStats: {
+                total: FieldValue.increment(0), // assure la structure
+                ack: FieldValue.increment(1),
+              },
+            },
+            { merge: true },
+          );
+      }
+
+      const out = { ok: true, alertId, tokenHash, reason, ms: Date.now() - t0 };
+      if (wantDebug) {
+        out.debug = {
+          userId,
+          deviceId,
+          platform,
+          channelId,
+          appOpenTarget,
+          appVersion,
+          deviceModel,
+        };
+      }
+      return res.status(200).json(out);
+    } catch (e) {
+      console.error('[ACK] FATAL', e?.stack || e?.message || e);
+      return res
+        .status(500)
+        .json({ ok: false, error: 'internal', detail: String(e?.message || e) });
+    }
+  },
 );
 
 module.exports = { ackPublicAlertReceipt };
+// ============================================================================
+
+
+
