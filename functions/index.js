@@ -1,8 +1,8 @@
 // ============================================================================
 // VigiApp — Functions "default" (alerts, jobs, ACK)
 // ============================================================================
-require('module-alias/register');          // alias "@"
-require('./bootstrap-config');             // hydrate process.env + logs
+require('module-alias/register'); // alias "@"
+require('./bootstrap-config'); // hydrate process.env + logs
 
 const { setGlobalOptions } = require('firebase-functions/v2/options');
 setGlobalOptions({
@@ -17,9 +17,13 @@ setGlobalOptions({
 function log(level, msg, extra = {}) {
   const line = { ts: new Date().toISOString(), service: 'functions-default', level, msg, ...extra };
   const text = JSON.stringify(line);
-  if (level === 'error') {console.error(text);}
-  else if (level === 'warn') {console.warn(text);}
-  else {console.log(text);}
+  if (level === 'error') {
+    console.error(text);
+  } else if (level === 'warn') {
+    console.warn(text);
+  } else {
+    console.log(text);
+  }
 }
 log('info', 'Loaded codebase: default');
 
@@ -30,7 +34,9 @@ function safeRequire(paths, exportName = null, required = true) {
     try {
       const m = require(p);
       const mod = exportName ? m?.[exportName] : m;
-      if (!mod) {throw new Error(`Export "${exportName}" introuvable dans ${p}`);}
+      if (!mod) {
+        throw new Error(`Export "${exportName}" introuvable dans ${p}`);
+      }
       log('info', 'Module loaded', { path: p, exportName: exportName || '(module)' });
       return mod;
     } catch (e) {
@@ -39,7 +45,11 @@ function safeRequire(paths, exportName = null, required = true) {
     }
   }
   if (required) {
-    log('error', 'All module paths failed', { exportName, paths, error: String(lastErr?.message || lastErr) });
+    log('error', 'All module paths failed', {
+      exportName,
+      paths,
+      error: String(lastErr?.message || lastErr),
+    });
     throw lastErr || new Error(`Cannot load ${exportName || 'module'}`);
   }
   log('warn', 'Optional module not loaded', { exportName, paths });
@@ -83,21 +93,26 @@ try {
 // ---------------------------------------------------------------------------
 try {
   const maint = safeRequire(['./src/maintenance', './maintenance'], null, false);
-  if (maint?.purgeStaleDevices) {exports.purgeStaleDevices = maint.purgeStaleDevices;}
-  if (maint?.cleanupDeadTokens) {exports.cleanupDeadTokens = maint.cleanupDeadTokens;}
+  if (maint?.purgeStaleDevices) {
+    exports.purgeStaleDevices = maint.purgeStaleDevices;
+  }
+  if (maint?.cleanupDeadTokens) {
+    exports.cleanupDeadTokens = maint.cleanupDeadTokens;
+  }
   log('info', 'Exports ready', { fns: Object.keys(exports) });
 } catch (e) {
   log('warn', 'Maintenance exports failed (non-blocking)', { error: String(e?.message || e) });
   log('info', 'Exports ready', { fns: Object.keys(exports) });
 }
-console.log(JSON.stringify({
-  boot_env: {
-    HTTP_REGION: process.env.HTTP_REGION,
-    APP_ENV: process.env.APP_ENV,
-    ALERTS_CHAN: process.env.ALERTS_CHAN,
-    FCM_SERVER_KEY_len: (process.env.FCM_SERVER_KEY||'').length
-  }
-}));
-
+console.log(
+  JSON.stringify({
+    boot_env: {
+      HTTP_REGION: process.env.HTTP_REGION,
+      APP_ENV: process.env.APP_ENV,
+      ALERTS_CHAN: process.env.ALERTS_CHAN,
+      FCM_SERVER_KEY_len: (process.env.FCM_SERVER_KEY || '').length,
+    },
+  }),
+);
 
 // ❗ Ne rajoute PAS d’exports manuels en bas.

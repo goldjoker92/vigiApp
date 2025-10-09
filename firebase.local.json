@@ -1,0 +1,14 @@
+{
+  "functions": [
+    { "source": "functions", "codebase": "default" },
+    { "source": "functions_api", "codebase": "authapi" }
+  ],
+  "emulators": {
+    "hub": { "host": "127.0.0.1", "port": 4402 },
+    "ui": { "host": "127.0.0.1", "port": 4002 },
+    "functions": { "host": "127.0.0.1", "port": 5002 },
+    "eventarc": { "host": "127.0.0.1", "port": 9302 },
+    "logging": { "host": "127.0.0.1", "port": 4502 },
+    "tasks": { "host": "127.0.0.1", "port": 9502 }
+  }
+}

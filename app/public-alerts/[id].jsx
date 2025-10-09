@@ -467,4 +467,5 @@ const S = StyleSheet.create({
     marginVertical: scale(6),
     width: '85%',
   },
+  a,
 });

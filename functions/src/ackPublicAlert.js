@@ -170,6 +170,3 @@ const ackPublicAlertReceipt = onRequest(
 
 module.exports = { ackPublicAlertReceipt };
 // ============================================================================
-
-
-
