@@ -1,11 +1,14 @@
 // app/public-alerts/[id].jsx
 // ---------------------------------------------------------
-// VigiApp — Alertas Públicas (UI restaurée)
+// VigiApp — Alertas Públicas (UI restaurée + chip pulsante)
 // - Pin rouge + cercle de propagation (radius_m)
-// - Card sombre avec mêmes labels/icônes que ta version
-// - Adresse multi-lignes, date crééeAt -> DD/MM HH:mm (fallback date)
+// - Card sombre avec mêmes labels/icônes
+// - Adresse multi-lignes, date createdAt -> DD/MM HH:mm (fallback date)
 // - Distance user↔incident + loader
-// - Bouton recentrage rouge, logs clairs
+// - Bouton recentrage rouge
+// - “Chip” d’actualité: “Atualizado há X min” (pulsation douce)
+// - Traces/verbeses: logs homogènes pour debug sans bruit
+// - Robuste: id de route sécurisé, fallback champs, guard coords
 // ---------------------------------------------------------
 
 import { db } from '../../firebase';
@@ -13,7 +16,7 @@ import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useLocalSearchParams } from 'expo-router';
 import { doc, getDoc } from 'firebase/firestore';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Dimensions,
@@ -28,6 +31,8 @@ import {
   View,
 } from 'react-native';
 import MapView, { Circle, Marker } from 'react-native-maps';
+
+const TAG = '[ALERT_PAGE]';
 
 const { width: W } = Dimensions.get('window');
 const scale = (s) => Math.round((W / 375) * s);
@@ -45,31 +50,20 @@ const C = {
   mute: '#6c757d',
 };
 
-// --- utils
+// --- utils num/coords
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 const safeCoord = (lat, lng) =>
   isNum(lat) && isNum(lng) ? { latitude: lat, longitude: lng } : null;
 
+// --- date utils
 const normalizeToDate = (v) => {
   try {
-    if (!v) {
-      return null;
-    }
-    if (v instanceof Date) {
-      return v;
-    }
-    if (typeof v?.toDate === 'function') {
-      return v.toDate();
-    }
-    if (typeof v === 'object' && 'seconds' in v) {
-      return new Date(v.seconds * 1000);
-    }
-    if (typeof v === 'number') {
-      return new Date(v);
-    }
-    if (typeof v === 'string') {
-      return new Date(v);
-    }
+    if (!v) return null;
+    if (v instanceof Date) return v;
+    if (typeof v?.toDate === 'function') return v.toDate();
+    if (typeof v === 'object' && 'seconds' in v) return new Date(v.seconds * 1000);
+    if (typeof v === 'number') return new Date(v);
+    if (typeof v === 'string') return new Date(v);
     return null;
   } catch {
     return null;
@@ -78,57 +72,58 @@ const normalizeToDate = (v) => {
 const pad = (n) => (n < 10 ? `0${n}` : `${n}`);
 const fmtDate = (inp) => {
   const d = normalizeToDate(inp);
-  if (!d || Number.isNaN(d.getTime())) {
-    return '—';
-  }
+  if (!d || Number.isNaN(d.getTime())) return '—';
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
+// libellé relatif en PT (sobre)
+const relTimePt = (date) => {
+  const d = normalizeToDate(date);
+  if (!d) return null;
+  const diffMs = Date.now() - d.getTime();
+  if (diffMs < 45 * 1000) return 'agora';
+  const min = Math.round(diffMs / 60000);
+  if (min < 60) return `há ${min} min`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `há ${h} h`;
+  const dys = Math.round(h / 24);
+  return `há ${dys} d`;
+};
+
+// --- distance
 function haversineM(lat1, lon1, lat2, lon2) {
-  if (![lat1, lon1, lat2, lon2].every(isNum)) {
-    return NaN;
-  }
-  const R = 6371000,
-    toRad = (x) => (x * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1),
-    dLon = toRad(lon2 - lon1);
+  if (![lat1, lon1, lat2, lon2].every(isNum)) return NaN;
+  const R = 6371000;
+  const toRad = (x) => (x * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
   const a =
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 const distanciaTxt = (u, a) => {
-  if (!u || !a) {
-    return '—';
-  }
+  if (!u || !a) return '—';
   const d = haversineM(u.latitude, u.longitude, a.latitude, a.longitude);
-  if (!isNum(d)) {
-    return '—';
-  }
+  if (!isNum(d)) return '—';
   return d < 1000 ? `${Math.round(d)} m` : `${(d / 1000).toFixed(1)} km`;
 };
 
-// --- mapping Firestore (compatible avec tes champs existants)
+// --- mapping Firestore
 const pickTipo = (a) => a?.tipo || a?.categoria || a?.type || '—';
 const pickEstado = (a) => a?.uf || a?.estado || a?.state || '—';
 const pickCidade = (a) => a?.cidade || a?.city || '—';
 const pickCreated = (a) => a?.createdAt || a?.date || null;
+const pickLastReportAt = (a) => a?.lastReportAt || null;
 const pickReports = (a) =>
   a?.reportsCount ?? a?.declaracoes ?? (a?.declarantsMap ? Object.keys(a.declarantsMap).length : 1);
 const pickCoords = (a) => {
-  if (a?.location) {
-    return safeCoord(a.location.latitude, a.location.longitude);
-  }
+  if (a?.location) return safeCoord(a.location.latitude, a.location.longitude);
   return safeCoord(a?.lat, a?.lng);
 };
 const buildEndereco = (a) => {
-  // priorité: `endereco`/`ruaNumero` si présent
-  if (typeof a?.endereco === 'string' && a.endereco.trim()) {
-    return a.endereco.trim();
-  }
-  if (typeof a?.ruaNumero === 'string' && a.ruaNumero.trim()) {
-    return a.ruaNumero.trim();
-  }
+  if (typeof a?.endereco === 'string' && a.endereco.trim()) return a.endereco.trim();
+  if (typeof a?.ruaNumero === 'string' && a.ruaNumero.trim()) return a.ruaNumero.trim();
   const rua = a?.rua || a?.street || '';
   const numero = a?.numero || a?.number || '';
   const left = [rua, numero].filter(Boolean).join(', ');
@@ -139,10 +134,10 @@ const buildEndereco = (a) => {
   return final || '—';
 };
 
-// Rayon → deltas carte (pour bien voir le cercle)
+// Rayon → deltas carte (pour cadrer cercle)
 function radiusToDeltas(radiusM, lat) {
   const R_LAT = 111000; // ~m par degré lat
-  const latDelta = Math.max(0.0025, (radiusM / R_LAT) * 2.2);
+  const latDelta = Math.max(0.0025, (Number(radiusM || 0) / R_LAT) * 2.2);
   const lngDelta = Math.max(
     0.0025,
     latDelta / Math.max(0.25, Math.cos(((lat || 0) * Math.PI) / 180)),
@@ -150,7 +145,7 @@ function radiusToDeltas(radiusM, lat) {
   return { latitudeDelta: latDelta, longitudeDelta: lngDelta };
 }
 
-// Loader 3 points
+// Loader 3 points (distance en attente)
 function LoaderDots() {
   const dot0 = useRef(new Animated.Value(0));
   const dot1 = useRef(new Animated.Value(0));
@@ -178,6 +173,7 @@ function LoaderDots() {
       ).start();
     });
   }, [a]);
+
   const dotStyle = (val) => ({
     transform: [{ translateY: val.interpolate({ inputRange: [0, 1], outputRange: [0, -5] }) }],
     opacity: val.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1] }),
@@ -185,6 +181,7 @@ function LoaderDots() {
     fontSize: scale(16),
     marginHorizontal: scale(1),
   });
+
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
       <Animated.Text style={dotStyle(a[0])}>•</Animated.Text>
@@ -194,80 +191,161 @@ function LoaderDots() {
   );
 }
 
-// --- Firestore
+// --- Firestore fetch (loggué)
 async function fetchAlertDoc(id) {
-  console.log('[ALERT_PAGE] fetch', id);
-  const snap = await getDoc(doc(db, 'publicAlerts', id));
-  if (!snap.exists()) {
-    console.warn('[ALERT_PAGE] not found', id);
-    return null;
+  console.log(TAG, 'fetch', id);
+  try {
+    const snap = await getDoc(doc(db, 'publicAlerts', id));
+    if (!snap.exists()) {
+      console.warn(TAG, 'not found', id);
+      return null;
+    }
+    const data = { id: snap.id, ...snap.data() };
+    console.log(TAG, 'data', {
+      id: data.id,
+      hasLoc: !!(data.location?.latitude && data.location?.longitude),
+      reportsCount: data.reportsCount,
+      lastReportAt: !!data.lastReportAt,
+    });
+    return data;
+  } catch (e) {
+    console.error(TAG, 'fetch error', e?.message || e);
+    throw e;
   }
-  const data = { id: snap.id, ...snap.data() };
-  console.log('[ALERT_PAGE] data', data);
-  return data;
 }
 
-// =========================================================
+// ---------------------------------------------------------
+// Composant principal
+// ---------------------------------------------------------
 export default function PublicAlertPage() {
-  const { id } = useLocalSearchParams();
+  // 1) Paramètres de route robustes (gère deep link éventuellement mal formé)
+  const params = useLocalSearchParams();
+  // on accepte ?alertId=… ou /[id]
+  const rawId = Array.isArray(params.id) ? params.id[0] : params.id || params.alertId || '';
+  const id = String(rawId || '').split('?')[0]; // strip au cas où
+
   const [raw, setRaw] = useState(null);
   const [userLoc, setUserLoc] = useState(null);
+  const [tick, setTick] = useState(0); // force re-render pour le libellé relatif
   const mapRef = useRef(null);
 
-  // fetch
+  // 2) fetch Firestore
   useEffect(() => {
+    if (!id) {
+      console.warn(TAG, '⚠️ no id in route params', params);
+      return;
+    }
+    let mounted = true;
     (async () => {
       try {
         const d = await fetchAlertDoc(id);
-        setRaw(d);
+        if (mounted) setRaw(d);
       } catch (e) {
-        console.error('[ALERT_PAGE] fetch error', e?.message || e);
+        console.error(TAG, 'fetch error', e?.message || e);
       }
     })();
+    return () => {
+      mounted = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  // geoloc
+  // 3) géoloc (distance utilisateur)
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       try {
         console.log('[public-alerts/[id].jsx] geo: request permission');
         const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') {
-          return;
-        }
+        if (status !== 'granted') return;
         const { coords } = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
         });
-        setUserLoc({ latitude: coords.latitude, longitude: coords.longitude });
+        if (!cancelled) {
+          setUserLoc({ latitude: coords.latitude, longitude: coords.longitude });
+          console.log(TAG, 'geo ok', { lat: coords.latitude, lng: coords.longitude });
+        }
       } catch (e) {
-        console.warn('[ALERT_PAGE] geo error', e?.message || e);
+        console.warn(TAG, 'geo error', e?.message || e);
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  // mapping (safe même si raw null)
+  // 4) re-render doux toutes les 30s pour la chip (sans agressivité)
+  useEffect(() => {
+    const it = setInterval(() => setTick((n) => n + 1), 30000);
+    return () => clearInterval(it);
+  }, []);
+
+  // 5) mapping (safe même si raw null)
   const alert = {
     tipo: pickTipo(raw || {}),
     endereco: buildEndereco(raw || {}),
     cidade: pickCidade(raw || {}),
     estado: pickEstado(raw || {}),
     createdAt: pickCreated(raw || {}),
+    lastReportAt: pickLastReportAt(raw || {}),
     reports: pickReports(raw || {}),
     coords: pickCoords(raw || {}),
     radiusM: Number(raw?.radius_m ?? raw?.radius ?? 1000),
     descricao: (raw && (raw.descricao || raw.description)) || '—',
   };
 
-  // région carte
+  // 6) région carte (guard coords)
   const region = useMemo(() => {
-    if (!alert.coords) {
-      return null;
-    }
+    if (!alert.coords) return null;
     const deltas = radiusToDeltas(alert.radiusM, alert.coords.latitude);
     return { ...alert.coords, ...deltas };
   }, [alert.coords, alert.radiusM]);
 
-  // skeleton simple
+  // 7) Chip pulsante (alpha douce)
+  const chipPulse = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(chipPulse, {
+          toValue: 1,
+          duration: 900,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(chipPulse, {
+          toValue: 0,
+          duration: 1100,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [chipPulse]);
+
+  const chipOpacity = chipPulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 0.75],
+  });
+
+  // 8) libellé d’actualité (lastReportAt prioritaire)
+  const updatedChip = useMemo(
+    () => relTimePt(alert.lastReportAt || alert.createdAt) || null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [alert.lastReportAt, alert.createdAt, tick],
+  );
+
+  // 9) recentrage
+  const handleRecenter = useCallback(() => {
+    if (!region) return;
+    try {
+      mapRef.current?.animateToRegion(region, 300);
+      console.log(TAG, 'recenter to', region);
+    } catch {}
+  }, [region]);
+
+  // 10) skeleton simple
   if (!raw) {
     return (
       <SafeAreaView style={S.container}>
@@ -296,15 +374,21 @@ export default function PublicAlertPage() {
             <Text style={S.title}>Alertas Públicas</Text>
           </View>
 
-          {/* Map + cercle propagation + bouton recentrage */}
+          {/* Chip “Atualizado há X …” (pulsation douce) */}
+          {updatedChip && (
+            <View style={S.chipRow}>
+              <Animated.View style={[S.chip, { opacity: chipOpacity }]}>
+                <Icon name="update" size={scale(14)} color={C.bg} />
+                <Text style={S.chipText}>Atualizado {updatedChip}</Text>
+              </Animated.View>
+            </View>
+          )}
+
+          {/* Map + cercle + recentrage */}
           {region ? (
             <View style={S.mapWrap}>
               <MapView ref={mapRef} style={S.map} initialRegion={region} pointerEvents="auto">
-                <Marker
-                  coordinate={alert.coords}
-                  title={alert.tipo || 'Incidente'}
-                  pinColor="red"
-                />
+                <Marker coordinate={alert.coords} title={alert.tipo || 'Incidente'} pinColor="red" />
                 <Circle
                   center={alert.coords}
                   radius={alert.radiusM}
@@ -314,10 +398,7 @@ export default function PublicAlertPage() {
                 />
                 {userLoc && <Marker coordinate={userLoc} title="Você" pinColor={C.ok} />}
               </MapView>
-              <Pressable
-                onPress={() => mapRef.current?.animateToRegion(region, 300)}
-                style={({ pressed }) => [S.recenter, pressed && { opacity: 0.85 }]}
-              >
+              <Pressable onPress={handleRecenter} style={({ pressed }) => [S.recenter, pressed && { opacity: 0.85 }]}>
                 <Icon name="crosshairs-gps" size={scale(18)} color={C.bg} />
               </Pressable>
             </View>
@@ -328,7 +409,7 @@ export default function PublicAlertPage() {
             </View>
           )}
 
-          {/* Détails – mêmes lignes que ton UI */}
+          {/* Détails */}
           <View style={S.card}>
             <Row label="🚨  Tipo" value={alert.tipo} color={C.danger} />
             <Row
@@ -395,6 +476,26 @@ const S = StyleSheet.create({
     alignItems: 'center',
   },
   title: { color: C.ok, fontSize: scale(24), fontWeight: '700' },
+
+  chipRow: {
+    paddingHorizontal: scale(20),
+    marginTop: scale(6),
+  },
+  chip: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(6),
+    backgroundColor: C.warn,
+    paddingHorizontal: scale(10),
+    paddingVertical: scale(6),
+    borderRadius: 999,
+  },
+  chipText: {
+    color: C.bg,
+    fontWeight: '700',
+    fontSize: scale(12),
+  },
 
   mapWrap: {
     height: Math.max(scale(240), 220),
@@ -467,5 +568,4 @@ const S = StyleSheet.create({
     marginVertical: scale(6),
     width: '85%',
   },
-  a,
 });
