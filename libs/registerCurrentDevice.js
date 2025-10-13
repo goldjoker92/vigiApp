@@ -1,13 +1,17 @@
-// libs/registerCurrentDevice.js
 // ============================================================================
 // VigiApp — Orchestrateur d’enregistrement device (Expo Managed)
+// ----------------------------------------------------------------------------
 // - Récupère FCM via expo-notifications (⚠️ pas de @react-native-firebase/messaging)
-// - Optionnel: Expo push token (pour métriques / notifications Expo si besoin)
-// - Tente une géoloc robuste (mais n’empêche pas l’upsert si elle manque)
+// - Optionnel: Expo push token (métriques / fallback Expo)
+// - Géoloc robuste (non bloquante)
 // - Upsert Firestore via libs/registerDevice.js (global + per-user)
 // - Anti-doublon : snapshotKey ; anti-“stampede” : inFlight
-// - Logs homogènes + masquage de token ; codes d’erreurs explicites
-// - Auto-refresh: boot, retour foreground (avec debounce), interval 6h
+// - Auto-refresh: boot, retour foreground (debounce), interval 6h
+// ----------------------------------------------------------------------------
+// 📝 Mémo logging :
+//   - START registerCurrentDevice + permissions snapshot
+//   - FCM fetched / retry, Expo token, Geo OK
+//   - END READY (device enregistré) ou Upsert KO / exception
 // ============================================================================
 
 import { AppState } from 'react-native';
@@ -34,16 +38,14 @@ const err = (...a) => {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const TOKEN_RETRIES = 5;
-const TOKEN_BACKOFF_BASE_MS = 550; // ~0.55s, 1.1s, 1.65s, ...
+const TOKEN_BACKOFF_BASE_MS = 550;
 const GEO_TIMEOUT_MS = 5000;
-const FG_DEBOUNCE_MS = 600; // pour laisser le temps au système de rafraîchir le token
+const FG_DEBOUNCE_MS = 600;
 const PERIODIC_MS = 6 * 60 * 60 * 1000; // 6h
 
 let inFlight = false;
 let lastKey = null;
-let lastOkTs = Date.now();
-console.log('Last OK timestamp:', lastOkTs);
-// or use it in your logic
+let lastOkTs = 0;
 
 function mask(tok) {
   if (!tok) {
@@ -77,7 +79,6 @@ async function getFcmTokenExpoWithRetry(maxTries = TOKEN_RETRIES) {
         log('FCM fetched ✅', mask(data));
         return data;
       }
-      // data vide → on retente
       lastError = new Error('empty_fcm_token');
     } catch (e) {
       lastError = e;
@@ -92,7 +93,6 @@ async function getFcmTokenExpoWithRetry(maxTries = TOKEN_RETRIES) {
 
 async function getExpoPushTokenSafe() {
   try {
-    // projectId auto-resolu par Expo ; on reste tolérant
     const resp = await Notifications.getExpoPushTokenAsync();
     const tok = resp?.data || null;
     if (tok) {
@@ -123,7 +123,7 @@ async function getRobustLocation() {
 /**
  * Enregistre/rafraîchit le device de l’utilisateur courant.
  * - Ne bloque pas si géoloc indispo : on upsert quand même avec CEP/city.
- * - FCM token requis (aligné avec tes rules / envoi FCM).
+ * - FCM token requis.
  */
 export async function registerCurrentDevice({
   userId,
@@ -140,33 +140,35 @@ export async function registerCurrentDevice({
   }
   inFlight = true;
 
+  log('START registerCurrentDevice', { userId });
+
   try {
-    // 0) Info permission (diagnostic uniquement, on ne la demande pas ici)
+    // Permissions snapshot (diagnostic only)
     try {
       const perm = await Notifications.getPermissionsAsync();
       log('Perm snapshot', { status: perm?.status, canAskAgain: perm?.canAskAgain });
     } catch {}
 
-    // 1) Token FCM via Expo
+    // FCM token via Expo
     const fcmDeviceToken = await getFcmTokenExpoWithRetry(TOKEN_RETRIES);
     if (!fcmDeviceToken) {
-      warn('FCM introuvable (Expo). Upsert annulé pour respecter les rules.');
+      warn('FCM introuvable (Expo). Upsert annulé pour respecter les règles.');
       return { ok: false, code: 'no_fcm', error: 'fcmDeviceToken absent' };
     }
 
-    // 2) Expo push token (facultatif)
+    // Expo push token (facultatif)
     const expoPushToken = await getExpoPushTokenSafe();
 
-    // 3) Géoloc robuste (mais non bloquante)
+    // Géoloc robuste (non bloquante)
     const loc = await getRobustLocation();
     const lat = Number.isFinite(loc?.lat) ? loc.lat : null;
     const lng = Number.isFinite(loc?.lng) ? loc.lng : null;
 
-    // 4) Payload canonique
+    // Payload canonique
     const payload = {
       userId,
       expoPushToken,
-      fcmDeviceToken, // requis
+      fcmDeviceToken,
       cep: normalizeCep(userCep),
       city: userCity?.trim?.() || null,
       lat,
@@ -181,18 +183,19 @@ export async function registerCurrentDevice({
       return { ok: true, skipped: true, reason: 'no-diff' };
     }
 
-    // 5) Upsert
+    // Upsert
     const res = await upsertDevice(payload);
     if (res?.ok) {
       lastKey = key;
       lastOkTs = Date.now();
-      log('READY ✅ Device enregistré, éligible réception alertes', {
+      log('END READY ✅ Device enregistré', {
         deviceId: res.deviceId,
         hasLatLng: !!res.hasLatLng,
         geohash: res.geohash || null,
         cep: payload.cep || null,
         city: payload.city || null,
         fcmMasked: mask(fcmDeviceToken),
+        lastOkTs,
       });
     } else {
       warn('Upsert KO', res);
@@ -207,12 +210,7 @@ export async function registerCurrentDevice({
   }
 }
 
-// ----------------------------------------------------------------------------
-// Auto-refresh
-// - Boot
-// - Retour au foreground (debounce)
-// - Tick périodique 6h
-// ----------------------------------------------------------------------------
+// Auto-refresh (boot, foreground debounce, périodique)
 export function attachDeviceAutoRefresh({ userId, userCep, userCity, groups }) {
   if (!userId) {
     warn('attachDeviceAutoRefresh: userId manquant');
@@ -221,12 +219,12 @@ export function attachDeviceAutoRefresh({ userId, userCep, userCity, groups }) {
 
   let fgTimer = null;
 
-  // 1) Boot
+  // Boot
   registerCurrentDevice({ userId, userCep, userCity, groups })
     .then((r) => log('boot upsert =>', r))
     .catch(() => {});
 
-  // 2) Retour au foreground (avec petit debounce)
+  // Foreground (debounce)
   const onState = (s) => {
     if (s === 'active') {
       if (fgTimer) {
@@ -240,11 +238,12 @@ export function attachDeviceAutoRefresh({ userId, userCep, userCity, groups }) {
   };
   const unsubAppState = AppState.addEventListener('change', onState);
 
-  // 3) Refresh périodique (6h)
+  // Périodique 6h
   const intervalId = setInterval(() => {
     registerCurrentDevice({ userId, userCep, userCity, groups }).catch(() => {});
   }, PERIODIC_MS);
 
+  // Unsubscribe
   return () => {
     try {
       unsubAppState?.remove?.();

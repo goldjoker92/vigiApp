@@ -1,822 +1,730 @@
-// ============================================================================
-// VigiApp — Public Alert (HTTP Cloud Function, prod-grade, Android-first)
-// ----------------------------------------------------------------------------
-// - Admin init idempotent
-// - Upsert Firestore publicAlerts/{alertId}
-// - Sélection destinataires prioritaire GEO → widen → CEP → city sample
-// - Envoi **hybride** : FCM (prioritaire) + fallback Expo Push si présent
-// - Retry transitoires, DLQ tokens morts, micro-yield entre batchs
-// - Logs & métriques clairs: counts, %, moy. tentatives, byCode, samples, split FCM/Expo
-// - Audit Firestore pushAudits/{autoId}
-// - Anti-timeout: fast-exit si 0 dest.
-// - Couleur Android: normalisée et envoyée SEULEMENT si valide + non désactivée
-// - Mode test : testToken seul OU testToken + blast si ?testIncludePublic=1
-// ============================================================================
+// functions/src/sendPublicAlertByAddress.js
+// =============================================================================
+// VigiApp — CF v2: sendPublicAlertByAddress (adresse/CEP -> lat/lng -> envoi par rayon)
+// - Ajout: data.deepLink + data.url dans la payload FCM (sécurité / compat)
+// =============================================================================
 
 const { onRequest } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
+const { FieldValue, Timestamp } = require('firebase-admin/firestore');
 
+// ---- Charge .env (local/dev)
 try {
-  admin.app();
+  require('dotenv').config();
 } catch {
-  admin.initializeApp();
+  /* noop */
 }
 
-// --- Méta config
-const DEFAULT_TTL_SECONDS = 3600; // 1h
-const MAX_RADIUS_M = 3000;
-const MIN_RADIUS_M = 50;
-const DEFAULT_RADIUS_M = 1000;
-const ANDROID_CHANNEL_ID = 'alerts-high';
-const BATCH_SIZE = 500;
+// ---- Super-cache géocodage
+const { keyFromAddress, keyFromCEP, withGeoCache } = require('./geoCache');
 
-const DISABLE_FCM_COLOR = process.env.DISABLE_FCM_COLOR === 'true';
+// ---- ENV (fallbacks + mapping EXPO_PUBLIC_*)
+const ENV = {
+  LOG_LEVEL: (process.env.LOG_LEVEL || 'info').toLowerCase(), // debug|info|warn|error
+  DISABLE_FCM_COLOR: String(process.env.DISABLE_FCM_COLOR || 'false').toLowerCase() === 'true',
 
-// --- Helpers optionnels (défauts sûrs si absents)
-let textsBySeverity, resolveAccentColor, localLabel;
-try {
-  ({ textsBySeverity, resolveAccentColor, localLabel } = require('../lib/alert-utils'));
-} catch {
-  resolveAccentColor = ({ severity, formColor }) =>
-    formColor || (severity === 'high' ? '#DC3545' : '#FFA500');
-  localLabel = ({ endereco, bairro, cidade, uf }) =>
-    [endereco, bairro, [cidade, uf].filter(Boolean).join('/')].filter(Boolean).join(' — ');
-  textsBySeverity = (severity, local) => ({
-    title: `Alerta ${severity || 'médio'}`,
-    body: local || 'Alerta público',
-  });
-}
+  DEVICES_COLLECTION: process.env.DEVICES_COLLECTION || 'devices',
+  DEVICE_LAST_SEEN_FIELD: process.env.DEVICE_LAST_SEEN_FIELD || 'updatedAt',
+  DEVICE_CITY_FIELD: process.env.DEVICE_CITY_FIELD || 'city',
+  DEVICE_CEP_FIELD: process.env.DEVICE_CEP_FIELD || 'cep',
+  DEVICE_LAT_FIELD: process.env.DEVICE_LAT_FIELD || 'lat',
+  DEVICE_LNG_FIELD: process.env.DEVICE_LNG_FIELD || 'lng',
+  DEVICE_CHANNEL_PUBLIC_FIELD: process.env.DEVICE_CHANNEL_PUBLIC_FIELD || 'channels.publicAlerts',
+  DEVICE_ENABLED_FIELD: process.env.DEVICE_ENABLED_FIELD || 'active',
 
-let selectRecipientsGeohash,
-  selectRecipientsFallbackScan,
-  selectRecipientsCitySample,
-  auditPushBlastResult,
-  enqueueDLQ;
+  ANDROID_CHANNEL_ID: process.env.ANDROID_CHANNEL_ID || 'alerts-high',
+  DEFAULT_TTL_SECONDS: Number(process.env.DEFAULT_TTL_SECONDS || 3600),
 
-try {
-  ({
-    selectRecipientsGeohash,
-    selectRecipientsFallbackScan,
-    selectRecipientsCitySample,
-    auditPushBlastResult,
-    enqueueDLQ,
-  } = require('../lib/push-infra'));
-} catch {
-  // soft-fail: helpers undefined → recipients=0
-}
+  MIN_RADIUS_M: Number(process.env.MIN_RADIUS_M || 50),
+  MAX_RADIUS_M: Number(process.env.MAX_RADIUS_M || 3000),
+  DEFAULT_RADIUS_M: Number(process.env.DEFAULT_RADIUS_M || 1000),
 
-// ============================================================================
-// Utils
-// ============================================================================
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  BATCH_SIZE: Number(process.env.BATCH_SIZE || 500),
 
-function clampRadiusM(m) {
-  const n = Number(m);
-  if (!Number.isFinite(n)) {
-    return DEFAULT_RADIUS_M;
+  GMAPS_KEY: process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY || process.env.GMAPS_KEY || '',
+  LOCATIONIQ_KEY: process.env.EXPO_PUBLIC_LOCATIONIQ_KEY || process.env.LOCATIONIQ_KEY || '',
+};
+
+// ---- Logger simple
+const log = {
+  debug: (...a) => (ENV.LOG_LEVEL === 'debug' ? console.log('[DEBUG]', ...a) : null),
+  info: (...a) => (['info', 'debug'].includes(ENV.LOG_LEVEL) ? console.log('[INFO ]', ...a) : null),
+  warn: (...a) =>
+    ['warn', 'info', 'debug'].includes(ENV.LOG_LEVEL) ? console.warn('[WARN ]', ...a) : null,
+  error: (...a) => console.error('[ERROR]', ...a),
+};
+
+// ---- Helpers généraux
+const getByPath = (obj, path, def = undefined) => {
+  if (!obj || !path) {
+    return def;
   }
-  return Math.max(MIN_RADIUS_M, Math.min(n, MAX_RADIUS_M));
-}
-
-// FCM exige "#RRGGBB". Si invalide → undefined (on n’envoie pas la propriété).
-function normalizeAndroidColor(color) {
-  if (!color || DISABLE_FCM_COLOR) {
-    return undefined;
-  }
-  const hex = String(color).trim();
-  const withHash = hex.startsWith('#') ? hex : `#${hex}`;
-  return /^#[A-Fa-f0-9]{6}$/.test(withHash) ? withHash : undefined;
-}
-
-function maskToken(tok) {
-  if (!tok) {
-    return '(empty)';
-  }
-  const s = String(tok);
-  return s.length <= 12 ? s : `${s.slice(0, 6)}…${s.slice(-4)}`;
-}
-
-const isExpoToken = (t) => typeof t === 'string' && t.startsWith('ExponentPushToken');
-const pickExpoToken = (u) => u?.expoPushToken || (isExpoToken(u?.token) ? u?.token : null);
-const pickFcmToken = (u) =>
-  !isExpoToken(u?.token) && typeof u?.token === 'string'
-    ? u?.token
-    : typeof u?.fcmToken === 'string'
-      ? u?.fcmToken
-      : u?.fcmDeviceToken || null;
-
-// ============================================================================
-// Envoi FCM (admin.messaging())
-// ============================================================================
-async function sendFCM(token, message) {
-  try {
-    const id = await admin.messaging().send(message, /* dryRun */ false);
-    return { ok: true, id };
-  } catch (e) {
-    const code = e?.errorInfo?.code || e?.code || '';
-    const msg = e?.message || String(e);
-    const fatal = [
-      'messaging/invalid-argument',
-      'messaging/invalid-recipient',
-      'messaging/registration-token-not-registered',
-      'messaging/invalid-registration-token',
-    ].includes(code);
-    const transient = [
-      'messaging/internal-error',
-      'messaging/server-unavailable',
-      'messaging/unavailable',
-      'messaging/unknown-error',
-      'deadline-exceeded',
-    ].includes(code);
-    console.warn('[ALERT_API] FCM SEND FAIL', code, maskToken(token), msg);
-    return { ok: false, fatal, transient, code, msg };
-  }
-}
-
-async function sendFCMWithRetry(token, message, { max = 3 } = {}) {
-  let attempt = 0,
-    last;
-  while (attempt < max) {
-    attempt += 1;
-    const r = await sendFCM(token, message);
-    if (r.ok || r.fatal) {
-      return { ...r, attempts: attempt };
-    }
-    last = r; // transient
-    const base = 200 * Math.pow(2, attempt - 1); // 200, 400, 800…
-    const jitter = Math.floor(Math.random() * 100);
-    const wait = Math.min(2000, base + jitter);
-    console.warn('[ALERT_API] FCM retry', { token: maskToken(token), attempt, code: r.code, wait });
-    await sleep(wait);
-  }
-  return { ...(last || {}), attempts: max };
-}
-
-// ============================================================================
-// Envoi Expo Push (fallback) — Node18+ dispose de fetch global dans CF v2
-// ============================================================================
-async function sendExpoPushOnce(expoToken, payload) {
-  try {
-    const resp = await fetch('https://exp.host/--/api/v2/push/send', {
-      method: 'POST',
-      headers: { accept: 'application/json', 'content-type': 'application/json' },
-      body: JSON.stringify([{ to: expoToken, ...payload }]),
-    });
-    const json = await resp.json().catch(() => ({}));
-    // Réponse Expo: { data: [{ status: 'ok' | 'error', details, ... }] }
-    const item = Array.isArray(json?.data) ? json.data[0] : json?.data || json;
-    if (item?.status === 'ok') {
-      return { ok: true, id: item.id || null };
-    }
-    const code = item?.details?.error || item?.status || 'expo_error';
-    const msg = item?.message || JSON.stringify(item).slice(0, 200);
-    console.warn('[ALERT_API] EXPO SEND FAIL', code, maskToken(expoToken), msg);
-    return { ok: false, fatal: false, transient: true, code, msg };
-  } catch (e) {
-    return {
-      ok: false,
-      fatal: false,
-      transient: true,
-      code: 'expo_network',
-      msg: String(e?.message || e),
-    };
-  }
-}
-
-async function sendExpoWithRetry(expoToken, payload, { max = 3 } = {}) {
-  let attempt = 0,
-    last;
-  while (attempt < max) {
-    attempt += 1;
-    const r = await sendExpoPushOnce(expoToken, payload);
-    if (r.ok) {
-      return { ...r, attempts: attempt };
-    }
-    last = r;
-    const base = 200 * Math.pow(2, attempt - 1);
-    const jitter = Math.floor(Math.random() * 100);
-    const wait = Math.min(2000, base + jitter);
-    console.warn('[ALERT_API] EXPO retry', {
-      token: maskToken(expoToken),
-      attempt,
-      code: r.code,
-      wait,
-    });
-    await sleep(wait);
-  }
-  return { ...(last || {}), attempts: max };
-}
-
-// ============================================================================
-// Firestore upsert
-// ============================================================================
-async function upsertPublicAlertDoc({
-  alertId,
-  endereco,
-  cidade,
-  uf,
-  bairro,
-  lat,
-  lng,
-  radius_m,
-  severidade,
-  color,
-}) {
-  const docRef = admin.firestore().collection('publicAlerts').doc(alertId);
-  const payload = {
-    type: 'alert_public',
-    endereco: endereco || '',
-    cidade: cidade || '',
-    uf: uf || '',
-    bairro: bairro || '',
-    status: 'ativo',
-    gravidade: severidade || 'médio',
-    descricao: 'Alerta público (via endpoint)',
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    location:
-      Number.isFinite(lat) && Number.isFinite(lng)
-        ? { latitude: lat, longitude: lng }
-        : admin.firestore.FieldValue.delete(),
-    radius_m: Number.isFinite(radius_m) ? radius_m : DEFAULT_RADIUS_M,
-    color: color || '#FFA500',
-  };
-  await docRef.set(payload, { merge: true });
-  console.log('[ALERT_API] Firestore upsert publicAlerts/', alertId, '→ OK');
-}
-
-// ============================================================================
-// Handler principal
-// ============================================================================
-async function handleSendPublicAlertByAddress(req, res) {
-  const t0 = Date.now();
-  console.log('[ALERT_API] START sendPublicAlertByAddress');
-
-  try {
-    const b = req.method === 'POST' ? req.body || {} : req.query || {};
-    const alertId = String(b.alertId || '').trim();
-    const endereco = String(b.endereco || '').trim();
-    const cidade = String(b.cidade || '').trim();
-    const uf = String(b.uf || '').trim();
-    const bairro = String(b.bairro || '').trim();
-    const severity = String(b.severidade || 'medium').trim();
-    const formColor = b.color ? String(b.color).trim() : null;
-    const cep = String(b.cep || '').replace(/\D+/g, '');
-
-    // Mode test
-    const testToken = b.testToken ? String(b.testToken).trim() : null;
-    const testIncludePublic = String(b.testIncludePublic || b.testPublic || '').trim() === '1';
-
-    const lat = Number.parseFloat(b.lat);
-    const lng = Number.parseFloat(b.lng);
-
-    if (!alertId || !endereco) {
-      console.warn('[ALERT_API] 400 missing alertId/endereco');
-      return res.status(400).json({ ok: false, error: 'alertId et endereco requis' });
-    }
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-      console.warn('[ALERT_API] 400 coords invalides', { lat, lng });
-      return res
-        .status(400)
-        .json({ ok: false, error: 'coords invalides (lat/lng numériques requis)' });
-    }
-
-    let radiusM = clampRadiusM(b.radius_m ?? b.radius);
-    const accent = resolveAccentColor({ severity, formColor });
-    const androidColor = normalizeAndroidColor(accent);
-    const local = localLabel({ endereco, bairro, cidade, uf });
-    const deepLink = `vigiapp://public-alerts/${alertId}`;
-
-    console.log('[ALERT_API] params', {
-      alertId,
-      local,
-      lat,
-      lng,
-      radiusM,
-      severity,
-      cep: cep || '(vide)',
-      hasTestToken: !!testToken,
-      testIncludePublic,
-    });
-
-    // Upsert doc (page /public-alerts/[id])
-    await upsertPublicAlertDoc({
-      alertId,
-      endereco,
-      cidade,
-      uf,
-      bairro,
-      lat,
-      lng,
-      radius_m: radiusM,
-      severidade: severity,
-      color: accent,
-    });
-
-    // -------------------------------------------
-    // Mode test: envoi ciblé + retour rapide
-    // (option testIncludePublic=1 pour continuer avec le blast public)
-    // -------------------------------------------
-    if (testToken) {
-      const { title, body } = textsBySeverity(severity, local, '');
-      const androidNotif = {
-        channelId: ANDROID_CHANNEL_ID,
-        ...(androidColor ? { color: androidColor } : {}),
-      };
-      const msg = {
-        token: testToken,
-        notification: { title, body },
-        android: { priority: 'high', ttl: DEFAULT_TTL_SECONDS * 1000, notification: androidNotif },
-        data: {
-          type: 'alert_public',
-          alertId,
-          deepLink,
-          endereco: local,
-          bairro,
-          cidade,
-          uf,
-          cep,
-          severidade: severity,
-          color: accent,
-          radius_m: String(radiusM),
-          lat: String(lat),
-          lng: String(lng),
-          ack: '1',
-          channelId: ANDROID_CHANNEL_ID,
-        },
-      };
-      const r = isExpoToken(testToken)
-        ? await sendExpoWithRetry(
-            testToken,
-            {
-              title,
-              body,
-              data: msg.data,
-              sound: 'default',
-              priority: 'high',
-              ttl: DEFAULT_TTL_SECONDS,
-              channelId: ANDROID_CHANNEL_ID,
-            },
-            { max: 3 },
-          )
-        : await sendFCMWithRetry(testToken, msg, { max: 3 });
-
-      console.log('[ALERT_API] testToken result', r);
-      if (!testIncludePublic) {
-        return res
-          .status(200)
-          .json({ ok: true, mode: 'testToken', result: r, ms: Date.now() - t0 });
-      }
-      console.log('[ALERT_API] testIncludePublic=1 → on poursuit avec le blast public');
-    }
-
-    // -------------------------
-    // Métriques agrégées blast
-    // -------------------------
-    const metrics = {
-      t0,
-      params: { alertId, lat, lng, radiusM, severity, cep: cep || '' },
-      recipients: 0,
-      sent: 0,
-      transient: 0,
-      fatal: 0,
-      otherErr: 0,
-      attemptsTotal: 0,
-      byCode: {},
-      // split transport
-      sentFCM: 0,
-      sentExpo: 0,
-      // samples limitées
-      samples: { fatal: [], transient: [], other: [] }, // max 20 chacun
-    };
-
-    // -- Sélection destinataires (A → B → widen → C)
-    let recipients = [];
-    if (typeof selectRecipientsGeohash === 'function') {
-      console.log('[ALERT_API] select A geohash/haversine…');
-      recipients = await selectRecipientsGeohash({ lat, lng, radiusM });
-
-      if (recipients.length === 0 && typeof selectRecipientsFallbackScan === 'function') {
-        console.warn('[ALERT_API] A=0 → B fallback scan/CEP…');
-        recipients = await selectRecipientsFallbackScan({ lat, lng, radiusM, cep });
-      }
-
-      if (recipients.length === 0 && radiusM < MAX_RADIUS_M) {
-        const widened = Math.min(Math.floor(radiusM * 1.3), MAX_RADIUS_M);
-        console.warn('[ALERT_API] B=0 → widen', { from: radiusM, to: widened });
-        const rA = await selectRecipientsGeohash({ lat, lng, radiusM: widened });
-        recipients = rA.length
-          ? rA
-          : typeof selectRecipientsFallbackScan === 'function'
-            ? await selectRecipientsFallbackScan({ lat, lng, radiusM: widened, cep })
-            : [];
-        radiusM = widened;
-      }
-
-      if (recipients.length === 0 && typeof selectRecipientsCitySample === 'function' && cidade) {
-        console.warn('[ALERT_API] C=0 → city sample', { cidade });
-        recipients = await selectRecipientsCitySample({ city: cidade });
-      }
+  const parts = String(path).split('.');
+  let cur = obj;
+  for (const p of parts) {
+    if (cur && Object.prototype.hasOwnProperty.call(cur, p)) {
+      cur = cur[p];
     } else {
-      console.warn('[ALERT_API] Sélection destinataires NON branchée → recipients=0');
+      return def;
     }
+  }
+  return cur;
+};
 
-    // Filtrer/normaliser: on garde les entrées ayant au moins 1 token (FCM ou Expo)
-    recipients = (recipients || []).filter((u) => !!(pickFcmToken(u) || pickExpoToken(u)));
+let _init = false;
+function ensureInit() {
+  if (_init) {
+    return;
+  }
+  try {
+    admin.app();
+  } catch {
+    admin.initializeApp();
+  }
+  _init = true;
+}
+const db = () => admin.firestore();
+const fcm = () => admin.messaging();
 
-    metrics.recipients = recipients.length;
-    console.log('[ALERT_METRICS] selection', {
-      alertId,
-      recipients: metrics.recipients,
-      radiusM,
-      severity,
-      cep: cep || '(vide)',
+const toNum = (v) => (typeof v === 'string' ? parseFloat(v) : v);
+const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
+const isFiniteNum = (n) => typeof n === 'number' && Number.isFinite(n);
+const maskToken = (t) =>
+  !t
+    ? '(empty)'
+    : String(t).length <= 14
+      ? String(t)
+      : `${String(t).slice(0, 6)}…${String(t).slice(-6)}`;
+
+function haversineMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000,
+    toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1),
+    dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+function uniqBy(arr, keyFn) {
+  const seen = new Set();
+  const out = [];
+  for (const x of arr) {
+    const k = keyFn(x);
+    if (!k || seen.has(k)) {
+      continue;
+    }
+    seen.add(k);
+    out.push(x);
+  }
+  return out;
+}
+
+// ---------- fetch JSON (timeout court + UA)
+async function _fetchJson(url, { timeoutMs = 900 } = {}) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const r = await fetch(url, {
+      signal: ctrl.signal,
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': 'VigiApp-CF/send/2 (contact: support@vigiapp)',
+      },
     });
-
-    if (metrics.recipients === 0) {
-      const ms0 = Date.now() - t0;
-      const summary0 = {
-        alertId,
-        geo: { lat, lng, radiusM },
-        recipients: 0,
-        sent: 0,
-        notSent: 0,
-        transient: 0,
-        fatal: 0,
-        otherErr: 0,
-        byCode: {},
-        attemptsAvg: 0,
-        successPct: 0,
-        sentFCM: 0,
-        sentExpo: 0,
-        ms: ms0,
-      };
-      console.log('[ALERT_METRICS] summary', summary0);
-      try {
-        if (typeof auditPushBlastResult === 'function') {
-          await auditPushBlastResult({
-            ...summary0,
-            kind: 'publicIncident',
-            cidade,
-            uf,
-            cep,
-            ts: admin.firestore.FieldValue.serverTimestamp(),
-            samples: metrics.samples,
-          }).catch(() => {});
-        } else {
-          await admin
-            .firestore()
-            .collection('pushAudits')
-            .add({
-              ...summary0,
-              kind: 'publicIncident',
-              cidade,
-              uf,
-              cep,
-              ts: admin.firestore.FieldValue.serverTimestamp(),
-              samples: metrics.samples,
-            });
-        }
-      } catch (e) {
-        console.warn('[ALERT_METRICS] audit_write_fail', String(e?.message || e));
-      }
-      return res.status(200).json({ ok: true, ...summary0 });
+    if (!r.ok) {
+      throw new Error(`HTTP ${r.status}`);
     }
-
-    // -- Envoi batché (avec retry & métriques)
-    const { title, body } = textsBySeverity(severity, local, '');
-
-    for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
-      const batch = recipients.slice(i, i + BATCH_SIZE);
-
-      const results = await Promise.allSettled(
-        batch.map(async (u) => {
-          const fcmTok = pickFcmToken(u);
-          const expoTok = pickExpoToken(u);
-
-          // Corps commun "data" (toujours)
-          const dataPayload = {
-            type: 'alert_public',
-            alertId,
-            deepLink,
-            endereco: local,
-            bairro,
-            cidade,
-            uf,
-            cep,
-            severidade: severity,
-            color: accent,
-            radius_m: String(radiusM),
-            lat: String(lat),
-            lng: String(lng),
-            ack: '1',
-            channelId: ANDROID_CHANNEL_ID,
-            distancia: u.distance_m ? String(Math.round(u.distance_m)) : '',
-          };
-
-          // 1) On privilégie FCM si disponible (Android-first)
-          if (fcmTok) {
-            const androidNotif = {
-              channelId: ANDROID_CHANNEL_ID,
-              ...(androidColor ? { color: androidColor } : {}),
-            };
-            const msg = {
-              token: fcmTok,
-              notification: { title, body },
-              android: {
-                priority: 'high',
-                ttl: DEFAULT_TTL_SECONDS * 1000,
-                notification: androidNotif,
-              },
-              data: dataPayload,
-            };
-            const r = await sendFCMWithRetry(fcmTok, msg, { max: 3 });
-            metrics.attemptsTotal += r.attempts || 1;
-            if (r.ok) {
-              metrics.sent += 1;
-              metrics.sentFCM += 1;
-              return { kind: 'sent', via: 'fcm' };
-            }
-
-            const code = r.code || 'unknown';
-            metrics.byCode[code] = (metrics.byCode[code] || 0) + 1;
-
-            if (r.transient) {
-              if (metrics.samples.transient.length < 20) {
-                metrics.samples.transient.push({
-                  token: maskToken(fcmTok),
-                  code,
-                  msg: r.msg?.slice(0, 120),
-                });
-              }
-              // Fallback Expo si dispo
-              if (expoTok) {
-                const rr = await sendExpoWithRetry(
-                  expoTok,
-                  {
-                    title,
-                    body,
-                    data: dataPayload,
-                    sound: 'default',
-                    priority: 'high',
-                    ttl: DEFAULT_TTL_SECONDS,
-                    channelId: ANDROID_CHANNEL_ID,
-                  },
-                  { max: 3 },
-                );
-                metrics.attemptsTotal += rr.attempts || 1;
-                if (rr.ok) {
-                  metrics.sent += 1;
-                  metrics.sentExpo += 1;
-                  return { kind: 'sent', via: 'expo-fallback' };
-                }
-                const c2 = rr.code || 'expo_unknown';
-                metrics.byCode[c2] = (metrics.byCode[c2] || 0) + 1;
-                if (metrics.samples.transient.length < 20) {
-                  metrics.samples.transient.push({
-                    token: maskToken(expoTok),
-                    code: c2,
-                    msg: rr.msg?.slice(0, 120),
-                  });
-                }
-              }
-              return { kind: 'transient', code };
-            }
-
-            if (r.fatal) {
-              if (enqueueDLQ && code === 'messaging/registration-token-not-registered') {
-                await enqueueDLQ({
-                  kind: 'alert_public',
-                  alertId,
-                  token: fcmTok,
-                  reason: r.msg || r.code,
-                });
-              }
-              if (metrics.samples.fatal.length < 20) {
-                metrics.samples.fatal.push({
-                  token: maskToken(fcmTok),
-                  code,
-                  msg: r.msg?.slice(0, 120),
-                });
-              }
-              // Fallback Expo si dispo
-              if (expoTok) {
-                const rr = await sendExpoWithRetry(
-                  expoTok,
-                  {
-                    title,
-                    body,
-                    data: dataPayload,
-                    sound: 'default',
-                    priority: 'high',
-                    ttl: DEFAULT_TTL_SECONDS,
-                    channelId: ANDROID_CHANNEL_ID,
-                  },
-                  { max: 3 },
-                );
-                metrics.attemptsTotal += rr.attempts || 1;
-                if (rr.ok) {
-                  metrics.sent += 1;
-                  metrics.sentExpo += 1;
-                  return { kind: 'sent', via: 'expo-fallback' };
-                }
-                const c2 = rr.code || 'expo_unknown';
-                metrics.byCode[c2] = (metrics.byCode[c2] || 0) + 1;
-                if (metrics.samples.fatal.length < 20) {
-                  metrics.samples.fatal.push({
-                    token: maskToken(expoTok),
-                    code: c2,
-                    msg: rr.msg?.slice(0, 120),
-                  });
-                }
-              }
-              return { kind: 'fatal', code };
-            }
-
-            // other (non transient/fatal)
-            if (metrics.samples.other.length < 20) {
-              metrics.samples.other.push({
-                token: maskToken(fcmTok),
-                code,
-                msg: r.msg?.slice(0, 120),
-              });
-            }
-            // Fallback Expo si dispo
-            if (expoTok) {
-              const rr = await sendExpoWithRetry(
-                expoTok,
-                {
-                  title,
-                  body,
-                  data: dataPayload,
-                  sound: 'default',
-                  priority: 'high',
-                  ttl: DEFAULT_TTL_SECONDS,
-                  channelId: ANDROID_CHANNEL_ID,
-                },
-                { max: 3 },
-              );
-              metrics.attemptsTotal += rr.attempts || 1;
-              if (rr.ok) {
-                metrics.sent += 1;
-                metrics.sentExpo += 1;
-                return { kind: 'sent', via: 'expo-fallback' };
-              }
-              const c2 = rr.code || 'expo_unknown';
-              metrics.byCode[c2] = (metrics.byCode[c2] || 0) + 1;
-              if (metrics.samples.other.length < 20) {
-                metrics.samples.other.push({
-                  token: maskToken(expoTok),
-                  code: c2,
-                  msg: rr.msg?.slice(0, 120),
-                });
-              }
-            }
-            return { kind: 'other', code };
-          }
-
-          // 2) Pas de FCM → on tente Expo direct (si dispo)
-          if (expoTok) {
-            const rr = await sendExpoWithRetry(
-              expoTok,
-              {
-                title,
-                body,
-                data: dataPayload,
-                sound: 'default',
-                priority: 'high',
-                ttl: DEFAULT_TTL_SECONDS,
-                channelId: ANDROID_CHANNEL_ID,
-              },
-              { max: 3 },
-            );
-            metrics.attemptsTotal += rr.attempts || 1;
-            if (rr.ok) {
-              metrics.sent += 1;
-              metrics.sentExpo += 1;
-              return { kind: 'sent', via: 'expo-only' };
-            }
-            const code = rr.code || 'expo_unknown';
-            metrics.byCode[code] = (metrics.byCode[code] || 0) + 1;
-            if (metrics.samples.transient.length < 20) {
-              metrics.samples.transient.push({
-                token: maskToken(expoTok),
-                code,
-                msg: rr.msg?.slice(0, 120),
-              });
-            }
-            return { kind: rr.fatal ? 'fatal' : 'transient', code };
-          }
-
-          // Aucun token exploitable (ne devrait pas arriver à cause du filtre amont)
-          return { kind: 'other', code: 'no_usable_token' };
-        }),
-      );
-
-      // Agrégation résultats
-      for (const rr of results) {
-        if (rr.status !== 'fulfilled') {
-          metrics.otherErr += 1;
-          continue;
-        }
-        const k = rr.value?.kind;
-        if (k === 'sent') {
-          metrics.sent += 0;
-        } // déjà incrémenté in-band
-        else if (k === 'transient') {
-          metrics.transient += 1;
-        } else if (k === 'fatal') {
-          metrics.fatal += 1;
-        } else {
-          metrics.otherErr += 1;
-        }
-      }
-
-      console.log('[ALERT_METRICS] batch', {
-        i,
-        sent: metrics.sent,
-        sentFCM: metrics.sentFCM,
-        sentExpo: metrics.sentExpo,
-        transient: metrics.transient,
-        fatal: metrics.fatal,
-        otherErr: metrics.otherErr,
-      });
-
-      await new Promise((r) => setImmediate(r));
-    }
-
-    // -- Résumé & audit
-    const ms = Date.now() - t0;
-    const notSent = Math.max(metrics.recipients - metrics.sent, 0);
-    const successPct = metrics.recipients
-      ? Math.round((metrics.sent / metrics.recipients) * 1000) / 10
-      : 0;
-    const denom = metrics.sent + metrics.transient + metrics.fatal + metrics.otherErr;
-    const attemptsAvg = denom ? Math.round((metrics.attemptsTotal * 10) / denom) / 10 : 0;
-
-    const summary = {
-      alertId,
-      geo: { lat, lng, radiusM },
-      recipients: metrics.recipients,
-      sent: metrics.sent,
-      sentFCM: metrics.sentFCM,
-      sentExpo: metrics.sentExpo,
-      notSent,
-      transient: metrics.transient,
-      fatal: metrics.fatal,
-      otherErr: metrics.otherErr,
-      byCode: metrics.byCode,
-      attemptsAvg,
-      successPct,
-      ms,
-    };
-
-    console.log('[ALERT_METRICS] summary', summary);
-
-    try {
-      if (typeof auditPushBlastResult === 'function') {
-        await auditPushBlastResult({
-          ...summary,
-          kind: 'publicIncident',
-          cidade,
-          uf,
-          cep,
-          ts: admin.firestore.FieldValue.serverTimestamp(),
-          samples: metrics.samples,
-        }).catch(() => {});
-      } else {
-        await admin
-          .firestore()
-          .collection('pushAudits')
-          .add({
-            ...summary,
-            kind: 'publicIncident',
-            cidade,
-            uf,
-            cep,
-            ts: admin.firestore.FieldValue.serverTimestamp(),
-            samples: metrics.samples,
-          });
-      }
-    } catch (e) {
-      console.warn('[ALERT_METRICS] audit_write_fail', String(e?.message || e));
-    }
-
-    return res.status(200).json({ ok: true, ...summary });
-  } catch (e) {
-    console.error('[ALERT_API] FATAL', e?.stack || e?.message || e);
-    return res.status(500).json({ ok: false, error: 'internal', detail: String(e?.message || e) });
+    return await r.json();
+  } finally {
+    clearTimeout(t);
   }
 }
+
+// ---------- Géocodage : Google / LocationIQ / OSM ----------
+async function geocodeGoogle(q, planLogs, timeoutMs = 900) {
+  const key = ENV.GMAPS_KEY;
+  if (!key) {
+    throw new Error('GMAPS_KEY missing (.env EXPO_PUBLIC_GOOGLE_MAPS_KEY)');
+  }
+  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(q)}&language=pt-BR&key=${key}`;
+  const json = await _fetchJson(url, { timeoutMs });
+  planLogs.push({ provider: 'google', status: json.status, results: json.results?.length || 0 });
+  if (json.status !== 'OK' || !json.results?.length) {
+    throw new Error(`google:${json.status}`);
+  }
+  const best = json.results[0];
+  const loc = best.geometry?.location;
+  if (!loc) {
+    throw new Error('google:no_loc');
+  }
+  return {
+    lat: loc.lat,
+    lng: loc.lng,
+    precision: best.geometry?.location_type || 'UNKNOWN',
+    provider: 'google',
+  };
+}
+async function geocodeLocationIQ(q, planLogs, timeoutMs = 900) {
+  const key = ENV.LOCATIONIQ_KEY;
+  if (!key) {
+    throw new Error('LOCATIONIQ_KEY missing (.env EXPO_PUBLIC_LOCATIONIQ_KEY)');
+  }
+  const url = `https://us1.locationiq.com/v1/search?key=${key}&q=${encodeURIComponent(q)}&format=json&addressdetails=1&limit=1`;
+  const json = await _fetchJson(url, { timeoutMs });
+  planLogs.push({ provider: 'locationiq', results: Array.isArray(json) ? json.length : 0 });
+  if (!Array.isArray(json) || !json.length) {
+    throw new Error('locationiq:no_result');
+  }
+  const r = json[0];
+  return {
+    lat: parseFloat(r.lat),
+    lng: parseFloat(r.lon),
+    precision: r.type || 'UNKNOWN',
+    provider: 'locationiq',
+  };
+}
+async function geocodeOSM(q, planLogs, timeoutMs = 900) {
+  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=1&accept-language=pt-BR&q=${encodeURIComponent(q)}`;
+  const json = await _fetchJson(url, { timeoutMs });
+  planLogs.push({ provider: 'osm', results: Array.isArray(json) ? json.length : 0 });
+  if (!Array.isArray(json) || !json.length) {
+    throw new Error('osm:no_result');
+  }
+  const r = json[0];
+  return {
+    lat: parseFloat(r.lat),
+    lng: parseFloat(r.lon),
+    precision: r.class || 'UNKNOWN',
+    provider: 'osm',
+  };
+}
+
+// ---------- CEP → centroïde ----------
+async function cepToCentroidViaCEP(cep, planLogs, timeoutMs = 900) {
+  const cepNum = String(cep || '')
+    .replace(/\D+/g, '')
+    .slice(0, 8);
+  if (!cepNum) {
+    throw new Error('cep:empty');
+  }
+  const url = `https://viacep.com.br/ws/${cepNum}/json/`;
+  const json = await _fetchJson(url, { timeoutMs });
+  if (json?.erro) {
+    throw new Error('viacep:not_found');
+  }
+  planLogs.push({ provider: 'viacep', cep: cepNum, city: json.localidade, uf: json.uf });
+  const addr = [json.logradouro, json.bairro, json.localidade, json.uf, 'Brasil']
+    .filter(Boolean)
+    .join(', ');
+  try {
+    const p = await geocodeOSM(addr, planLogs, timeoutMs);
+    return { ...p, provider: p.provider + '+viacep' };
+  } catch {
+    const p = await geocodeGoogle(addr, planLogs, timeoutMs);
+    return { ...p, provider: p.provider + '+viacep' };
+  }
+}
+async function cepToCentroidBrasilAPI(cep, planLogs, timeoutMs = 900) {
+  const cepNum = String(cep || '')
+    .replace(/\D+/g, '')
+    .slice(0, 8);
+  if (!cepNum) {
+    throw new Error('cep:empty');
+  }
+  const url = `https://brasilapi.com.br/api/cep/v2/${cepNum}`;
+  const json = await _fetchJson(url, { timeoutMs });
+  planLogs.push({ provider: 'brasilapi', cep: cepNum, city: json.city, state: json.state });
+  const addr = [json.street, json.neighborhood, json.city, json.state, 'Brasil']
+    .filter(Boolean)
+    .join(', ');
+  try {
+    const p = await geocodeOSM(addr, planLogs, timeoutMs);
+    return { ...p, provider: p.provider + '+brasilapi' };
+  } catch {
+    const p = await geocodeGoogle(addr, planLogs, timeoutMs);
+    return { ...p, provider: p.provider + '+brasilapi' };
+  }
+}
+
+// ---------- métriques device ----------
+async function bumpPushStats(deviceId, alertId, kind /* attempt|sent|notSent|transient */) {
+  if (!deviceId) {
+    return;
+  }
+  await db()
+    .collection(ENV.DEVICES_COLLECTION)
+    .doc(deviceId)
+    .set(
+      {
+        [ENV.DEVICE_LAST_SEEN_FIELD]: FieldValue.serverTimestamp(),
+        lastBlastAt: FieldValue.serverTimestamp(),
+        lastBlastId: String(alertId),
+        pushStats: { total: FieldValue.increment(1), [kind]: FieldValue.increment(1) },
+      },
+      { merge: true },
+    );
+}
+
+// ---------- NEW: écriture du doc publicAlerts + projection ----------
+async function writePublicAlertDoc({ alertId, body }) {
+  try {
+    const ref = db().collection('publicAlerts').doc(String(alertId));
+    await ref.set(
+      {
+        userId: body.userId || '(test)',
+        apelido: body.apelido || '',
+        username: body.username || '',
+        categoria: body.categoria || body.kind || 'Outros',
+        descricao: body.descricao || '',
+        gravidade: body.severidade || 'medium',
+        color: body.color || '#FFA500',
+        ruaNumero: body.endereco || '',
+        cidade: body.cidade || '',
+        estado: body.uf || '',
+        cep: body.cep || '',
+        cepPrecision: body.cepPrecision || 'none',
+        pais: 'BR',
+        location: {
+          latitude: Number(body.lat),
+          longitude: Number(body.lng),
+          accuracy: null,
+          heading: null,
+          altitudeAccuracy: null,
+          speed: null,
+        },
+        date: body.date || '',
+        time: body.time || '',
+        createdAt: FieldValue.serverTimestamp(),
+        expiresAt: body.expiresAt || null,
+        radius: Number(body.radius_m || body.radius) || 1000,
+        radius_m: Number(body.radius_m || body.radius) || 1000,
+        entryMode: body.mode || 'external',
+        isManual: body.mode === 'manual' || false,
+        reporter_distance_m: body.reporter_distance_m || 0,
+      },
+      { merge: true },
+    );
+
+    await db()
+      .collection('publicAlertsProjection')
+      .doc(String(alertId))
+      .set(
+        {
+          projectedAt: FieldValue.serverTimestamp(),
+          alertId: String(alertId),
+        },
+        { merge: true },
+      );
+  } catch (e) {
+    log.warn('[PUBLIC ALERT][doc] write failed (non-blocking)', e?.message || e);
+  }
+}
+
+// ============================================================================
 
 const sendPublicAlertByAddress = onRequest(
   {
-    region: 'southamerica-east1',
+    region: process.env.HTTP_REGION || 'southamerica-east1',
     cors: true,
     timeoutSeconds: 60,
     memory: '256MiB',
     concurrency: 40,
   },
-  handleSendPublicAlertByAddress,
+  async (req, res) => {
+    ensureInit();
+    const t0 = Date.now();
+
+    try {
+      if (req.method !== 'POST') {
+        return res.status(405).json({ ok: false, code: 'method_not_allowed' });
+      }
+
+      const b = req.body || {};
+      const wantDebug = String(b.debug ?? req.query?.debug) === '1';
+      const createDoc = String(b.createDoc || b.createdoc || '0') === '1';
+
+      // ---------- Entrée ----------
+      const alertId = String(b.alertId || `debug_${Math.random().toString(16).slice(2, 8)}`);
+      const endereco = b.endereco || null;
+      const bairro = b.bairro || null;
+      const cityIn = b.city || b.cidade || null;
+      const uf = b.uf || null;
+      const cepNorm = b.cep ? String(b.cep).replace(/\D+/g, '').slice(0, 8) : null;
+
+      let lat = clamp(toNum(b.lat), -90, 90);
+      let lng = clamp(toNum(b.lng), -180, 180);
+      let hasLatLng = isFiniteNum(lat) && isFiniteNum(lng);
+
+      let radiusM = clamp(toNum(b.radius_m) || ENV.DEFAULT_RADIUS_M, ENV.MIN_RADIUS_M, 50000);
+      const severidade = String(b.severidade || 'medium');
+      const color = String(b.color || '#FFA500');
+      const testToken = b.testToken || null;
+
+      if (ENV.LOG_LEVEL !== 'error') {
+        log.info('[SEND][in]', {
+          alertId,
+          endereco,
+          bairro,
+          cityIn,
+          uf,
+          cepNorm,
+          lat: hasLatLng ? lat : null,
+          lng: hasLatLng ? lng : null,
+          radiusM,
+          hasLatLng,
+          keys: { gmaps: !!ENV.GMAPS_KEY, lociq: !!ENV.LOCATIONIQ_KEY },
+        });
+      }
+
+      // ---------- Mode test (bypass sélection) ----------
+      if (testToken) {
+        try {
+          const msg = {
+            token: testToken,
+            notification: {
+              title: severidade === 'high' ? 'ALERTE VigiApp' : 'Info VigiApp',
+              body: endereco
+                ? `${endereco}${bairro ? ' · ' + bairro : ''}${cityIn ? ' · ' + cityIn : ''}`
+                : 'Alerta público',
+            },
+            android: { notification: { channelId: ENV.ANDROID_CHANNEL_ID, sound: 'default' } },
+            data: {
+              type: 'public-alert',
+              alertId: String(alertId),
+              deepLink: `vigiapp://public-alerts/${alertId}`,
+              url: `vigiapp://public-alerts/${alertId}`, // ← sécurité
+              severidade,
+              ...(ENV.DISABLE_FCM_COLOR ? {} : { color }),
+            },
+          };
+          const id = await fcm().send(msg);
+          return res.json({
+            ok: true,
+            mode: 'testToken',
+            result: { ok: true, id, attempts: 1 },
+            ms: Date.now() - t0,
+          });
+        } catch (e) {
+          log.warn('[SEND][testToken] fail', e?.message || e);
+          return res.json({
+            ok: true,
+            mode: 'testToken',
+            result: {
+              ok: false,
+              fatal: true,
+              transient: false,
+              code: e?.code || 'messaging/unknown',
+              msg: e?.message || String(e),
+            },
+            ms: Date.now() - t0,
+          });
+        }
+      }
+
+      // ---------- Géocodage (adresse prioritaire -> CEP fallback) ----------
+      const planLogs = [];
+      if (!hasLatLng) {
+        const addrQuery = [endereco, bairro, cityIn, uf, 'Brasil'].filter(Boolean).join(', ');
+        const addrKey = keyFromAddress(endereco, bairro, cityIn, uf);
+        let resolved = null;
+
+        if (addrQuery && addrKey) {
+          resolved = await withGeoCache(
+            addrKey,
+            async () => {
+              const chain = [
+                () => geocodeGoogle(addrQuery, planLogs, 900),
+                () => geocodeLocationIQ(addrQuery, planLogs, 900),
+                () => geocodeOSM(addrQuery, planLogs, 900),
+              ];
+              for (const step of chain) {
+                try {
+                  const r = await step();
+                  if (r) {
+                    return r;
+                  }
+                } catch {}
+              }
+              return null;
+            },
+            /* TTL addr */ 1000 * 60 * 60 * 24 * 30,
+          );
+        }
+
+        if (!resolved && cepNorm) {
+          const isGeneral = /000$/.test(cepNorm);
+          const cepKey = keyFromCEP(cepNorm);
+          resolved = await withGeoCache(
+            cepKey,
+            async () => {
+              const chain = [
+                () => cepToCentroidViaCEP(cepNorm, planLogs, 900),
+                () => cepToCentroidBrasilAPI(cepNorm, planLogs, 900),
+              ];
+              for (const step of chain) {
+                try {
+                  const r = await step();
+                  if (r) {
+                    return r;
+                  }
+                } catch {}
+              }
+              return null;
+            },
+            /* TTL CEP */ 1000 * 60 * 60 * 24 * 60,
+          );
+
+          if (isGeneral) {
+            radiusM = Math.min(Math.max(radiusM, 2000), 8000);
+          }
+        }
+
+        if (resolved) {
+          lat = resolved.lat;
+          lng = resolved.lng;
+          hasLatLng = true;
+          planLogs.push({ picked: resolved.provider, lat, lng, precision: resolved.precision });
+        } else {
+          return res
+            .status(400)
+            .json({
+              ok: false,
+              code: 'bad_geo',
+              msg: 'Impossible de géocoder (fournir lat/lng ou adresse/cep)',
+            });
+        }
+      }
+
+      // Rayon clamp
+      radiusM = clamp(radiusM, ENV.MIN_RADIUS_M, 8000);
+
+      // (Optionnel) Écrire le doc avant l’envoi si demandé
+      if (createDoc) {
+        await writePublicAlertDoc({
+          alertId,
+          body: {
+            userId: b.userId,
+            apelido: b.apelido,
+            username: b.username,
+            categoria: b.categoria,
+            descricao: b.descricao,
+            severidade: b.severidade,
+            color: b.color,
+            endereco: b.endereco,
+            cidade: b.cidade,
+            uf: b.uf,
+            cep: b.cep,
+            cepPrecision: b.cepPrecision,
+            lat,
+            lng,
+            radius_m: radiusM,
+            mode: b.mode || 'external',
+            reporter_distance_m: b.reporter_distance_m,
+            expiresAt: b.expiresAt || null,
+            date: b.date,
+            time: b.time,
+          },
+        });
+      }
+
+      // ---------- Sélection des devices + envoi ----------
+      const snap = await db().collection(ENV.DEVICES_COLLECTION).limit(10000).get(); // MVP scan
+      const candidates = [],
+        excluded = [];
+      for (const d of snap.docs) {
+        const v = d.data() || {};
+        const deviceId = v.deviceId || d.id;
+
+        const active = getByPath(v, ENV.DEVICE_ENABLED_FIELD, true) !== false;
+        const chOk = getByPath(v, ENV.DEVICE_CHANNEL_PUBLIC_FIELD, true) !== false;
+        const fcmTok = v.fcmToken || v.fcm;
+
+        const vLat = toNum(getByPath(v, ENV.DEVICE_LAT_FIELD));
+        const vLng = toNum(getByPath(v, ENV.DEVICE_LNG_FIELD));
+        const geoOk = isFiniteNum(vLat) && isFiniteNum(vLng);
+
+        const reasons = [];
+        if (!active) {
+          reasons.push('inactive');
+        }
+        if (!chOk) {
+          reasons.push('channel_off');
+        }
+        if (!fcmTok) {
+          reasons.push('no_fcmToken');
+        }
+        if (!geoOk) {
+          reasons.push('no_latlng');
+        }
+
+        let distM = null,
+          inRadius = false;
+        if (geoOk) {
+          distM = haversineMeters(lat, lng, vLat, vLng);
+          inRadius = distM <= radiusM;
+        }
+
+        if (active && chOk && fcmTok && geoOk && inRadius) {
+          candidates.push({ deviceId, fcmToken: fcmTok, lat: vLat, lng: vLng, distM });
+        } else {
+          excluded.push({ deviceId, reasons, lat: vLat, lng: vLng, distM });
+        }
+      }
+
+      const selected = uniqBy(candidates, (x) => x.fcmToken);
+      const selectedDeviceIds = selected.map((x) => x.deviceId);
+
+      let sent = 0,
+        notSent = 0,
+        transient = 0;
+      const byCode = {};
+
+      await Promise.all(
+        selected.map(async (t) => {
+          try {
+            await bumpPushStats(t.deviceId, alertId, 'attempt');
+            const msg = {
+              token: t.fcmToken,
+              notification: {
+                title: severidade === 'high' ? 'ALERTE VigiApp' : 'Info VigiApp',
+                body: endereco
+                  ? `${endereco}${bairro ? ' · ' + bairro : ''}${cityIn ? ' · ' + cityIn : ''}`
+                  : 'Alerta público',
+              },
+              android: { notification: { channelId: ENV.ANDROID_CHANNEL_ID, sound: 'default' } },
+              data: {
+                type: 'public-alert',
+                alertId: String(alertId),
+                deepLink: `vigiapp://public-alerts/${alertId}`,
+                url: `vigiapp://public-alerts/${alertId}`, // ← sécurité
+                severidade,
+                ...(ENV.DISABLE_FCM_COLOR ? {} : { color }),
+              },
+            };
+            await fcm().send(msg);
+            await bumpPushStats(t.deviceId, alertId, 'sent');
+            sent++;
+          } catch (e) {
+            const code = e?.code || 'messaging/unknown';
+            const isTransient = /unavailable|internal|quota|timeout/i.test(String(code));
+            await bumpPushStats(t.deviceId, alertId, isTransient ? 'transient' : 'notSent');
+            if (isTransient) {
+              transient++;
+            } else {
+              notSent++;
+            }
+            byCode[code] = (byCode[code] || 0) + 1;
+          }
+        }),
+      );
+
+      const recipients = selected.length;
+      const attemptsAvg = recipients ? (sent + notSent + transient) / recipients : 0;
+      const successPct = recipients ? Math.round((sent / recipients) * 100) : 0;
+
+      // ---------- Audit ----------
+      const audit = {
+        alertId,
+        endereco,
+        bairro,
+        city: cityIn || null,
+        uf,
+        cep: cepNorm,
+        geo: { lat, lng, radiusM },
+        recipients,
+        sent,
+        notSent,
+        transient,
+        byCode,
+        selectedDeviceIds,
+        planLogs,
+        ts: Timestamp.now(),
+      };
+      db()
+        .collection('push_audit')
+        .doc(String(alertId))
+        .set({ ...audit, createdAt: FieldValue.serverTimestamp() }, { merge: true })
+        .catch(() => {});
+
+      // ---------- Metrics ----------
+      const rawCategory = String(b.categoria || b.severidade || 'unknown');
+      const categoryDocId =
+        rawCategory
+          .toLowerCase()
+          .replace(/[^\p{L}\p{N}]+/gu, '_')
+          .replace(/^_+|_+$/g, '') || 'unknown';
+
+      await db()
+        .collection('metrics')
+        .doc('publicAlerts')
+        .collection('byCategory')
+        .doc(categoryDocId)
+        .set(
+          {
+            total: FieldValue.increment(1),
+            sent: FieldValue.increment(sent),
+            notSent: FieldValue.increment(notSent),
+            transient: FieldValue.increment(transient),
+            lastAt: FieldValue.serverTimestamp(),
+            lastRadiusM: radiusM,
+          },
+          { merge: true },
+        )
+        .catch((e) => console.error('[METRICS][byCategory] fail:', e));
+
+      const dayKey = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      await db()
+        .collection('metrics')
+        .doc('publicAlerts')
+        .collection('byDay')
+        .doc(dayKey)
+        .set(
+          {
+            total: FieldValue.increment(1),
+            sent: FieldValue.increment(sent),
+            notSent: FieldValue.increment(notSent),
+            transient: FieldValue.increment(transient),
+            lastAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        )
+        .catch((e) => console.error('[METRICS][byDay] fail:', e));
+
+      // ---------- Sortie ----------
+      const out = {
+        ok: true,
+        alertId,
+        geo: { lat, lng, radiusM },
+        recipients,
+        sent,
+        notSent,
+        transient,
+        byCode,
+        attemptsAvg,
+        successPct,
+        ms: Date.now() - t0,
+      };
+      if (wantDebug) {
+        out.debug = {
+          selectedDeviceIds,
+          sampleSelected: selected.slice(0, 5).map((x) => ({
+            id: x.deviceId,
+            distM: Math.round(x.distM || 0),
+            token: maskToken(x.fcmToken),
+          })),
+          sampleExcluded: excluded.slice(0, 5),
+          counts: { candidates: candidates.length, excluded: excluded.length },
+          planLogs,
+        };
+      }
+      log.info('[SEND][out]', { alertId, recipients, sent, notSent, transient, ms: out.ms });
+      return res.json(out);
+    } catch (e) {
+      log.error('sendPublicAlertByAddress ❌', e?.stack || e?.message || e);
+      return res.status(500).json({ ok: false, code: 'exception', msg: e?.message || String(e) });
+    }
+  },
 );
 
 module.exports = { sendPublicAlertByAddress };
