@@ -1,19 +1,24 @@
-// screens/Report.jsx
+// app/Report.jsx
 // -------------------------------------------------------------
-// Rôle : création d’un signalement PUBLIC dans /publicAlerts
-// - Localisation (GPS) -> adresse + CEP (Google-first via utils/cep)
+// VigiApp — Report d'incident PUBLIC (+ entrée spéciale « Criança desaparecida »)
+// Objectif : version paste-and-play, sans régression, logs/traces partout,
+// et route branchée vers /missCh/missing-child-start.jsx
+//
+// Points clés:
+// - Création d’un signalement PUBLIC dans /publicAlerts via pipeline handleReportEvent
+// - Entrée spéciale CHILD: "Criança desaparecida" -> DRAFT dans /missingCases puis
+//   navigation vers /missCh/missing-child-start?caseId=...
+// - Localisation: GPS -> adresse + CEP (Google-first via utils/cep)
 // - Sauvegarde via pipeline centralisé handleReportEvent (upsert + projections + métriques)
-// - Déclenchement non-bloquant de la Cloud Function d’alerte publique (notif FG/BG) [toujours APRES la persistance]
-// - Logs [REPORT] partout (diagnostic production-friendly) + traces client 👆
+// - Déclenchement non-bloquant de la CF d’alerte publique (après persistance)
+// - Logs [REPORT] détaillés + Tracing client (traceId, pushTraces/<traceId>)
 // - Toasters UX (queue) : success/info/erreur, 4s, barre de temps
-// - Flux MANUEL **ou** AUTO : bouton actif sans GPS si champs requis OK
-// - Tracing client : traceId + logs début/fin appui bouton + affichage modale
-// - Abonnement live (optionnel) à pushTraces/<traceId> si le back envoie des traces (safe: pas de crash si index manquant)
-// - Autocomplétion Nominatim (BR) intégrée sur "Rua e número" (zIndex élevé + retries + fallback Google/Nominatim)
-// - En MANUEL : on persiste et on affiche la position **déclarée** (incident), pas celle du user
-// - En base/back : on stocke **reported_location** (incident) + **reporter_location_at_send** (device) + **reporter_distance_m**
-// - Status manuel : entryMode='manual' + isManual=true, CF notifiée avec mode
-// - Pop-up RECTANGULAIRE “Seu alerta está sem número da rua” (type CodePen): informative, non bloquante, mémoire par adresse
+// - Flux MANUEL ou AUTO : bouton actif sans GPS si champs requis OK
+// - Autocomplétion Nominatim (BR) sur "Rua e número" (retries + fallback Google/Nominatim)
+// - En MANUEL : on persiste la position **déclarée** (incident), pas celle du user
+// - En base/back : reported_location + reporter_location_at_send + reporter_distance_m
+// - Statuts MANUEL: entryMode='manual' + isManual=true, CF notifiée avec mode
+// - Pop-up rectangulaire “Seu alerta está sem número da rua” (non bloquante)
 // -------------------------------------------------------------
 
 import React, { useMemo, useRef, useState, useEffect } from 'react';
@@ -45,6 +50,7 @@ import {
   orderBy,
   limit,
   onSnapshot,
+  addDoc, // snapshot /missingCases (enfant perdu)
 } from 'firebase/firestore';
 import { useRouter } from 'expo-router';
 import {
@@ -59,11 +65,11 @@ import {
   FileQuestion,
   Send,
   UserX,
-  TriangleAlert, // pour icône warning pop-up
+  TriangleAlert, // icône "Criança desaparecida" + pop-up
 } from 'lucide-react-native';
 import { useAuthGuard } from '../hooks/useAuthGuard';
 import { resolveExactCepFromCoords, GOOGLE_MAPS_KEY } from '../utils/cep';
-// 🔗 pipeline alertes centralisé
+// 🔗 pipeline alertes centralisé (pour incident public)
 import { handleReportEvent } from '../platform_services/alertPipeline';
 // Observability / modération
 import { reportNewLexemesRaw } from '../platform_services/observability/mod_signals';
@@ -71,11 +77,15 @@ import { checkReportAcceptable } from '../platform_services/abuse_monitor';
 import { abuseState } from '../platform_services/observability/abuse_strikes';
 
 // -------------------------------------------------------------
-// Constantes & utilitaires (inchangées + ajouts ciblés)
+// Constantes & utilitaires
 // -------------------------------------------------------------
 
-const DB_RETENTION_DAYS = 90; // TTL base (analytics/back)
+const DB_RETENTION_DAYS = 90; // TTL base (analytics/back) — incident public
 const ALERT_RADIUS_M = 1000; // Rayon fixe V1 pour "incident" (danger public)
+
+// [MISSING_CHILD] TTL côté front — le back fera l’auto-GC hard (Scheduled CF)
+const MISSING_DRAFT_TTL_HOURS = 12; // purge si non complété sous 12h
+const MISSING_DEFAULT_RADIUS_M = 3000; // rayon diffusion enfant perdu
 
 const UF_MAP = {
   acre: 'AC',
@@ -149,9 +159,7 @@ const hasHouseNumber = (ruaNumero) => /\d+/.test(String(ruaNumero || ''));
 function jaccardSimilarity(a = '', b = '') {
   const A = new Set(normalize(a).split(/\s+/).filter(Boolean));
   const B = new Set(normalize(b).split(/\s+/).filter(Boolean));
-  if (!A.size && !B.size) {
-    return 1;
-  }
+  if (!A.size && !B.size) {return 1;}
   const inter = new Set([...A].filter((x) => B.has(x))).size;
   const uni = new Set([...A, ...B]).size;
   return inter / uni;
@@ -165,21 +173,15 @@ function extractUF2FromNominatim(address = {}) {
     address['iso3166-2'];
   if (iso && typeof iso === 'string' && iso.includes('-')) {
     const code = iso.split('-').pop().toUpperCase();
-    if (/^[A-Z]{2}$/.test(code)) {
-      return code;
-    }
+    if (/^[A-Z]{2}$/.test(code)) {return code;}
   }
   if (address.state) {
     const m = UF_MAP[normalize(address.state)];
-    if (m) {
-      return m;
-    }
+    if (m) {return m;}
   }
   if (address.region) {
     const m = UF_MAP[normalize(address.region)];
-    if (m) {
-      return m;
-    }
+    if (m) {return m;}
   }
   return '';
 }
@@ -194,9 +196,7 @@ function newTraceId() {
 // Abonnement pushTraces SAFE (ne crash jamais si index manquant)
 function attachPushTracesLive(traceId) {
   try {
-    if (!db || !traceId) {
-      return () => {};
-    }
+    if (!db || !traceId) {return () => {};}
     const q = query(
       collection(db, 'pushTraces'),
       where('traceId', '==', traceId),
@@ -264,7 +264,7 @@ function validateBrazilianManualAddress({ ruaNumero, cidade, estado, cep }) {
 }
 
 // -------------------------------------------------------------
-// Nominatim (OSM) — intégré au champ "Rua e número" (robuste)
+// Nominatim (OSM) — intégré au champ "Rua e número"
 // -------------------------------------------------------------
 function pickCityLike(address = {}) {
   return (
@@ -283,7 +283,7 @@ function resultLabelFromNominatim(item) {
   return { line1, line2, uf2 };
 }
 
-// Fetch JSON Nominatim **avec retries et garde-fou content-type**
+// Fetch JSON Nominatim **avec retries**
 async function fetchNominatimJSON(url, { signal } = {}) {
   let attempt = 0;
   let delay = 200;
@@ -309,9 +309,7 @@ async function fetchNominatimJSON(url, { signal } = {}) {
       return json;
     } catch (e) {
       console.log('[REPORT][NOMI][RETRY]', { attempt, reason: e?.message || String(e) });
-      if (attempt >= 4) {
-        throw e;
-      }
+      if (attempt >= 4) {throw e;}
       await new Promise((r) => setTimeout(r, delay));
       delay *= 2;
     }
@@ -375,9 +373,7 @@ async function geocodeAddressWithNominatim({ ruaNumero, cidade, estado, cep }) {
 }
 
 function haversineMeters(a, b) {
-  if (!a || !b) {
-    return null;
-  }
+  if (!a || !b) {return null;}
   const toRad = (x) => (x * Math.PI) / 180;
   const R = 6371000;
   const dLat = toRad(b.latitude - a.latitude);
@@ -385,13 +381,14 @@ function haversineMeters(a, b) {
   const lat1 = toRad(a.latitude);
   const lat2 = toRad(b.latitude);
   const sinDlat = Math.sin(dLat / 2);
-  const sinDlon = Math.sin(dLon / 2);
-  const h = sinDlat * sinDlat + Math.cos(lat1) * Math.cos(lat2) * sinDlon * sinDlon;
+  const h =
+    sinDlat * sinDlat +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
 // -------------------------------------------------------------
-// Toast léger avec QUEUE (inchangé)
+// Toast léger avec QUEUE
 // -------------------------------------------------------------
 const TOAST_DURATION_MS = 4000;
 function useToastQueue() {
@@ -404,13 +401,9 @@ function useToastQueue() {
   const activeRef = useRef(false);
 
   const play = () => {
-    if (activeRef.current) {
-      return;
-    }
+    if (activeRef.current) {return;}
     const next = queueRef.current.shift();
-    if (!next) {
-      return;
-    }
+    if (!next) {return;}
 
     activeRef.current = true;
     setCurrent(next);
@@ -458,9 +451,7 @@ function useToastQueue() {
   useEffect(() => () => timerRef.current && clearTimeout(timerRef.current), []);
 
   const ToastOverlay = useMemo(() => {
-    if (!current) {
-      return null;
-    }
+    if (!current) {return null;}
     const bg =
       current.type === 'success' ? '#0ea15f' : current.type === 'error' ? '#b91c1c' : '#2b2e36';
     const border =
@@ -496,28 +487,16 @@ function useToastQueue() {
 // -------------------------------------------------------------
 function getMissingFields({ categoria, descricao, ruaNumero, cidade, estado }) {
   const missing = [];
-  if (!categoria) {
-    missing.push('• categoria');
-  }
-  if (!String(descricao || '').trim()) {
-    missing.push('• descrição');
-  }
-  if (!String(ruaNumero || '').trim()) {
-    missing.push('• rua');
-  }
-  if (!String(cidade || '').trim()) {
-    missing.push('• cidade');
-  }
-  if (!String(estado || '').trim()) {
-    missing.push('• estado/UF');
-  }
+  if (!categoria) {missing.push('• categoria');}
+  if (!String(descricao || '').trim()) {missing.push('• descrição');}
+  if (!String(ruaNumero || '').trim()) {missing.push('• rua');}
+  if (!String(cidade || '').trim()) {missing.push('• cidade');}
+  if (!String(estado || '').trim()) {missing.push('• estado/UF');}
   return missing;
 }
 
 function showDisabledGuideToast(show, fields) {
-  if (!fields.length) {
-    return;
-  }
+  if (!fields.length) {return;}
   const text = `🚫 Campos obrigatórios faltando:\n${fields.join('\n')}`;
   console.log('[REPORT][TOAST][GUIDE] missing =', fields);
   show({ type: 'error', text });
@@ -533,7 +512,7 @@ export default function ReportScreen() {
 
   const { show, ToastOverlay } = useToastQueue();
 
-  // État formulaire
+  // État formulaire (incident public)
   const [categoria, setCategoria] = useState(null);
   const [descricao, setDescricao] = useState('');
   const [local, setLocal] = useState(null); // coords de l'incident (OSM sélection ou GPS AUTO)
@@ -546,17 +525,17 @@ export default function ReportScreen() {
   // Mode d'entrée (manual/auto)
   const [entryMode, setEntryMode] = useState('manual');
 
-  // Nominatim state (lié AU CHAMP "Rua e número" uniquement)
+  // Nominatim (lié au champ "Rua e número")
   const [nomiBusy, setNomiBusy] = useState(false);
   const [nomiItems, setNomiItems] = useState([]);
   const nomiTimerRef = useRef(null);
   const nomiAbortRef = useRef(null);
-  const nomiReopenThresholdRef = useRef(0); // nombre de caractères à retaper avant réouverture après sélection
+  const nomiReopenThresholdRef = useRef(0);
 
-  // Pop-up "sem número" (rectangulaire)
+  // Pop-up "sem número"
   const [noNumberVisible, setNoNumberVisible] = useState(false);
-  const warnedAddressRef = useRef(null); // { value, hash } de la dernière adresse avertie
-  const warnedOnceRef = useRef(false); // a-t-on déjà averti pour la valeur courante ?
+  const warnedAddressRef = useRef(null);
+  const warnedOnceRef = useRef(false);
   const NO_NUM_SIM_THRESHOLD = 0.2;
 
   // Tracing
@@ -579,7 +558,7 @@ export default function ReportScreen() {
     estado.trim().length > 0
   );
 
-  // Ready toast
+  // Ready toast (incident public)
   const readyToastShownRef = useRef(false);
   useEffect(() => {
     if (isBtnActive && !readyToastShownRef.current && !autoFlowActiveRef.current) {
@@ -591,23 +570,69 @@ export default function ReportScreen() {
     }
   }, [isBtnActive, show]);
 
+  // ---------------------------------------------------------------------------
+  // [MISSING_CHILD] — entrée spéciale
+  // - Crée un DRAFT dans /missingCases avec expiresAt = now + 12h
+  // - Route BRANCHÉE vers /missCh/missing-child-start?caseId=...
+  // - Ne touche pas à `categoria`.
+  // ---------------------------------------------------------------------------
+  const startMissingChildFlow = async () => {
+    try {
+      const uid = auth.currentUser?.uid || 'anon';
+      const traceId = newTraceId?.() || `trace_${Date.now().toString(36)}`;
+      const expires = new Date(Date.now() + MISSING_DRAFT_TTL_HOURS * 3600 * 1000);
+
+      console.log('[MISSING_CHILD][ENTRY][CLICK]', { uid, traceId });
+
+      const payload = {
+        createdBy: uid,
+        createdAt: serverTimestamp(),
+        expiresAt: Timestamp.fromDate(expires), // back purge >12h si status=DRAFT
+        status: 'DRAFT',
+        flowOrigin: 'report_screen',
+        entryTraceId: traceId,
+
+        // UI de diffusion (quand le case sera vérifié)
+        color: '#FF3B30',
+        radius_m: MISSING_DEFAULT_RADIUS_M,
+
+        // Snapshot user **non sensible**
+        userSnap: {
+          apelido: user?.apelido || '',
+          username: user?.username || '',
+        },
+
+        // Flags analytics/GC
+        gc_hint: 'auto_12h_if_incomplete',
+        version: 1,
+      };
+
+      console.log('[MISSING_CHILD][ENTRY][ADD_DOC] /missingCases', payload);
+      const ref = await addDoc(collection(db, 'missingCases'), payload);
+      const caseId = ref.id;
+      console.log('[MISSING_CHILD][ENTRY][OK]', { caseId });
+
+      // 🔗 ROUTE AJUSTÉE : /missCh/missing-child-start
+      console.log('[MISSING_CHILD][NAVIGATE] -> /missCh/missing-child-start', { caseId });
+      router.push({ pathname: '/missCh/missing-child-start', params: { caseId } });
+    } catch (e) {
+      console.log('[MISSING_CHILD][ENTRY][ERR]', e?.message || String(e));
+      show?.({ type: 'error', text: 'Não foi possível iniciar o fluxo agora.' });
+    }
+  };
+
   // -----------------------------------------------------------
-  // Nominatim : recherche sur "Rua e número" (MANUEL uniquement)
+  // Nominatim : recherche "Rua e número" (MANUEL uniquement)
   // -----------------------------------------------------------
   useEffect(() => {
     console.log('[REPORT][NOMI][TYPE]', ruaNumero);
 
-    // si mode AUTO → couper l'autocomplete
     if (entryMode === 'auto') {
-      if (nomiItems.length) {
-        setNomiItems([]);
-      }
+      if (nomiItems.length) {setNomiItems([]);}
       return;
     }
 
-    if (nomiTimerRef.current) {
-      clearTimeout(nomiTimerRef.current);
-    }
+    if (nomiTimerRef.current) {clearTimeout(nomiTimerRef.current);}
     if (nomiAbortRef.current) {
       try {
         nomiAbortRef.current.abort();
@@ -617,12 +642,9 @@ export default function ReportScreen() {
 
     const q = (ruaNumero || '').trim();
 
-    // Réouverture contrôlée après sélection : attendre 3 nouveaux chars
     if (nomiReopenThresholdRef.current > 0) {
       if (q.length < nomiReopenThresholdRef.current) {
-        if (nomiItems.length) {
-          setNomiItems([]);
-        }
+        if (nomiItems.length) {setNomiItems([]);}
         return;
       } else {
         nomiReopenThresholdRef.current = 0;
@@ -631,9 +653,7 @@ export default function ReportScreen() {
 
     const isGeneric = ['rua', 'avenida', 'av', 'estrada', 'rodovia'].includes(q.toLowerCase());
     if (!q || q.length < 3 || isGeneric) {
-      if (nomiItems.length) {
-        console.log('[REPORT][NOMI][CLEAR_RESULTS]');
-      }
+      if (nomiItems.length) {console.log('[REPORT][NOMI][CLEAR_RESULTS]');}
       setNomiItems([]);
       return;
     }
@@ -641,13 +661,18 @@ export default function ReportScreen() {
     nomiTimerRef.current = setTimeout(async () => {
       try {
         setNomiBusy(true);
-        const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&countrycodes=br&limit=8&accept-language=pt-BR&q=${encodeURIComponent(q)}`;
+        const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&countrycodes=br&limit=8&accept-language=pt-BR&q=${encodeURIComponent(
+          q,
+        )}`;
         console.log('[REPORT][NOMI][SEARCH]', url);
         const controller = new AbortController();
         nomiAbortRef.current = controller;
         const json = await fetchNominatimJSON(url, { signal: controller.signal });
 
-        console.log('[REPORT][NOMI][RESULTS_COUNT]', Array.isArray(json) ? json.length : 0);
+        console.log(
+          '[REPORT][NOMI][RESULTS_COUNT]',
+          Array.isArray(json) ? json.length : 0,
+        );
         if (Array.isArray(json)) {
           json.slice(0, 8).forEach((it) => {
             const { line1, line2 } = resultLabelFromNominatim(it);
@@ -675,7 +700,7 @@ export default function ReportScreen() {
   }, [ruaNumero, entryMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // -----------------------------------------------------------
-  // AUTO: Localisation -> reverse + CEP (inchangé, +setEntryMode)
+  // AUTO: Localisation -> reverse + CEP (inchangé)
   // -----------------------------------------------------------
   const handleLocationAutoFlow = async () => {
     console.log('[REPORT][AUTO] handleLocation START');
@@ -731,7 +756,6 @@ export default function ReportScreen() {
         });
       }
 
-      // Couper l’autocomplétion en AUTO
       setNomiItems([]);
       nomiReopenThresholdRef.current = 0;
 
@@ -750,7 +774,7 @@ export default function ReportScreen() {
       setEntryMode('auto');
     } catch (e) {
       console.log('[REPORT][AUTO] ERREUR =', e?.message || e);
-      show({ type: 'error', text: '⚠️ Não foi possível obter sua localização.' });
+      show({ type: 'error', text: '⚠️ Não foi possível obtener sua localização.' });
     } finally {
       autoFlowActiveRef.current = false;
       console.log('[REPORT][AUTO] handleLocation END');
@@ -758,7 +782,7 @@ export default function ReportScreen() {
   };
 
   // -----------------------------------------------------------
-  // Validations — SEND (souple sur le numéro)
+  // Validations — SEND (incident public)
   // -----------------------------------------------------------
   const validateForSendCommon = () => {
     const missing = getMissingFields({ categoria, descricao, ruaNumero, cidade, estado });
@@ -770,12 +794,11 @@ export default function ReportScreen() {
   };
 
   // -----------------------------------------------------------
-  // MANUEL: envoi -> géocode si pas de coords (musclé)
+  // MANUEL: envoi -> géocode si pas de coords (incident public)
   // -----------------------------------------------------------
   const handleSendManualFlow = async () => {
     console.log('[REPORT][MANUAL][FLOW] handleSendManualFlow START');
 
-    // Pop-up “sem número” : informative & mémorisée
     const ruaVal = String(ruaNumero || '').trim();
     const ruaHasNum = hasHouseNumber(ruaVal);
 
@@ -791,7 +814,6 @@ export default function ReportScreen() {
       return null;
     }
 
-    // S'il n'y a PAS de numéro → afficher la pop-up **une seule fois** pour cette valeur
     if (!ruaHasNum) {
       const prev = warnedAddressRef.current?.value || '';
       const sim = jaccardSimilarity(prev, ruaVal);
@@ -804,26 +826,22 @@ export default function ReportScreen() {
         warnedOnceRef.current = true;
         console.log('[REPORT][NO-NUM][WARNED]', { rua: ruaVal, sim });
         setNoNumberVisible(true);
-        // NE PAS envoyer maintenant : l’utilisateur devra recliquer Enviar (pop-up seulement informative)
-        return null;
+        return null; // on attend le 2e clic pour envoyer
       } else {
         console.log('[REPORT][NO-NUM][SKIP_RESHOW]', { rua: ruaVal, sim });
       }
     } else {
-      // si on détecte un numéro → plus aucune pop-up
       if (warnedOnceRef.current) {
         console.log('[REPORT][NO-NUM][NUMBER_DETECTED]');
       }
     }
 
-    // 1) Si coords déjà présentes (ex: sélection Nominatim) → OK direct
     if (local?.latitude && local?.longitude) {
       console.log('[REPORT][MANUAL] coords already present from OSM selection');
       setEntryMode('manual');
       return { latitude: local.latitude, longitude: local.longitude };
     }
 
-    // 2) Escalade de géocodage (multi-essais/backoff)
     const base = {
       ruaNumero: ruaVal,
       cidade,
@@ -832,78 +850,52 @@ export default function ReportScreen() {
       googleKey: GOOGLE_MAPS_KEY,
     };
 
-    // A (Google)
     console.log('[REPORT][MANUAL][GEO_ATTEMPT] Google A', base);
     let g = await geocodeAddressToCoords(base);
     if (g.ok) {
-      if (!cep && g.cep) {
-        setCep(g.cep);
-      }
-      if (cepPrecision === 'none') {
-        setCepPrecision('general');
-      }
+      if (!cep && g.cep) {setCep(g.cep);}
+      if (cepPrecision === 'none') {setCepPrecision('general');}
       setEntryMode('manual');
       console.log('[REPORT][MANUAL][GEO_OK] Google A');
       return { latitude: g.latitude, longitude: g.longitude };
     }
 
-    // B (Google variants)
-    const variants = [
-      { ...base, cep: '' },
-      { ...base, cep: onlyDigits(cep) },
-    ];
+    const variants = [{ ...base, cep: '' }, { ...base, cep: onlyDigits(cep) }];
     for (let i = 0; i < variants.length; i++) {
       console.log('[REPORT][MANUAL][GEO_ATTEMPT] Google B', variants[i]);
       g = await geocodeAddressToCoords(variants[i]);
       if (g.ok) {
-        if (!cep && g.cep) {
-          setCep(g.cep);
-        }
-        if (cepPrecision === 'none') {
-          setCepPrecision('general');
-        }
+        if (!cep && g.cep) {setCep(g.cep);}
+        if (cepPrecision === 'none') {setCepPrecision('general');}
         setEntryMode('manual');
         console.log('[REPORT][MANUAL][GEO_OK] Google B');
         return { latitude: g.latitude, longitude: g.longitude };
       }
     }
 
-    // C (Nominatim)
     console.log('[REPORT][MANUAL][GEO_ATTEMPT] NOMINATIM C');
     const n1 = await geocodeAddressWithNominatim(base);
     if (n1.ok) {
-      if (!cep && n1.cep) {
-        setCep(formatCepDisplay(onlyDigits(n1.cep)));
-      }
-      if (cepPrecision === 'none') {
-        setCepPrecision('general');
-      }
+      if (!cep && n1.cep) {setCep(formatCepDisplay(onlyDigits(n1.cep)));}
+      if (cepPrecision === 'none') {setCepPrecision('general');}
       setEntryMode('manual');
       console.log('[REPORT][MANUAL][GEO_OK] NOMINATIM C');
       return { latitude: n1.latitude, longitude: n1.longitude };
     }
 
-    // D (Nominatim sans numéro)
-    const ruaNoNum = String(ruaVal)
-      .replace(/\s*,?\s*\d+.*/, '')
-      .trim();
+    const ruaNoNum = String(ruaVal).replace(/\s*,?\s*\d+.*/, '').trim();
     if (ruaNoNum && ruaNoNum !== ruaVal) {
-      console.log('[REPORT][MANUAL][GEO_ATTEMPT] NOMINATIM D (rua sans número)', ruaNoNum);
+      console.log('[REPORT][MANUAL][GEO_ATTEMPT] NOMINATIM D (rua sans numéro)', ruaNoNum);
       const n2 = await geocodeAddressWithNominatim({ ...base, ruaNumero: ruaNoNum });
       if (n2.ok) {
-        if (!cep && n2.cep) {
-          setCep(formatCepDisplay(onlyDigits(n2.cep)));
-        }
-        if (cepPrecision === 'none') {
-          setCepPrecision('general');
-        }
+        if (!cep && n2.cep) {setCep(formatCepDisplay(onlyDigits(n2.cep)));}
+        if (cepPrecision === 'none') {setCepPrecision('general');}
         setEntryMode('manual');
         console.log('[REPORT][MANUAL][GEO_OK] NOMINATIM D');
         return { latitude: n2.latitude, longitude: n2.longitude };
       }
     }
 
-    // KO final
     console.log('[REPORT][MANUAL][ABORT_NO_COORDS]');
     show({
       type: 'error',
@@ -912,20 +904,16 @@ export default function ReportScreen() {
     return null;
   };
 
-  // -----------------------------------------------------------
   // AUTO: envoi — coords déjà présentes
-  // -----------------------------------------------------------
   const handleSendAutoFlow = async () => {
     console.log('[REPORT][AUTO] handleSendAutoFlow');
-    if (local?.latitude && local?.longitude) {
-      return local;
-    }
+    if (local?.latitude && local?.longitude) {return local;}
     console.log('[REPORT][AUTO] Missing coords unexpectedly — fallback MANUAL geocode');
     return await handleSendManualFlow();
   };
 
   // -----------------------------------------------------------
-  // Envoi du report (orchestrateur) + TRACING
+  // Envoi du report (incident public) + TRACING
   // -----------------------------------------------------------
   const handleSend = async () => {
     const traceId = newTraceId();
@@ -962,7 +950,7 @@ export default function ReportScreen() {
       return;
     }
 
-    // Persist & Propagate
+    // Persist & Propagate (incident public)
     try {
       // Position device à l’envoi (best effort, non bloquant)
       let deviceAtSend = null;
@@ -1025,20 +1013,15 @@ export default function ReportScreen() {
         cepPrecision,
         pais: 'BR',
 
-        // Tag analytique sur numéro
         houseNumberUsed: ruaHasNum ? (ruaNumero.match(/\d+/)?.[0] ?? null) : null,
-        houseNumberApprox: !ruaHasNum, // back pourra approx si besoin
+        houseNumberApprox: !ruaHasNum,
 
-        // Position incident déclaré
         reported_location: { latitude: coords.latitude, longitude: coords.longitude },
 
-        // Position du device
         reporter_location_at_send: deviceAtSend,
 
-        // Distance
         reporter_distance_m: reporterDistanceM,
 
-        // Clé legacy compat
         location: {
           latitude: coords.latitude,
           longitude: coords.longitude,
@@ -1130,7 +1113,7 @@ export default function ReportScreen() {
       router.replace('/(tabs)/home');
     } catch (e) {
       console.log('🔴 [TRACE][CLIENT] END_PRESS_ERROR', {
-        traceId,
+        traceId: currentTraceIdRef.current,
         error: e?.message || String(e),
       });
       console.log('[REPORT] handleSend ERROR =', e?.message || e);
@@ -1150,7 +1133,6 @@ export default function ReportScreen() {
           <View style={styles.noticeContent}>
             <View style={styles.noticeIcon}>
               <TriangleAlert size={28} color="#F59E0B" />
-              {/* jaune/orange */}
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.noticeTitle}>Seu alerta está sem número da rua</Text>
@@ -1168,7 +1150,6 @@ export default function ReportScreen() {
               onPress={() => {
                 console.log('[REPORT][NO-NUM][OK]');
                 setNoNumberVisible(false);
-                // L’utilisateur devra recliquer "Enviar alerta" → rien à faire ici
               }}
               style={[styles.noticeBtn, styles.noticeBtnPrimary]}
             >
@@ -1238,31 +1219,85 @@ export default function ReportScreen() {
                 Sinalizar um evento público
               </Text>
 
+              {/* -----------------------------------------------------------
+                 Grille des catégories "incident public"
+                 + Insertion visuelle de "Criança desaparecida" juste AU-DESSUS de "Outros"
+                 (même rendu visuel, MAIS flux back séparé, sans toucher à `categoria`)
+                 ----------------------------------------------------------- */}
               <View style={styles.categoriaGroup}>
-                {categories.map(({ label, icon: Icon, color }) => (
-                  <TouchableOpacity
-                    key={label}
-                    style={[
-                      styles.categoriaBtn,
-                      categoria === label && { backgroundColor: color, borderColor: color },
-                    ]}
-                    onPress={() => setCategoria(label)}
-                  >
-                    <Icon
-                      size={18}
-                      color={categoria === label ? '#fff' : color}
-                      style={{ marginRight: 7 }}
-                    />
-                    <Text
+                {/* 1) Toutes les catégories sauf "Outros" */}
+                {categories
+                  .filter((c) => c.label !== 'Outros')
+                  .map(({ label, icon: Icon, color }) => (
+                    <TouchableOpacity
+                      key={label}
                       style={[
-                        styles.categoriaText,
-                        categoria === label && { color: '#fff', fontWeight: 'bold' },
+                        styles.categoriaBtn,
+                        categoria === label && { backgroundColor: color, borderColor: color },
                       ]}
+                      onPress={() => setCategoria(label)}
                     >
-                      {label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                      <Icon
+                        size={18}
+                        color={categoria === label ? '#fff' : color}
+                        style={{ marginRight: 7 }}
+                      />
+                      <Text
+                        style={[
+                          styles.categoriaText,
+                          categoria === label && { color: '#fff', fontWeight: 'bold' },
+                        ]}
+                      >
+                        {label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+
+                {/* 2) [MISSING_CHILD] Tuile spéciale — comportement 100% séparé */}
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  onPress={startMissingChildFlow}
+                  style={[
+                    styles.categoriaBtn,
+                    {
+                      borderColor: '#FF3B30',
+                      backgroundColor: '#2a1010', // fond rouge sombre pour se démarquer
+                    },
+                  ]}
+                >
+                  <TriangleAlert size={18} color={'#FF3B30'} style={{ marginRight: 7 }} />
+                  <Text style={[styles.categoriaText, { color: '#FF3B30', fontWeight: '700' }]}>
+                    Criança desaparecida
+                  </Text>
+                </TouchableOpacity>
+
+                {/* 3) La tuile "Outros" en dernier (après notre insertion) */}
+                {categories
+                  .filter((c) => c.label === 'Outros')
+                  .map(({ label, icon: Icon, color }) => (
+                    <TouchableOpacity
+                      key={label}
+                      style={[
+                        styles.categoriaBtn,
+                        categoria === label && { backgroundColor: color, borderColor: color },
+                      ]}
+                      onPress={() => setCategoria(label)}
+                    >
+                      <Icon
+                        size={18}
+                        color={categoria === label ? '#fff' : color}
+                        style={{ marginRight: 7 }}
+                      />
+                      <Text
+                        style={[
+                          styles.categoriaText,
+                          categoria === label && { color: '#fff', fontWeight: 'bold' },
+                        ]}
+                      >
+                        {label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
               </View>
 
               <Text style={styles.label}>Descreva o ocorrido</Text>
@@ -1289,7 +1324,7 @@ export default function ReportScreen() {
 
               <Text style={styles.label}>Localização</Text>
 
-              {/* Champ 1 — Rua e número (autocomplétion MANUEL + zIndex fort) */}
+              {/* Champ 1 — Rua e número (autocomplete OSM) */}
               <View style={{ position: 'relative' }}>
                 <TextInput
                   style={styles.input}
@@ -1329,12 +1364,8 @@ export default function ReportScreen() {
 
                             const ruaNumeroVal = [rua, num].filter(Boolean).join(', ');
                             setRuaNumero(ruaNumeroVal);
-                            if (city) {
-                              setCidade(city);
-                            }
-                            if (uf2) {
-                              setEstado(uf2);
-                            }
+                            if (city) {setCidade(city);}
+                            if (uf2) {setEstado(uf2);}
                             if (cepOSM) {
                               setCep(formatCepDisplay(onlyDigits(cepOSM)));
                               setCepPrecision('general');
@@ -1349,8 +1380,6 @@ export default function ReportScreen() {
                             }
 
                             setEntryMode('manual');
-
-                            // Fermer la liste et n’autoriser la réouverture qu’après 3 nouveaux chars
                             setNomiItems([]);
                             nomiReopenThresholdRef.current = (ruaNumeroVal || '').length + 3;
 
@@ -1408,8 +1437,8 @@ export default function ReportScreen() {
                   {cepPrecision === 'exact'
                     ? 'CEP exato detectado.'
                     : cepPrecision === 'needs-confirmation'
-                      ? 'Vários CEPs possíveis — confirme o endereço/CEP.'
-                      : 'CEP não foi identificado — você pode inserir manualmente.'}
+                    ? 'Vários CEPs possíveis — confirme o endereço/CEP.'
+                    : 'CEP não foi identificado — você pode inserir manualmente.'}
                 </Text>
               )}
 
@@ -1472,7 +1501,7 @@ export default function ReportScreen() {
 }
 
 // -------------------------------------------------------------
-// Styles (inclut pop-up rectangulaire, autocomplete zIndex élevé)
+// Styles
 // -------------------------------------------------------------
 const styles = StyleSheet.create({
   scrollContainer: { paddingBottom: 36, backgroundColor: '#181A20' },
@@ -1654,9 +1683,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  noticeBtnPrimary: {
-    backgroundColor: '#F59E0B', // même teinte que le triangle
-  },
+  noticeBtnPrimary: { backgroundColor: '#F59E0B' },
   noticeBtnPrimaryText: { color: '#000', fontWeight: '700' },
   noticeBtnSecondary: {},
   noticeBtnSecondaryText: { color: '#fff', fontWeight: '600' },

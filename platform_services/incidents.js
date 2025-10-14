@@ -46,9 +46,9 @@ const err  = (...a) => console.error(TAG, "❌", ...a);
 
 // masque court (tokens/uid)
 function maskToken(t, left = 6, right = 6) {
-  if (!t) return t;
+  if (!t) {return t;}
   const s = String(t);
-  if (s.length <= left + right) return s;
+  if (s.length <= left + right) {return s;}
   return `${s.slice(0, left)}…${s.slice(-right)}(${s.length})`;
 }
 function safeKeys(obj, maxKeys = 50) {
@@ -458,8 +458,8 @@ export async function upsertPublicAlert({
   // - reinforced  → existant, mais 1er report de ce user
   // - already     → ce user avait déjà reporté ce doc
   let action = "created";
-  if (!wasCreated && wasAggregated) action = "reinforced";
-  if (!wasCreated && !wasAggregated && alreadyDeclared) action = "already";
+  if (!wasCreated && wasAggregated) {action = "reinforced";}
+  if (!wasCreated && !wasAggregated && alreadyDeclared) {action = "already";}
 
   const dt = Date.now() - t0;
   log("✅ upsertPublicAlert: END", {
