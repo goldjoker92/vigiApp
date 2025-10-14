@@ -6,7 +6,7 @@ export default ({ config }) => ({
 
   name: 'VigiApp',
   slug: 'vigiapp',
-  scheme: 'vigiapp', // ← indispensable pour ouvrir vigiapp://...
+  scheme: 'vigiapp', // indispensable pour ouvrir vigiapp://...
   platforms: ['android'],
 
   plugins: [
@@ -23,11 +23,13 @@ export default ({ config }) => ({
     ],
     'expo-dev-client',
     'expo-location',
+    // pour gérer proprement les notifs et le tap
+    'expo-notifications',
     [
       'react-native-google-mobile-ads',
       {
         androidAppId: process.env.ADMOB_ANDROID_APP_ID || 'ca-app-pub-3940256099942544~3347511713', // TEST Android officiel
-        iosAppId: 'ca-app-pub-3940256099942544~1458002511', // pour éviter des warnings
+        iosAppId: 'ca-app-pub-3940256099942544~1458002511', // éviter les warnings
       },
     ],
   ],
@@ -41,6 +43,14 @@ export default ({ config }) => ({
     package: 'com.guigui92.vigiapp',
     runtimeVersion: '1.0.0',
     googleServicesFile: './credentials/google-services.json',
+    // 🔑 Ouvre vigiapp://... depuis Android (tap sur notif)
+    intentFilters: [
+      {
+        action: 'VIEW',
+        data: [{ scheme: 'vigiapp' }],
+        category: ['BROWSABLE', 'DEFAULT'],
+      },
+    ],
     permissions: [
       'android.permission.POST_NOTIFICATIONS',
       'android.permission.WAKE_LOCK',
@@ -56,7 +66,7 @@ export default ({ config }) => ({
     ],
   },
 
-  // iOS laissé par compat (n’affecte pas Android)
+  // iOS laissé pour compat (n’affecte pas Android)
   ios: {
     ...config.ios,
     runtimeVersion: { policy: 'appVersion' },
@@ -90,6 +100,7 @@ export default ({ config }) => ({
     EXPO_PUBLIC_OPENCAGE_KEY: process.env.EXPO_PUBLIC_OPENCAGE_KEY,
     EXPO_PUBLIC_LOCATIONIQ_KEY: process.env.EXPO_PUBLIC_LOCATIONIQ_KEY,
     EXPO_PUBLIC_CONTACT_EMAIL: process.env.EXPO_PUBLIC_CONTACT_EMAIL,
+    EXPO_PUBLIC_MAPBOX_TOKEN: process.env.EXPO_PUBLIC_MAPBOX_TOKEN,
 
     // EAS
     eas: {

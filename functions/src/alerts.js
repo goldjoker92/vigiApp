@@ -14,7 +14,7 @@ const {
   sendToToken,
   createDeliveryLog,
   recordPublicAlertFootprint,
-} = require('./utils');
+} = require('./alert-utils');
 
 const fanoutPublicAlert = onDocumentCreated('publicAlerts/{alertId}', async (event) => {
   const alertId = event?.params?.alertId;

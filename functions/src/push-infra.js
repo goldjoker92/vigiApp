@@ -1,340 +1,346 @@
 // ============================================================================
-// VigiApp — Push Infra (sélection destinataires + fallbacks tolérants)
-// Priorité: GEO (lat/lng) → widen progressif → CEP (optionnel) → city sample
-// Filtre devices inactifs/obsolètes, dédup tokens, cap global, logs détaillés.
-// - Garantit l’inclusion du lanceur si son device est géolocalisé (dist=0)
-// - Ignore proprement les tokens Expo pour le canal FCM
-// - Ajoute un échantillonnage aléatoire en fallback “city” pour la fairness
-// - Traces explicites à chaque étape + métriques de fenêtres GEO
+// VigiApp — push-infra (sélection des destinataires + audit + DLQ)
+// CommonJS + bootstrap-config facultatif
+// Champs par défaut alignés avec ta base: city, cep, lat, lng, active
+// Ultra logs pour diagnostic / pas de régression
 // ============================================================================
 
 const admin = require('firebase-admin');
 
-// -----------------------------
-// Paramètres “prod-friendly”
-// -----------------------------
-const STALE_DEVICE_DAYS = 30; // ignore devices non mis à jour depuis > 30j
-const MAX_RECIPIENTS = 10000; // garde-fou global (hard cap)
-const GEO_PASS_LIMIT = 20000; // limite soft: nb cand. max à parcourir avant early stop
-const WIDEN_FACTOR = 1.3;
-const MAX_WIDEN_STEPS = 2;
-const CITY_SAMPLE_LIMIT = 1000;
-
-// -----------------------------
-// Maths & conversions
-// -----------------------------
-function toRad(x) {
-  return (x * Math.PI) / 180;
+// ---------------------------------------------------------------------------
+// 1) Bootstrap config
+//    - Si ./bootstrap-config exporte { get(k, def) } on l'utilise
+//    - Sinon on retombe sur process.env
+// ---------------------------------------------------------------------------
+let cfg = (k, d) => (process.env[k] !== undefined ? process.env[k] : d);
+try {
+  const boot = require('../bootstrap-config'); // optionnel
+  if (boot && typeof boot.get === 'function') {
+    cfg = (k, d) => boot.get(k, d);
+    console.log('[PUSH-INFRA][BOOT] bootstrap-config.get ✅');
+  } else if (typeof boot === 'function') {
+    cfg = boot;
+    console.log('[PUSH-INFRA][BOOT] bootstrap-config(fn) ✅');
+  } else {
+    console.log('[PUSH-INFRA][BOOT] bootstrap-config chargé (fallback env) ℹ️');
+  }
+} catch {
+  console.log('[PUSH-INFRA][BOOT] bootstrap-config absent (fallback env) ℹ️');
 }
-function haversineMeters(lat1, lng1, lat2, lng2) {
-  const R = 6371000,
-    dLat = toRad(lat2 - lat1),
-    dLng = toRad(lng2 - lng1);
-  const a =
+
+// ---------------------------------------------------------------------------
+// 2) Admin init (idempotent)
+// ---------------------------------------------------------------------------
+try {
+  admin.app();
+  console.log('[PUSH-INFRA][BOOT] admin.app() reuse ✅');
+} catch {
+  admin.initializeApp();
+  console.log('[PUSH-INFRA][BOOT] admin.initializeApp() ✅');
+}
+
+// ---------------------------------------------------------------------------
+// 3) Champs/collections (adaptés à tes docs)
+// ---------------------------------------------------------------------------
+const DEVICES_COLLECTION = cfg('DEVICES_COLLECTION', 'devices');
+const CITY_FIELD = cfg('DEVICE_CITY_FIELD', 'city'); // ← ta base
+const CEP_FIELD = cfg('DEVICE_CEP_FIELD', 'cep');
+const LAT_FIELD = cfg('DEVICE_LAT_FIELD', 'lat');
+const LNG_FIELD = cfg('DEVICE_LNG_FIELD', 'lng');
+const CHANNEL_PUBLIC_FIELD = cfg('DEVICE_CHANNEL_PUBLIC_FIELD', 'channels.publicAlerts');
+const ENABLED_FIELD = cfg('DEVICE_ENABLED_FIELD', 'active'); // ← ta base
+const LAST_SEEN_FIELD = cfg('DEVICE_LAST_SEEN_FIELD', 'lastSeenAt');
+const MAX_UNIQ = Number(cfg('PUSH_MAX_UNIQ', '10000')) || 10000;
+
+// ---------------------------------------------------------------------------
+// 4) Utils
+// ---------------------------------------------------------------------------
+const isExpo = (t) => typeof t === 'string' && t.startsWith('ExponentPushToken');
+
+const pickExpoToken = (u) => {
+  if (!u) {
+    return null;
+  }
+  if (typeof u.expo === 'string' && isExpo(u.expo)) {
+    return u.expo;
+  }
+  if (typeof u.expoPushToken === 'string' && isExpo(u.expoPushToken)) {
+    return u.expoPushToken;
+  }
+  if (Array.isArray(u.expoTokens) && u.expoTokens.length && isExpo(u.expoTokens[0])) {
+    return u.expoTokens[0];
+  }
+  if (typeof u.token === 'string' && isExpo(u.token)) {
+    return u.token;
+  }
+  return null;
+};
+const pickFcmToken = (u) => {
+  if (!u) {
+    return null;
+  }
+  if (typeof u.fcm === 'string') {
+    return u.fcm;
+  }
+  if (typeof u.fcmToken === 'string') {
+    return u.fcmToken;
+  }
+  if (typeof u.fcmDeviceToken === 'string') {
+    return u.fcmDeviceToken;
+  }
+  if (Array.isArray(u.fcmTokens) && u.fcmTokens.length) {
+    return u.fcmTokens[0];
+  }
+  if (typeof u.token === 'string' && !isExpo(u.token)) {
+    return u.token;
+  }
+  return null;
+};
+
+const toNum = (x) => {
+  const n = Number(x);
+  return Number.isFinite(n) ? n : null;
+};
+const getNested = (obj, path) =>
+  path.split('.').reduce((a, k) => (a && a[k] !== undefined ? a[k] : undefined), obj);
+
+function distanceMeters(lat1, lon1, lat2, lon2) {
+  const a = [lat1, lon1, lat2, lon2].map(toNum);
+  if (a.some((v) => v === null)) {
+    return Infinity;
+  }
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const s =
     Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(a));
-}
-function metersToDegLat(m) {
-  return m / 111320;
-}
-function metersToDegLng(m, lat) {
-  // protège cos() à l’équateur et proche ±90°
-  const c = Math.max(0.000001, Math.abs(Math.cos((lat * Math.PI) / 180)));
-  return m / (111320 * c);
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
 }
 
-// -----------------------------
-// Fraîcheur & utilitaires
-// -----------------------------
-function isFresh(updatedAt) {
-  if (!updatedAt) {
-    return false;
-  }
-  const t = updatedAt.toMillis ? updatedAt.toMillis() : new Date(updatedAt).getTime();
-  if (!Number.isFinite(t)) {
-    return false;
-  }
-  return (Date.now() - t) / 86400000 <= STALE_DEVICE_DAYS;
-}
-
-function shuffleInPlace(arr) {
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
-}
-
-function dedupeTokens(list) {
-  const seen = new Set();
+function uniqByToken(rows) {
   const out = [];
-  for (const r of list) {
-    if (!r?.token) {
+  const seen = new Set();
+  for (const r of rows) {
+    const tok = pickFcmToken(r) || pickExpoToken(r);
+    if (!tok || seen.has(tok)) {
       continue;
     }
-    if (seen.has(r.token)) {
-      continue;
-    }
-    seen.add(r.token);
+    seen.add(tok);
     out.push(r);
-    if (out.length >= MAX_RECIPIENTS) {
+    if (out.length >= MAX_UNIQ) {
       break;
     }
   }
   return out;
 }
 
-// -----------------------------
-// Normalisation des tokens
-// - On cible FCM ici: on ignore les Expo push tokens
-// - Tolère fcmToken, fcmDeviceToken, fcmTokens[0] (compat historique)
-// -----------------------------
-function looksLikeExpoToken(tok) {
-  // Expo: typiquement "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]"
-  return typeof tok === 'string' && /^ExponentPushToken\[[A-Za-z0-9\-\_]+\]$/.test(tok);
-}
-function normalizeFcmTokenFromDevice(d) {
-  if (!d) {
-    return null;
+function baseDeviceFilter(d) {
+  const enabled = ENABLED_FIELD in d ? !!d[ENABLED_FIELD] : true;
+  if (!enabled) {
+    return false;
   }
-  let t = null;
-  if (typeof d.fcmToken === 'string' && d.fcmToken) {
-    t = d.fcmToken;
-  } else if (typeof d.fcmDeviceToken === 'string' && d.fcmDeviceToken) {
-    t = d.fcmDeviceToken;
-  } else if (Array.isArray(d.fcmTokens) && d.fcmTokens.length) {
-    t = d.fcmTokens[0];
+  const channel = getNested(d, CHANNEL_PUBLIC_FIELD);
+  if (channel === false) {
+    return false;
   }
-
-  if (!t || looksLikeExpoToken(t)) {
-    return null;
-  } // ⚠️ pas exploitable via FCM admin.messaging
-  return t;
+  if (!(pickFcmToken(d) || pickExpoToken(d))) {
+    return false;
+  }
+  return true;
 }
 
-// -----------------------------
-// Fenêtre GEO initiale (lat range → filtrage lng + Haversine)
-// -----------------------------
-async function queryGeoWindow({ lat, lng, radiusM }) {
+// ----------------------------------------------------------------------------
+// A) Sélection géo via bounding box + haversine
+// ----------------------------------------------------------------------------
+async function selectRecipientsGeohash({ lat, lng, radiusM }) {
   const db = admin.firestore();
-  const col = db.collection('devices');
+  const col = db.collection(DEVICES_COLLECTION);
 
-  const dLat = metersToDegLat(radiusM),
-    dLng = metersToDegLng(radiusM, lat);
+  const metersToDegLat = (m) => m / 111320;
+  const metersToDegLng = (m, la) =>
+    m / (111320 * Math.max(0.000001, Math.abs(Math.cos((la * Math.PI) / 180))));
+  const dLat = metersToDegLat(radiusM);
+  const dLng = metersToDegLng(radiusM, lat);
   const minLat = lat - dLat,
-    maxLat = lat + dLat,
-    minLng = lng - dLng,
+    maxLat = lat + dLat;
+  const minLng = lng - dLng,
     maxLng = lng + dLng;
 
-  console.log('[PUSH_INFRA][GEO] window', {
-    lat,
-    lng,
-    radiusM,
-    minLat: +minLat.toFixed(5),
-    maxLat: +maxLat.toFixed(5),
-    minLng: +minLng.toFixed(5),
-    maxLng: +maxLng.toFixed(5),
-  });
+  // NB: nécessite lat/lng stockés en Number
+  const snap = await col.where(LAT_FIELD, '>=', minLat).where(LAT_FIELD, '<=', maxLat).get();
 
-  // NB: double inégalité Firestore sur un seul champ (lat). Pour lng, filtrage en mémoire.
-  const snap = await col
-    .where('active', '==', true)
-    .where('lat', '>=', minLat)
-    .where('lat', '<=', maxLat)
-    .get();
-
-  let scanned = 0;
-  const candidates = [];
+  const out = [];
   snap.forEach((doc) => {
-    scanned += 1;
-    if (scanned > GEO_PASS_LIMIT) {
-      return;
-    } // early stop si dataset énorme
     const d = doc.data();
-    const token = normalizeFcmTokenFromDevice(d);
-    if (!token) {
+    if (!baseDeviceFilter(d)) {
       return;
     }
-    if (typeof d?.lat !== 'number' || typeof d?.lng !== 'number') {
+    const la = toNum(d[LAT_FIELD]);
+    const ln = toNum(d[LNG_FIELD]);
+    if (la === null || ln === null) {
       return;
     }
-    if (!isFresh(d.updatedAt)) {
+    if (ln < minLng || ln > maxLng) {
       return;
     }
-    if (d.lng < minLng || d.lng > maxLng) {
-      return;
-    }
-
-    candidates.push({
-      id: doc.id,
-      token,
-      lat: d.lat,
-      lng: d.lng,
-      updatedAt: d.updatedAt,
-    });
-  });
-
-  console.log('[PUSH_INFRA][GEO] candidates (pre-haversine)', {
-    scanned,
-    kept: candidates.length,
-    earlyStop: scanned > GEO_PASS_LIMIT,
-  });
-
-  const recipients = [];
-  for (const c of candidates) {
-    const dist = haversineMeters(lat, lng, c.lat, c.lng);
+    const dist = distanceMeters(lat, lng, la, ln);
     if (dist <= radiusM) {
-      recipients.push({ token: c.token, distance_m: Math.round(dist) });
-    }
-  }
-  const unique = dedupeTokens(recipients);
-  console.log('[PUSH_INFRA][GEO] unique (post-haversine+dedupe)', unique.length);
-  return unique;
-}
-
-// -----------------------------
-// Sélection principale GEO + widen progressif
-// -----------------------------
-async function selectRecipientsGeohash({ lat, lng, radiusM }) {
-  console.log('[PUSH_INFRA][GEO] START', { lat, lng, radiusM });
-  let r = await queryGeoWindow({ lat, lng, radiusM });
-  console.log('[PUSH_INFRA][GEO] pass0', { count: r.length });
-
-  let steps = 0,
-    current = radiusM;
-  while (r.length === 0 && steps < MAX_WIDEN_STEPS) {
-    current = Math.min(
-      Math.floor(current * WIDEN_FACTOR),
-      radiusM * Math.pow(WIDEN_FACTOR, steps + 1),
-    );
-    steps += 1;
-    console.warn('[PUSH_INFRA][GEO] widen', { step: steps, radiusM: current });
-    r = await queryGeoWindow({ lat, lng, radiusM: current });
-    console.log('[PUSH_INFRA][GEO] pass' + steps, { count: r.length });
-  }
-
-  // Info: si le lanceur est bien upserté avec lat/lng, il est inclus ici (dist≈0).
-  console.log('[PUSH_INFRA][GEO] DONE', { count: r.length, steps });
-  return r;
-}
-
-// -----------------------------
-// Fallback CEP (tolérant si pas de coords)
-// -----------------------------
-async function selectRecipientsFallbackScan({ lat, lng, radiusM, cep }) {
-  if (!cep) {
-    console.log('[PUSH_INFRA][CEP] no CEP → skip');
-    return [];
-  }
-  const db = admin.firestore();
-  const col = db.collection('devices');
-
-  const snap = await col.where('active', '==', true).where('cep', '==', String(cep)).get();
-  const out = [];
-  let scanned = 0,
-    kept = 0;
-
-  snap.forEach((doc) => {
-    scanned += 1;
-    const d = doc.data();
-    const token = normalizeFcmTokenFromDevice(d);
-    if (!token) {
-      return;
-    }
-    if (!isFresh(d.updatedAt)) {
-      return;
-    }
-
-    if (typeof d.lat === 'number' && typeof d.lng === 'number') {
-      const dist = haversineMeters(lat, lng, d.lat, d.lng);
-      if (dist <= radiusM) {
-        out.push({ token, distance_m: Math.round(dist) });
-        kept += 1;
-      }
-    } else {
-      // fallback “soft” si pas de coords: on garde quand même
-      out.push({ token });
-      kept += 1;
+      out.push({ id: doc.id, ...d, distance_m: Math.round(dist) });
     }
   });
 
-  const unique = dedupeTokens(out);
-  console.log('[PUSH_INFRA][CEP] unique', { cep, scanned, kept, unique: unique.length });
-  return unique;
+  const uniq = uniqByToken(out);
+  console.log('[PUSH-INFRA] A.geohash candidates=', out.length, 'unique=', uniq.length, 'bbox=', {
+    minLat,
+    maxLat,
+    minLng,
+    maxLng,
+  });
+  return uniq;
 }
 
-// -----------------------------
-// Fallback City sample (fairness: shuffle + cap)
-// -----------------------------
-async function selectRecipientsCitySample({ city }) {
-  if (!city) {
-    return [];
-  }
+// ----------------------------------------------------------------------------
+// B) Fallback scan (CEP puis élargissement lat)
+// ----------------------------------------------------------------------------
+async function selectRecipientsFallbackScan({ lat, lng, radiusM, cep }) {
   const db = admin.firestore();
-  const col = db.collection('devices');
+  const col = db.collection(DEVICES_COLLECTION);
+  const cepDigits = String(cep || '').replace(/\D+/g, '');
 
-  const snap = await col
-    .where('active', '==', true)
-    .where('city', '==', String(city))
-    .limit(CITY_SAMPLE_LIMIT)
+  if (cepDigits) {
+    const outCep = [];
+    const snap = await col.where(CEP_FIELD, '==', cepDigits).get();
+    snap.forEach((doc) => {
+      const d = doc.data();
+      if (!baseDeviceFilter(d)) {
+        return;
+      }
+      outCep.push({ id: doc.id, ...d });
+    });
+    if (outCep.length) {
+      const uniqCep = uniqByToken(outCep);
+      console.log('[PUSH-INFRA] B.cep unique=', uniqCep.length);
+      return uniqCep;
+    }
+  }
+
+  const dLat = radiusM / 111320;
+  const minLat = lat - dLat;
+  const maxLat = lat + dLat;
+  const snap2 = await col
+    .where(LAT_FIELD, '>=', minLat)
+    .where(LAT_FIELD, '<=', maxLat)
+    .limit(2000)
     .get();
 
   const out = [];
-  let scanned = 0,
-    kept = 0;
-
-  snap.forEach((doc) => {
-    scanned += 1;
+  const maxLngDelta = radiusM / 111320; // approx
+  snap2.forEach((doc) => {
     const d = doc.data();
-    const token = normalizeFcmTokenFromDevice(d);
-    if (!token) {
+    if (!baseDeviceFilter(d)) {
       return;
     }
-    if (!isFresh(d.updatedAt)) {
+    const la = toNum(d[LAT_FIELD]);
+    const ln = toNum(d[LNG_FIELD]);
+    if (la === null || ln === null) {
       return;
     }
-    out.push({ token });
-    kept += 1;
+    if (Math.abs(ln - lng) > maxLngDelta) {
+      return;
+    }
+    const dist = distanceMeters(lat, lng, la, ln);
+    if (dist <= radiusM) {
+      out.push({ id: doc.id, ...d, distance_m: Math.round(dist) });
+    }
   });
-
-  // fairness: évite de spammer toujours les mêmes
-  shuffleInPlace(out);
-  const unique = dedupeTokens(out);
-  console.warn('[PUSH_INFRA][CITY] sample', { city, scanned, kept, unique: unique.length });
-  return unique;
+  const uniq = uniqByToken(out);
+  console.log('[PUSH-INFRA] B.scan unique=', uniq.length);
+  return uniq;
 }
 
-// -----------------------------
-// Hooks optionnels
-// -----------------------------
-async function auditPushBlastResult(payload) {
-  // hook de télémétrie: peut être redirigé vers BigQuery / Log-based metrics
-  console.log('[PUSH_INFRA][AUDIT]', payload);
+// ----------------------------------------------------------------------------
+// C) Secours par ville (échantillon contrôlé)
+// ----------------------------------------------------------------------------
+async function selectRecipientsCitySample({ city }) {
+  const db = admin.firestore();
+  const col = db.collection(DEVICES_COLLECTION);
+  const snap = await col.where(CITY_FIELD, '==', String(city)).limit(1000).get();
+  const out = [];
+  snap.forEach((doc) => {
+    const d = doc.data();
+    if (!baseDeviceFilter(d)) {
+      return;
+    }
+    out.push({ id: doc.id, ...d });
+  });
+  const uniq = uniqByToken(out);
+  console.log('[PUSH-INFRA] C.city unique=', uniq.length);
+  return uniq;
+}
+
+// ----------------------------------------------------------------------------
+// Audit & DLQ
+// ----------------------------------------------------------------------------
+async function auditPushBlastResult(summary) {
+  try {
+    const db = admin.firestore();
+    await db.collection('pushAudits').add(summary);
+    console.log('\n[PUSH-AUDIT][TABLE] summary');
+    const rows = [
+      { metric: 'recipients', value: summary.recipients || 0 },
+      { metric: 'sent', value: summary.sent || 0 },
+      { metric: 'sentFCM', value: summary.sentFCM || 0 },
+      { metric: 'sentExpo', value: summary.sentExpo || 0 },
+      { metric: 'notSent', value: summary.notSent || 0 },
+      { metric: 'transient', value: summary.transient || 0 },
+      { metric: 'fatal', value: summary.fatal || 0 },
+      { metric: 'otherErr', value: summary.otherErr || 0 },
+      { metric: 'attemptsAvg', value: summary.attemptsAvg || 0 },
+      { metric: 'successPct', value: summary.successPct || 0 },
+    ];
+    console.table(rows);
+    const byCode = summary.byCode || {};
+    const entries = Object.entries(byCode).map(([code, count]) => ({ code, count }));
+    if (entries.length) {
+      console.log('[PUSH-AUDIT][TABLE] byCode');
+      console.table(entries);
+    }
+  } catch (e) {
+    console.warn('[PUSH-AUDIT] write_fail', String(e?.message || e));
+  }
 }
 
 async function enqueueDLQ({ kind, alertId, token, reason }) {
-  const masked = token ? token.slice(0, 6) + '…' + token.slice(-4) : '(empty)';
-  console.warn('[PUSH_INFRA][DLQ]', { kind, alertId, token: masked, reason });
-
-  // Optionnel: consigner pour nettoyage ultérieur (batch job)
   try {
-    await admin.firestore().collection('deadTokens').add({
-      kind,
-      alertId,
-      token,
-      reason,
-      ts: admin.firestore.FieldValue.serverTimestamp(),
-    });
+    const db = admin.firestore();
+    await db
+      .collection('pushDLQ')
+      .add({ kind, alertId, token, reason, ts: admin.firestore.FieldValue.serverTimestamp() });
   } catch (e) {
-    console.warn('[PUSH_INFRA][DLQ] write_fail', String(e?.message || e));
+    console.warn('[PUSH-DLQ] write_fail', String(e?.message || e));
   }
 }
 
 module.exports = {
+  // sélection
   selectRecipientsGeohash,
   selectRecipientsFallbackScan,
   selectRecipientsCitySample,
+  // audit & DLQ
   auditPushBlastResult,
   enqueueDLQ,
+  // export des constantes utiles (debug)
+  __cfg: {
+    DEVICES_COLLECTION,
+    CITY_FIELD,
+    CEP_FIELD,
+    LAT_FIELD,
+    LNG_FIELD,
+    CHANNEL_PUBLIC_FIELD,
+    ENABLED_FIELD,
+    LAST_SEEN_FIELD,
+    MAX_UNIQ,
+  },
 };
