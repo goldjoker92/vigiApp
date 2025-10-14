@@ -586,13 +586,17 @@ import {
 } from '../../platform_services/abuse_monitor';
 
 // BBox approximatives des UFs
-const UF_BBOX = { /* ... (inchangé, garde tout ton objet UF_BBOX ici) ... */ };
+const UF_BBOX = {
+  /* ... (inchangé, garde tout ton objet UF_BBOX ici) ... */
+};
 // Liste UF
 const UF_LIST = Object.keys(UF_BBOX);
 
 // --- Utils: détecte http(s) dans du texte et rend <a> cliquable
 function AutoLink({ text }) {
-  if (!text) {return null;}
+  if (!text) {
+    return null;
+  }
   const parts = String(text).split(/(https?:\/\/[^\s)]+(?:\/)?)/g);
   return (
     <>
@@ -621,7 +625,14 @@ function AutoLink({ text }) {
  * - alertLinkBase?: string    → ex. 'https://admin.vigiapp/app/alerts/' (on append alertId)
  * - openInNewWindow?: boolean → défaut true (sécurité noopener/noreferrer)
  */
-export default function AdminFootprintsPanel({ map, L, apiKey, userLinkBase, alertLinkBase, openInNewWindow = true }) {
+export default function AdminFootprintsPanel({
+  map,
+  L,
+  apiKey,
+  userLinkBase,
+  alertLinkBase,
+  openInNewWindow = true,
+}) {
   // Onglets
   const [tab, setTab] = useState('footprints'); // 'footprints' | 'blocks'
 
@@ -640,9 +651,13 @@ export default function AdminFootprintsPanel({ map, L, apiKey, userLinkBase, ale
 
   // Nettoyage couches Leaflet
   const clearLayers = useCallback(() => {
-    if (!map || !circleLayersRef.current?.length) {return;}
+    if (!map || !circleLayersRef.current?.length) {
+      return;
+    }
     safeForEach(circleLayersRef.current, (layer) => {
-      try { map.removeLayer(layer); } catch {}
+      try {
+        map.removeLayer(layer);
+      } catch {}
     });
     circleLayersRef.current = [];
   }, [map]);
@@ -650,10 +665,15 @@ export default function AdminFootprintsPanel({ map, L, apiKey, userLinkBase, ale
   // Agrégats dédupliqués
   const stats = useMemo(() => {
     const uniqIds = new Set();
-    const byUF = {}, byCity = {}, byCEP = {}, byStreet = {};
+    const byUF = {},
+      byCity = {},
+      byCEP = {},
+      byStreet = {};
     for (const p of items) {
       const id = p.alertId || p.id;
-      if (!id || uniqIds.has(id)) {continue;}
+      if (!id || uniqIds.has(id)) {
+        continue;
+      }
       uniqIds.add(id);
 
       const uf = (p.uf || p.estado || '').trim();
@@ -661,13 +681,19 @@ export default function AdminFootprintsPanel({ map, L, apiKey, userLinkBase, ale
       const cep = (p.cep || '').trim();
       const rua = (p.endereco || p.ruaNumero || '').trim();
 
-      if (uf) {byUF[uf] = (byUF[uf] || 0) + 1;}
+      if (uf) {
+        byUF[uf] = (byUF[uf] || 0) + 1;
+      }
       if (city) {
         const key = `${city}${uf ? `/${uf}` : ''}`;
         byCity[key] = (byCity[key] || 0) + 1;
       }
-      if (cep) {byCEP[cep] = (byCEP[cep] || 0) + 1;}
-      if (rua) {byStreet[rua] = (byStreet[rua] || 0) + 1;}
+      if (cep) {
+        byCEP[cep] = (byCEP[cep] || 0) + 1;
+      }
+      if (rua) {
+        byStreet[rua] = (byStreet[rua] || 0) + 1;
+      }
     }
 
     const toSortedArr = (obj) =>
@@ -689,28 +715,37 @@ export default function AdminFootprintsPanel({ map, L, apiKey, userLinkBase, ale
   }, [items]);
 
   // Rendu des cercles
-  const renderCircles = useCallback((points) => {
-    if (!map || !L) {return;}
-    clearLayers();
-    const layers = renderLeafletCircles({
-      L,
-      map,
-      items: points,
-      style: { color: '#3B82F6', fillColor: '#93C5FD', fillOpacity: 0.18, weight: 2 },
-    });
-    circleLayersRef.current = layers;
-  }, [L, map, clearLayers]);
+  const renderCircles = useCallback(
+    (points) => {
+      if (!map || !L) {
+        return;
+      }
+      clearLayers();
+      const layers = renderLeafletCircles({
+        L,
+        map,
+        items: points,
+        style: { color: '#3B82F6', fillColor: '#93C5FD', fillOpacity: 0.18, weight: 2 },
+      });
+      circleLayersRef.current = layers;
+    },
+    [L, map, clearLayers],
+  );
 
   // Loaders
   const loadBrazil = useCallback(async () => {
     try {
-      setLoading(true); setError('');
+      setLoading(true);
+      setError('');
       const res = await loadBrazilFootprints({ limit: 10000, apiKey });
       setItems(res.items || []);
       renderCircles(res.items || []);
       if (map && L) {
         map.fitBounds(
-          L.latLngBounds([BRAZIL_BOUNDS.south, BRAZIL_BOUNDS.west], [BRAZIL_BOUNDS.north, BRAZIL_BOUNDS.east]),
+          L.latLngBounds(
+            [BRAZIL_BOUNDS.south, BRAZIL_BOUNDS.west],
+            [BRAZIL_BOUNDS.north, BRAZIL_BOUNDS.east],
+          ),
         );
       }
     } catch (e) {
@@ -720,28 +755,45 @@ export default function AdminFootprintsPanel({ map, L, apiKey, userLinkBase, ale
     }
   }, [apiKey, map, L, renderCircles]);
 
-  const loadUF = useCallback(async (ufCode) => {
-    try {
-      const box = UF_BBOX[ufCode];
-      if (!box) { setError('UF inconnue'); return; }
-      setLoading(true); setError('');
-      const res = await getFootprintsByBBox({ ...box, sinceDays: 90, limit: 6000, apiKey });
-      setItems(res.items || []);
-      renderCircles(res.items || []);
-      if (map && L) {map.fitBounds(L.latLngBounds([box.south, box.west], [box.north, box.east]));}
-    } catch (e) {
-      setError(e.message || 'Erreur chargement UF');
-    } finally {
-      setLoading(false);
-    }
-  }, [apiKey, map, L, renderCircles]);
+  const loadUF = useCallback(
+    async (ufCode) => {
+      try {
+        const box = UF_BBOX[ufCode];
+        if (!box) {
+          setError('UF inconnue');
+          return;
+        }
+        setLoading(true);
+        setError('');
+        const res = await getFootprintsByBBox({ ...box, sinceDays: 90, limit: 6000, apiKey });
+        setItems(res.items || []);
+        renderCircles(res.items || []);
+        if (map && L) {
+          map.fitBounds(L.latLngBounds([box.south, box.west], [box.north, box.east]));
+        }
+      } catch (e) {
+        setError(e.message || 'Erreur chargement UF');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [apiKey, map, L, renderCircles],
+  );
 
   const loadViewport = useCallback(async () => {
-    if (!map) {return;}
+    if (!map) {
+      return;
+    }
     try {
-      setLoading(true); setError('');
+      setLoading(true);
+      setError('');
       const b = map.getBounds();
-      const box = { north: b.getNorth(), south: b.getSouth(), east: b.getEast(), west: b.getWest() };
+      const box = {
+        north: b.getNorth(),
+        south: b.getSouth(),
+        east: b.getEast(),
+        west: b.getWest(),
+      };
       const res = await getFootprintsByBBox({ ...box, sinceDays: 90, limit: 6000, apiKey });
       setItems(res.items || []);
       renderCircles(res.items || []);
@@ -754,12 +806,16 @@ export default function AdminFootprintsPanel({ map, L, apiKey, userLinkBase, ale
 
   // Mount
   useEffect(() => {
-    if (tab === 'footprints' && map && L) {loadBrazil();}
+    if (tab === 'footprints' && map && L) {
+      loadBrazil();
+    }
   }, [tab, map, L, loadBrazil]);
 
   // Reload viewport on moveend
   useEffect(() => {
-    if (!map || tab !== 'footprints' || mode !== 'viewport') {return;}
+    if (!map || tab !== 'footprints' || mode !== 'viewport') {
+      return;
+    }
     const onEnd = () => loadViewport();
     map.on('moveend', onEnd);
     return () => map.off('moveend', onEnd);
@@ -783,19 +839,25 @@ export default function AdminFootprintsPanel({ map, L, apiKey, userLinkBase, ale
 
   // Helpers liants
   const buildUserHref = (userId) => {
-    if (!userLinkBase) {return null;}
+    if (!userLinkBase) {
+      return null;
+    }
     const base = userLinkBase.endsWith('/') ? userLinkBase : `${userLinkBase}/`;
     return `${base}${encodeURIComponent(String(userId))}`;
   };
 
   const buildAlertHref = (alertId) => {
-    if (!alertLinkBase) {return null;}
+    if (!alertLinkBase) {
+      return null;
+    }
     const base = alertLinkBase.endsWith('/') ? alertLinkBase : `${alertLinkBase}/`;
     return `${base}${encodeURIComponent(String(alertId))}`;
   };
 
   const Anchor = ({ href, children }) => {
-    if (!href) {return <>{children}</>;}
+    if (!href) {
+      return <>{children}</>;
+    }
     return (
       <a
         href={href}
@@ -835,13 +897,19 @@ export default function AdminFootprintsPanel({ map, L, apiKey, userLinkBase, ale
           <div className="flex flex-col gap-2 mb-3">
             <div className="flex gap-2">
               <button
-                onClick={() => { setMode('brazil'); loadBrazil(); }}
+                onClick={() => {
+                  setMode('brazil');
+                  loadBrazil();
+                }}
                 className={`px-3 py-2 rounded-md text-sm font-semibold transition ${mode === 'brazil' ? 'bg-blue-600' : 'bg-gray-800 hover:bg-gray-700'}`}
               >
                 🇧🇷 Tout le Brésil
               </button>
               <button
-                onClick={() => { setMode('viewport'); loadViewport(); }}
+                onClick={() => {
+                  setMode('viewport');
+                  loadViewport();
+                }}
                 className={`px-3 py-2 rounded-md text-sm font-semibold transition ${mode === 'viewport' ? 'bg-blue-600' : 'bg-gray-800 hover:bg-gray-700'}`}
               >
                 🗺️ Vue carte
@@ -855,11 +923,16 @@ export default function AdminFootprintsPanel({ map, L, apiKey, userLinkBase, ale
                 className="bg-gray-800 border border-gray-700 rounded-md px-2 py-2 text-sm w-28"
               >
                 {UF_LIST.map((u) => (
-                  <option key={u} value={u}>{u}</option>
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
                 ))}
               </select>
               <button
-                onClick={() => { setMode('uf'); loadUF(uf); }}
+                onClick={() => {
+                  setMode('uf');
+                  loadUF(uf);
+                }}
                 className={`px-3 py-2 rounded-md text-sm font-semibold transition ${mode === 'uf' ? 'bg-blue-600' : 'bg-gray-800 hover:bg-gray-700'}`}
               >
                 🔎 Charger l’état
@@ -869,12 +942,17 @@ export default function AdminFootprintsPanel({ map, L, apiKey, userLinkBase, ale
 
           {/* Status */}
           {loading && <p className="text-sm text-blue-400 mb-2">Chargement…</p>}
-          {error && <p className="text-sm text-red-400 mb-2"><AutoLink text={error} /></p>}
+          {error && (
+            <p className="text-sm text-red-400 mb-2">
+              <AutoLink text={error} />
+            </p>
+          )}
 
           {/* KPIs */}
           <div className="bg-gray-800 rounded-lg p-3 mb-3">
             <div className="text-sm">
-              Incidents (dédupliqués) : <span className="font-bold text-blue-400">{stats.total}</span>
+              Incidents (dédupliqués) :{' '}
+              <span className="font-bold text-blue-400">{stats.total}</span>
             </div>
           </div>
 
@@ -898,7 +976,9 @@ export default function AdminFootprintsPanel({ map, L, apiKey, userLinkBase, ale
               <div className="max-h-40 overflow-y-auto text-xs space-y-1">
                 {stats.byCity.map((r) => (
                   <div key={r.k} className="flex justify-between">
-                    <span className="text-gray-300"><AutoLink text={r.k} /></span>
+                    <span className="text-gray-300">
+                      <AutoLink text={r.k} />
+                    </span>
                     <span className="font-semibold">{r.v}</span>
                   </div>
                 ))}
@@ -911,7 +991,9 @@ export default function AdminFootprintsPanel({ map, L, apiKey, userLinkBase, ale
               <div className="max-h-40 overflow-y-auto text-xs space-y-1">
                 {stats.byCEP.map((r) => (
                   <div key={r.k} className="flex justify-between">
-                    <span className="text-gray-300"><AutoLink text={r.k} /></span>
+                    <span className="text-gray-300">
+                      <AutoLink text={r.k} />
+                    </span>
                     <span className="font-semibold">{r.v}</span>
                   </div>
                 ))}
@@ -924,7 +1006,9 @@ export default function AdminFootprintsPanel({ map, L, apiKey, userLinkBase, ale
               <div className="max-h-40 overflow-y-auto text-xs space-y-1">
                 {stats.byStreet.map((r) => (
                   <div key={r.k} className="flex justify-between">
-                    <span className="text-gray-300"><AutoLink text={r.k} /></span>
+                    <span className="text-gray-300">
+                      <AutoLink text={r.k} />
+                    </span>
                     <span className="font-semibold">{r.v}</span>
                   </div>
                 ))}
@@ -959,7 +1043,8 @@ export default function AdminFootprintsPanel({ map, L, apiKey, userLinkBase, ale
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-bold">Blocages (temp ban)</h3>
             <div className="text-sm">
-              Total bloqués: <span className="font-bold text-rose-400">{getBlockedUsersCount()}</span>
+              Total bloqués:{' '}
+              <span className="font-bold text-rose-400">{getBlockedUsersCount()}</span>
             </div>
           </div>
 
@@ -993,7 +1078,9 @@ export default function AdminFootprintsPanel({ map, L, apiKey, userLinkBase, ale
             {/* on recalcule à chaque render via blocksTick */}
             {(() => {
               const { list } = blocksData;
-              if (!list?.length) {return <div className="text-gray-500">— Aucun utilisateur bloqué</div>;}
+              if (!list?.length) {
+                return <div className="text-gray-500">— Aucun utilisateur bloqué</div>;
+              }
               return (
                 <table className="w-full text-left">
                   <thead>
@@ -1009,9 +1096,16 @@ export default function AdminFootprintsPanel({ map, L, apiKey, userLinkBase, ale
                     {list.map((u) => {
                       const href = buildUserHref(u.userId);
                       return (
-                        <tr key={`${u.userId}-${u.blockedUntil}`} className="border-t border-gray-700/60">
-                          <td className="py-1 pr-2">{u.name || <span className="text-gray-500">—</span>}</td>
-                          <td className="py-1 pr-2">{u.apelido || <span className="text-gray-500">—</span>}</td>
+                        <tr
+                          key={`${u.userId}-${u.blockedUntil}`}
+                          className="border-t border-gray-700/60"
+                        >
+                          <td className="py-1 pr-2">
+                            {u.name || <span className="text-gray-500">—</span>}
+                          </td>
+                          <td className="py-1 pr-2">
+                            {u.apelido || <span className="text-gray-500">—</span>}
+                          </td>
                           <td className="py-1 pr-2 text-gray-300">
                             {href ? (
                               <Anchor href={href}>{String(u.userId)}</Anchor>
