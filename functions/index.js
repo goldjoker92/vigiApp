@@ -1,10 +1,13 @@
 // ============================================================================
-// VigiApp — Functions "default" (alerts, jobs, ACK)
+// VigiApp — Functions "default" (alerts, jobs, ACK, uploads)
 // ============================================================================
+
 require('module-alias/register'); // alias "@"
-require('./bootstrap-config'); // hydrate process.env + logs
+require('./bootstrap-config'); // hydrate process.env + logs/env
 
 const { setGlobalOptions } = require('firebase-functions/v2/options');
+const { onRequest } = require('firebase-functions/v2/https');
+
 setGlobalOptions({
   region: process.env.HTTP_REGION || 'southamerica-east1',
   cors: true,
@@ -13,7 +16,9 @@ setGlobalOptions({
   concurrency: 40,
 });
 
+// ---------------------------------------------------------------------------
 // Logger JSON uniforme
+// ---------------------------------------------------------------------------
 function log(level, msg, extra = {}) {
   const line = { ts: new Date().toISOString(), service: 'functions-default', level, msg, ...extra };
   const text = JSON.stringify(line);
@@ -27,7 +32,9 @@ function log(level, msg, extra = {}) {
 }
 log('info', 'Loaded codebase: default');
 
-// Require helper
+// ---------------------------------------------------------------------------
+// Require helper (tolérant, multi-chemins, même pattern que ton code)
+// ---------------------------------------------------------------------------
 function safeRequire(paths, exportName = null, required = true) {
   let lastErr = null;
   for (const p of paths) {
@@ -57,7 +64,7 @@ function safeRequire(paths, exportName = null, required = true) {
 }
 
 // ---------------------------------------------------------------------------
-// Public Alerts (v2 onRequest)
+// Public Alerts (v2 onRequest) — déjà présent chez toi
 // ---------------------------------------------------------------------------
 try {
   const sendPublicAlertByAddress = safeRequire(
@@ -65,7 +72,7 @@ try {
     'sendPublicAlertByAddress',
     true,
   );
-  exports.sendPublicAlertByAddress = sendPublicAlertByAddress;
+  exports.sendPublicAlertByAddress = sendPublicAlertByAddress; // module exporte déjà un onRequest
   log('info', 'Function exported', { fn: 'sendPublicAlertByAddress' });
 } catch (e) {
   log('error', 'Export failed', { fn: 'sendPublicAlertByAddress', error: String(e?.message || e) });
@@ -73,7 +80,7 @@ try {
 }
 
 // ---------------------------------------------------------------------------
-// ACK (v2 onRequest)
+// ACK (v2 onRequest) — déjà présent chez toi
 // ---------------------------------------------------------------------------
 try {
   const ackPublicAlertReceipt = safeRequire(
@@ -81,7 +88,7 @@ try {
     'ackPublicAlertReceipt',
     true,
   );
-  exports.ackPublicAlertReceipt = ackPublicAlertReceipt;
+  exports.ackPublicAlertReceipt = ackPublicAlertReceipt; // module exporte déjà un onRequest
   log('info', 'Function exported', { fn: 'ackPublicAlertReceipt' });
 } catch (e) {
   log('error', 'Export failed', { fn: 'ackPublicAlertReceipt', error: String(e?.message || e) });
@@ -89,7 +96,26 @@ try {
 }
 
 // ---------------------------------------------------------------------------
-// Maintenance (optionnel)
+// UPLOAD MISSING CHILD DOC (v2 onRequest) — NOUVEAU
+// - Notre module exporte un handler (req,res). Ici on le wrappe en v2 onRequest.
+// - CORS global déjà activé via setGlobalOptions({ cors: true }), et le handler
+//   gère aussi les OPTIONS pour être robuste côté client.
+// ---------------------------------------------------------------------------
+try {
+  const uploadHandler = safeRequire(
+    ['./src/uploads/handleUpload', './uploads/handleUpload'],
+    'uploadMissingChildDoc',
+    true,
+  );
+  exports.uploadMissingChildDoc = onRequest(uploadHandler); // wrap v2
+  log('info', 'Function exported', { fn: 'uploadMissingChildDoc' });
+} catch (e) {
+  log('error', 'Export failed', { fn: 'uploadMissingChildDoc', error: String(e?.message || e) });
+  throw e;
+}
+
+// ---------------------------------------------------------------------------
+// Maintenance (optionnel) — même pattern que chez toi
 // ---------------------------------------------------------------------------
 try {
   const maint = safeRequire(['./src/maintenance', './maintenance'], null, false);
@@ -104,6 +130,8 @@ try {
   log('warn', 'Maintenance exports failed (non-blocking)', { error: String(e?.message || e) });
   log('info', 'Exports ready', { fns: Object.keys(exports) });
 }
+
+// Dump env utile au boot (comme ton code)
 console.log(
   JSON.stringify({
     boot_env: {
@@ -114,5 +142,4 @@ console.log(
     },
   }),
 );
-
 // ❗ Ne rajoute PAS d’exports manuels en bas.

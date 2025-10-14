@@ -14,7 +14,7 @@ function safeForEach(snapOrArr, fn) {
   if (typeof snapOrArr.forEach === 'function' && Array.isArray(snapOrArr.docs)) {
     try {
       snapOrArr.forEach((doc) => fn(doc));
-    } catch {} 
+    } catch {}
     return;
   }
 
@@ -23,7 +23,7 @@ function safeForEach(snapOrArr, fn) {
     for (let i = 0; i < snapOrArr.length; i++) {
       try {
         fn(snapOrArr[i], i);
-      } catch {} 
+      } catch {}
     }
     return;
   }
@@ -32,7 +32,7 @@ function safeForEach(snapOrArr, fn) {
   if (typeof snapOrArr.size === 'number' && typeof snapOrArr.forEach === 'function') {
     try {
       snapOrArr.forEach((v, k) => fn(v, k));
-    } catch {} 
+    } catch {}
     return;
   }
 
@@ -43,9 +43,9 @@ function safeForEach(snapOrArr, fn) {
       for (let i = 0; i < vals.length; i++) {
         try {
           fn(vals[i], i);
-        } catch {} 
+        } catch {}
       }
-    } catch (_) {}
+    } catch {} 
   }
 }
 

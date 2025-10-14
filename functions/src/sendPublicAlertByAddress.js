@@ -486,13 +486,11 @@ const sendPublicAlertByAddress = onRequest(
           hasLatLng = true;
           planLogs.push({ picked: resolved.provider, lat, lng, precision: resolved.precision });
         } else {
-          return res
-            .status(400)
-            .json({
-              ok: false,
-              code: 'bad_geo',
-              msg: 'Impossible de géocoder (fournir lat/lng ou adresse/cep)',
-            });
+          return res.status(400).json({
+            ok: false,
+            code: 'bad_geo',
+            msg: 'Impossible de géocoder (fournir lat/lng ou adresse/cep)',
+          });
         }
       }
 

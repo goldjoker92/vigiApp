@@ -1,21 +1,17 @@
 // app/_layout.jsx
 // ============================================================================
-// VigiApp — Root Layout
-// - Gère l’initialisation globale (Ads, Stripe, Notifs, Device register, RC)
-// - Abonnement Auth fiable (onAuthStateChanged)
-// - RevenueCat: init unique, lié à l’UID quand dispo (anti double-call)
-// - Traces de logs homogènes
+// VigiApp — Root Layout (avec garde-fous globaux)
 // ============================================================================
 
 import { Slot, router } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Linking } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState, Suspense } from 'react';
+import { View, Linking, Text, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
 
 // Ads / Stripe
 import { AdBanner, AdBootstrap } from '../src/ads/ads';
-import CustomTopToast from '../app/components/CustomTopToast';
+import CustomTopToast from './components/CustomTopToast'; // chemin local plus lisible
 import { StripeBootstrap } from '../src/payments/stripe';
 
 // User + achats
@@ -39,6 +35,10 @@ import { attachDeviceAutoRefresh } from '../libs/registerCurrentDevice';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../firebase';
 
+// -------------------------
+// Error Boundary global
+// -------------------------
+
 // ----------------------------------------------------------------------------
 // Logs homogènes
 // ----------------------------------------------------------------------------
@@ -55,21 +55,64 @@ const RC_FLAG = '__VIGIAPP_RC_CONFIGURED__';
 if (globalThis[RC_FLAG] === undefined) {
   globalThis[RC_FLAG] = false;
 }
-
-function RCReadyHook() {
-  logRC('RCReadyHook attached');
-  return null;
+class RootErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  componentDidCatch(error, info) {
+    console.error('[ROOT][ErrorBoundary]', error, info);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <View style={{ flex: 1, padding: 16, gap: 12, justifyContent: 'center', alignItems: 'center' }}>
+          <Text style={{ fontWeight: '700', fontSize: 18 }}>Une erreur est survenue</Text>
+          <Text style={{ opacity: 0.8, textAlign: 'center' }}>
+            Pas de panique. On a intercepté l’écran qui plantait.
+          </Text>
+          <Pressable
+            onPress={() => {
+              this.setState({ error: null });
+              try {
+                router.replace('/'); // retour à l’accueil = filet de sécurité
+              } catch {}
+            }}
+            style={{ paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, backgroundColor: '#222' }}
+          >
+            <Text style={{ color: 'white' }}>Revenir à l’accueil</Text>
+          </Pressable>
+        </View>
+      );
+    }
+    return this.props.children;
+  }
 }
 
 // -----------------------------------------------------------------------------
-// Deep link helper: prend data.url/deepLink et pousse la route Expo explicitement
+// Deep link helper avec "safe push"
 // -----------------------------------------------------------------------------
-function pushPublicAlertFromUrl(rawUrl) {
-  if (!rawUrl) {
-    return;
+function safePush(pathname, params) {
+  try {
+    // On normalise quelques routes connues pour éviter les fautes
+    if (pathname === 'public-alerts' || pathname === '/public-alerts') {
+      pathname = '/public-alerts/[id]';
+    }
+    // On tente la navigation ; si Expo Router n’a pas la route, +not-found prendra le relais.
+    router.push({ pathname, params });
+  } catch (e) {
+    console.warn('[ROUTER][safePush] fallback replace("/")', e?.message || e);
+    try {
+      router.replace('/');
+    } catch {}
   }
+}
 
-  // Log clair pour debug
+function pushPublicAlertFromUrl(rawUrl) {
+  if (!rawUrl) {return;}
   console.log('[NOTIF][tap] rawUrl =', rawUrl);
 
   const url = String(rawUrl).trim();
@@ -78,17 +121,19 @@ function pushPublicAlertFromUrl(rawUrl) {
   const id = m?.[2];
 
   if (id) {
-    // route explicite -> évite “unmatched”
-    setTimeout(() => {
-      router.push({ pathname: '/public-alerts/[id]', params: { id } });
-    }, 50); // petit délai utile au cold start
+    setTimeout(() => safePush('/public-alerts/[id]', { id }), 50);
     return;
   }
 
-  // fallback: tente l’URL brute si pattern non reconnu
+  // fallback brut : on laisse le système tenter l’URL (ex: https://…)
   Linking.openURL(url).catch((e) => {
     console.warn('[NOTIF] openURL fail', e?.message || e);
   });
+}
+
+function RCReadyHook() {
+  logRC('RCReadyHook attached');
+  return null;
 }
 
 export default function Layout() {
@@ -111,7 +156,6 @@ export default function Layout() {
   const storeUid = useUserStore((s) => s?.user?.uid);
   const userCep = useUserStore((s) => s?.user?.cep ?? s?.profile?.cep ?? null);
   const userCity = useUserStore((s) => s?.user?.cidade ?? s?.profile?.cidade ?? null);
-
   const userId = authUid || storeUid || null;
 
   // -------------------------
@@ -141,7 +185,6 @@ export default function Layout() {
         warnN('auth-gate:', e?.message || e);
       }
 
-      // Init notifications
       try {
         logN('initNotifications()');
         await initNotifications();
@@ -150,7 +193,6 @@ export default function Layout() {
         warnN('init:', e?.message || e);
       }
 
-      // Listeners FG / tap
       try {
         logN('attachNotificationListeners()');
         detachNotif = attachNotificationListeners({
@@ -168,7 +210,6 @@ export default function Layout() {
         warnN('listeners:', e?.message || e);
       }
 
-      // Si app lancée par clic notif (état “tuée”)
       try {
         const initial = await Notifications.getLastNotificationResponseAsync();
         const data = initial?.notification?.request?.content?.data || {};
@@ -181,19 +222,14 @@ export default function Layout() {
         warnN('initialNotif:', e?.message || e);
       }
 
-      // Token FCM
       try {
         const token = await getFcmDeviceTokenAsync();
-        if (token) {
-          logN('FCM token ✅', token);
-        } else {
-          warnN('FCM token indisponible');
-        }
+        if (token) {logN('FCM token ✅', token);}
+        else {warnN('FCM token indisponible');}
       } catch (e) {
         warnN('fcm token:', e?.message || e);
       }
 
-      // Device register
       log('[Device] userId =', userId || '(anon)');
       try {
         if (userId) {
@@ -270,7 +306,17 @@ export default function Layout() {
         <AdBootstrap />
         <CustomTopToast />
         <View style={{ flex: 1, paddingBottom: bottomOffset }}>
-          <Slot />
+          <RootErrorBoundary>
+            <Suspense
+              fallback={
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                  <Text>Chargement…</Text>
+                </View>
+              }
+            >
+              <Slot />
+            </Suspense>
+          </RootErrorBoundary>
         </View>
         <View
           style={{
@@ -289,4 +335,4 @@ export default function Layout() {
     </StripeBootstrap>
   );
 }
-// ============================================================
+// ============================================================================

@@ -159,7 +159,9 @@ const hasHouseNumber = (ruaNumero) => /\d+/.test(String(ruaNumero || ''));
 function jaccardSimilarity(a = '', b = '') {
   const A = new Set(normalize(a).split(/\s+/).filter(Boolean));
   const B = new Set(normalize(b).split(/\s+/).filter(Boolean));
-  if (!A.size && !B.size) {return 1;}
+  if (!A.size && !B.size) {
+    return 1;
+  }
   const inter = new Set([...A].filter((x) => B.has(x))).size;
   const uni = new Set([...A, ...B]).size;
   return inter / uni;
@@ -173,15 +175,21 @@ function extractUF2FromNominatim(address = {}) {
     address['iso3166-2'];
   if (iso && typeof iso === 'string' && iso.includes('-')) {
     const code = iso.split('-').pop().toUpperCase();
-    if (/^[A-Z]{2}$/.test(code)) {return code;}
+    if (/^[A-Z]{2}$/.test(code)) {
+      return code;
+    }
   }
   if (address.state) {
     const m = UF_MAP[normalize(address.state)];
-    if (m) {return m;}
+    if (m) {
+      return m;
+    }
   }
   if (address.region) {
     const m = UF_MAP[normalize(address.region)];
-    if (m) {return m;}
+    if (m) {
+      return m;
+    }
   }
   return '';
 }
@@ -196,7 +204,9 @@ function newTraceId() {
 // Abonnement pushTraces SAFE (ne crash jamais si index manquant)
 function attachPushTracesLive(traceId) {
   try {
-    if (!db || !traceId) {return () => {};}
+    if (!db || !traceId) {
+      return () => {};
+    }
     const q = query(
       collection(db, 'pushTraces'),
       where('traceId', '==', traceId),
@@ -309,7 +319,9 @@ async function fetchNominatimJSON(url, { signal } = {}) {
       return json;
     } catch (e) {
       console.log('[REPORT][NOMI][RETRY]', { attempt, reason: e?.message || String(e) });
-      if (attempt >= 4) {throw e;}
+      if (attempt >= 4) {
+        throw e;
+      }
       await new Promise((r) => setTimeout(r, delay));
       delay *= 2;
     }
@@ -373,7 +385,9 @@ async function geocodeAddressWithNominatim({ ruaNumero, cidade, estado, cep }) {
 }
 
 function haversineMeters(a, b) {
-  if (!a || !b) {return null;}
+  if (!a || !b) {
+    return null;
+  }
   const toRad = (x) => (x * Math.PI) / 180;
   const R = 6371000;
   const dLat = toRad(b.latitude - a.latitude);
@@ -382,8 +396,7 @@ function haversineMeters(a, b) {
   const lat2 = toRad(b.latitude);
   const sinDlat = Math.sin(dLat / 2);
   const h =
-    sinDlat * sinDlat +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    sinDlat * sinDlat + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
@@ -401,9 +414,13 @@ function useToastQueue() {
   const activeRef = useRef(false);
 
   const play = () => {
-    if (activeRef.current) {return;}
+    if (activeRef.current) {
+      return;
+    }
     const next = queueRef.current.shift();
-    if (!next) {return;}
+    if (!next) {
+      return;
+    }
 
     activeRef.current = true;
     setCurrent(next);
@@ -451,7 +468,9 @@ function useToastQueue() {
   useEffect(() => () => timerRef.current && clearTimeout(timerRef.current), []);
 
   const ToastOverlay = useMemo(() => {
-    if (!current) {return null;}
+    if (!current) {
+      return null;
+    }
     const bg =
       current.type === 'success' ? '#0ea15f' : current.type === 'error' ? '#b91c1c' : '#2b2e36';
     const border =
@@ -487,16 +506,28 @@ function useToastQueue() {
 // -------------------------------------------------------------
 function getMissingFields({ categoria, descricao, ruaNumero, cidade, estado }) {
   const missing = [];
-  if (!categoria) {missing.push('• categoria');}
-  if (!String(descricao || '').trim()) {missing.push('• descrição');}
-  if (!String(ruaNumero || '').trim()) {missing.push('• rua');}
-  if (!String(cidade || '').trim()) {missing.push('• cidade');}
-  if (!String(estado || '').trim()) {missing.push('• estado/UF');}
+  if (!categoria) {
+    missing.push('• categoria');
+  }
+  if (!String(descricao || '').trim()) {
+    missing.push('• descrição');
+  }
+  if (!String(ruaNumero || '').trim()) {
+    missing.push('• rua');
+  }
+  if (!String(cidade || '').trim()) {
+    missing.push('• cidade');
+  }
+  if (!String(estado || '').trim()) {
+    missing.push('• estado/UF');
+  }
   return missing;
 }
 
 function showDisabledGuideToast(show, fields) {
-  if (!fields.length) {return;}
+  if (!fields.length) {
+    return;
+  }
   const text = `🚫 Campos obrigatórios faltando:\n${fields.join('\n')}`;
   console.log('[REPORT][TOAST][GUIDE] missing =', fields);
   show({ type: 'error', text });
@@ -613,8 +644,8 @@ export default function ReportScreen() {
       console.log('[MISSING_CHILD][ENTRY][OK]', { caseId });
 
       // 🔗 ROUTE AJUSTÉE : /missCh/missing-child-start
-      console.log('[MISSING_CHILD][NAVIGATE] -> /missCh/missing-child-start', { caseId });
-      router.push({ pathname: '/missCh/missing-child-start', params: { caseId } });
+      console.log('[MISSING_CHILD][NAVIGATE] -> /missCh/missing-start', { caseId });
+      router.push({ pathname: '/missCh/missing-start', params: { caseId } });
     } catch (e) {
       console.log('[MISSING_CHILD][ENTRY][ERR]', e?.message || String(e));
       show?.({ type: 'error', text: 'Não foi possível iniciar o fluxo agora.' });
@@ -628,11 +659,15 @@ export default function ReportScreen() {
     console.log('[REPORT][NOMI][TYPE]', ruaNumero);
 
     if (entryMode === 'auto') {
-      if (nomiItems.length) {setNomiItems([]);}
+      if (nomiItems.length) {
+        setNomiItems([]);
+      }
       return;
     }
 
-    if (nomiTimerRef.current) {clearTimeout(nomiTimerRef.current);}
+    if (nomiTimerRef.current) {
+      clearTimeout(nomiTimerRef.current);
+    }
     if (nomiAbortRef.current) {
       try {
         nomiAbortRef.current.abort();
@@ -644,7 +679,9 @@ export default function ReportScreen() {
 
     if (nomiReopenThresholdRef.current > 0) {
       if (q.length < nomiReopenThresholdRef.current) {
-        if (nomiItems.length) {setNomiItems([]);}
+        if (nomiItems.length) {
+          setNomiItems([]);
+        }
         return;
       } else {
         nomiReopenThresholdRef.current = 0;
@@ -653,7 +690,9 @@ export default function ReportScreen() {
 
     const isGeneric = ['rua', 'avenida', 'av', 'estrada', 'rodovia'].includes(q.toLowerCase());
     if (!q || q.length < 3 || isGeneric) {
-      if (nomiItems.length) {console.log('[REPORT][NOMI][CLEAR_RESULTS]');}
+      if (nomiItems.length) {
+        console.log('[REPORT][NOMI][CLEAR_RESULTS]');
+      }
       setNomiItems([]);
       return;
     }
@@ -669,10 +708,7 @@ export default function ReportScreen() {
         nomiAbortRef.current = controller;
         const json = await fetchNominatimJSON(url, { signal: controller.signal });
 
-        console.log(
-          '[REPORT][NOMI][RESULTS_COUNT]',
-          Array.isArray(json) ? json.length : 0,
-        );
+        console.log('[REPORT][NOMI][RESULTS_COUNT]', Array.isArray(json) ? json.length : 0);
         if (Array.isArray(json)) {
           json.slice(0, 8).forEach((it) => {
             const { line1, line2 } = resultLabelFromNominatim(it);
@@ -853,20 +889,31 @@ export default function ReportScreen() {
     console.log('[REPORT][MANUAL][GEO_ATTEMPT] Google A', base);
     let g = await geocodeAddressToCoords(base);
     if (g.ok) {
-      if (!cep && g.cep) {setCep(g.cep);}
-      if (cepPrecision === 'none') {setCepPrecision('general');}
+      if (!cep && g.cep) {
+        setCep(g.cep);
+      }
+      if (cepPrecision === 'none') {
+        setCepPrecision('general');
+      }
       setEntryMode('manual');
       console.log('[REPORT][MANUAL][GEO_OK] Google A');
       return { latitude: g.latitude, longitude: g.longitude };
     }
 
-    const variants = [{ ...base, cep: '' }, { ...base, cep: onlyDigits(cep) }];
+    const variants = [
+      { ...base, cep: '' },
+      { ...base, cep: onlyDigits(cep) },
+    ];
     for (let i = 0; i < variants.length; i++) {
       console.log('[REPORT][MANUAL][GEO_ATTEMPT] Google B', variants[i]);
       g = await geocodeAddressToCoords(variants[i]);
       if (g.ok) {
-        if (!cep && g.cep) {setCep(g.cep);}
-        if (cepPrecision === 'none') {setCepPrecision('general');}
+        if (!cep && g.cep) {
+          setCep(g.cep);
+        }
+        if (cepPrecision === 'none') {
+          setCepPrecision('general');
+        }
         setEntryMode('manual');
         console.log('[REPORT][MANUAL][GEO_OK] Google B');
         return { latitude: g.latitude, longitude: g.longitude };
@@ -876,20 +923,30 @@ export default function ReportScreen() {
     console.log('[REPORT][MANUAL][GEO_ATTEMPT] NOMINATIM C');
     const n1 = await geocodeAddressWithNominatim(base);
     if (n1.ok) {
-      if (!cep && n1.cep) {setCep(formatCepDisplay(onlyDigits(n1.cep)));}
-      if (cepPrecision === 'none') {setCepPrecision('general');}
+      if (!cep && n1.cep) {
+        setCep(formatCepDisplay(onlyDigits(n1.cep)));
+      }
+      if (cepPrecision === 'none') {
+        setCepPrecision('general');
+      }
       setEntryMode('manual');
       console.log('[REPORT][MANUAL][GEO_OK] NOMINATIM C');
       return { latitude: n1.latitude, longitude: n1.longitude };
     }
 
-    const ruaNoNum = String(ruaVal).replace(/\s*,?\s*\d+.*/, '').trim();
+    const ruaNoNum = String(ruaVal)
+      .replace(/\s*,?\s*\d+.*/, '')
+      .trim();
     if (ruaNoNum && ruaNoNum !== ruaVal) {
       console.log('[REPORT][MANUAL][GEO_ATTEMPT] NOMINATIM D (rua sans numéro)', ruaNoNum);
       const n2 = await geocodeAddressWithNominatim({ ...base, ruaNumero: ruaNoNum });
       if (n2.ok) {
-        if (!cep && n2.cep) {setCep(formatCepDisplay(onlyDigits(n2.cep)));}
-        if (cepPrecision === 'none') {setCepPrecision('general');}
+        if (!cep && n2.cep) {
+          setCep(formatCepDisplay(onlyDigits(n2.cep)));
+        }
+        if (cepPrecision === 'none') {
+          setCepPrecision('general');
+        }
         setEntryMode('manual');
         console.log('[REPORT][MANUAL][GEO_OK] NOMINATIM D');
         return { latitude: n2.latitude, longitude: n2.longitude };
@@ -907,7 +964,9 @@ export default function ReportScreen() {
   // AUTO: envoi — coords déjà présentes
   const handleSendAutoFlow = async () => {
     console.log('[REPORT][AUTO] handleSendAutoFlow');
-    if (local?.latitude && local?.longitude) {return local;}
+    if (local?.latitude && local?.longitude) {
+      return local;
+    }
     console.log('[REPORT][AUTO] Missing coords unexpectedly — fallback MANUAL geocode');
     return await handleSendManualFlow();
   };
@@ -1364,8 +1423,12 @@ export default function ReportScreen() {
 
                             const ruaNumeroVal = [rua, num].filter(Boolean).join(', ');
                             setRuaNumero(ruaNumeroVal);
-                            if (city) {setCidade(city);}
-                            if (uf2) {setEstado(uf2);}
+                            if (city) {
+                              setCidade(city);
+                            }
+                            if (uf2) {
+                              setEstado(uf2);
+                            }
                             if (cepOSM) {
                               setCep(formatCepDisplay(onlyDigits(cepOSM)));
                               setCepPrecision('general');
@@ -1437,8 +1500,8 @@ export default function ReportScreen() {
                   {cepPrecision === 'exact'
                     ? 'CEP exato detectado.'
                     : cepPrecision === 'needs-confirmation'
-                    ? 'Vários CEPs possíveis — confirme o endereço/CEP.'
-                    : 'CEP não foi identificado — você pode inserir manualmente.'}
+                      ? 'Vários CEPs possíveis — confirme o endereço/CEP.'
+                      : 'CEP não foi identificado — você pode inserir manualmente.'}
                 </Text>
               )}
 
