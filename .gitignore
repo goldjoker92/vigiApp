@@ -83,5 +83,4 @@ client/.session.json
 .history
 .husky
 .lh
-
 .env.sample

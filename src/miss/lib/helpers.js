@@ -1,26 +1,32 @@
 // ============================================================================
-// /app/missing-child/lib/helpers.js
-// Utilitaires communs pour MissingChild (helpers génériques)
-// Commentaires MIX (FR + EN technique)
+// app/src/miss/lib/helpers.js
+// Helpers génériques + DRAFT CHILD (TTL 12h + dédup + rate-limit)
+// Logs homogènes via logMC/warnMC
 // ============================================================================
 
 // ---------------------------------------------------------------------------
 // String helpers
 // ---------------------------------------------------------------------------
+// ============================================================================
+// DRAFT "CHILD" (TTL 12h + dédup + rate-limit)
+// ============================================================================
 
-/**
- * Supprime tout sauf les chiffres (ex: CPF, téléphone)
- */
+import {
+  addDoc,
+  collection,
+  getDocs,
+  limit as qLimit,
+  query,
+  serverTimestamp,
+  Timestamp,
+  where,
+} from 'firebase/firestore';
+
+// Depuis app/src/miss/lib/helpers.js → app/firebase.js
+import { db, auth } from '../../../firebase';
+
 export const onlyDigits = (v) => String(v || '').replace(/\D/g, '');
-
-/**
- * Première lettre en majuscule, le reste en minuscule
- */
 export const capitalize = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : '');
-
-/**
- * Met en Title Case (prénom, ville…)
- */
 export const toTitleCase = (s) =>
   String(s || '')
     .toLowerCase()
@@ -31,85 +37,153 @@ export const toTitleCase = (s) =>
 // ---------------------------------------------------------------------------
 // Date helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Retourne aujourd’hui au format YYYY-MM-DD
- */
 export const todayISO = () => new Date().toISOString().slice(0, 10);
 
-/**
- * Convertit ISO (YYYY-MM-DD) → BR (DD/MM/YYYY)
- */
 export const formatDateISOToBR = (iso) => {
-  if (!iso) {
-    return '';
-  }
+  if (!iso) {return '';}
   const [y, m, d] = String(iso).split('-');
   return `${d}/${m}/${y}`;
 };
 
-/**
- * Convertit BR (DD/MM/YYYY) → ISO (YYYY-MM-DD)
- */
 export const formatDateBRToISO = (br) => {
-  if (!br) {
-    return '';
-  }
+  if (!br) {return '';}
   const [d, m, y] = String(br).split('/');
   return `${y}-${m}-${d}`;
 };
 
-/**
- * Calcule âge d’après une date de naissance (BR DD/MM/YYYY)
- * Règle business: ≤12 ans, tolérance jusqu’au 31/12 de l’année des 13 ans
- */
+// Âge (BR DD/MM/YYYY) – tolérance 13 ans jusqu'au 31/12
 export const calcAgeFromDateBR = (dobBR) => {
-  if (!dobBR) {
-    return null;
-  }
+  if (!dobBR) {return null;}
   const [d, m, y] = dobBR.split('/').map((x) => parseInt(x, 10));
-  if (!d || !m || !y) {
-    return null;
-  }
-
+  if (!d || !m || !y) {return null;}
   const birth = new Date(y, m - 1, d);
   const today = new Date();
-
   let age = today.getFullYear() - birth.getFullYear();
-
-  // Si anniversaire pas encore passé cette année, on corrige
-  const hasBirthdayPassed =
+  const passed =
     today.getMonth() > birth.getMonth() ||
     (today.getMonth() === birth.getMonth() && today.getDate() >= birth.getDate());
-
-  if (!hasBirthdayPassed) {
-    age--;
-  }
-
-  // ⚠️ Tolérance : si l’enfant a 13 ans mais dans l’année courante, on tolère
-  if (age === 13 && today.getFullYear() === birth.getFullYear() + 13) {
-    return 12.9; // pseudo valeur = encore toléré
-  }
-
+  if (!passed) {age--;}
+  if (age === 13 && today.getFullYear() === birth.getFullYear() + 13) {return 12.9;}
   return age;
 };
 
 // ---------------------------------------------------------------------------
 // Location helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Vérifie un UF brésilien (2 lettres majuscules)
- */
 export const isValidUF = (uf) => /^[A-Z]{2}$/.test(String(uf || '').trim());
 
 // ---------------------------------------------------------------------------
 // Logging helpers
 // ---------------------------------------------------------------------------
+export const logMC = (...args) => console.log('[MISSING_CHILD][HELPERS]', ...args);
+export const warnMC = (...args) => console.warn('[MISSING_CHILD][HELPERS] ⚠️', ...args);
+
+const MISSING_DRAFT_TTL_HOURS = 12;
+const MAX_ACTIVE_DRAFTS_PER_USER = 3;
+const MIN_SECONDS_BETWEEN_DRAFTS = 45;
+
+const newTraceId = () => `trace_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+const tsPlusHours = (h) => Timestamp.fromDate(new Date(Date.now() + h * 3600 * 1000));
+
+async function findReusableDraftChild(uid) {
+  const col = collection(db, 'missingCases');
+  const q = query(col, where('createdBy', '==', uid), where('status', '==', 'DRAFT'), qLimit(3));
+  logMC('[REUSE][QUERY]', { uid });
+  const snap = await getDocs(q);
+  if (snap.empty) {return null;}
+
+  for (const doc of snap.docs) {
+    const data = doc.data();
+    const exp = data?.expiresAt;
+    const ok = !exp || exp.toMillis() > Date.now();
+    logMC('[REUSE][CANDIDATE]', { id: doc.id, ok, status: data?.status });
+    if (ok) {return { caseId: doc.id };}
+  }
+  return null;
+}
+
+async function canCreateDraftChildCase(uid) {
+  const col = collection(db, 'missingCases');
+  const q = query(col, where('createdBy', '==', uid), where('status', '==', 'DRAFT'), qLimit(10));
+  logMC('[GUARDS][QUERY]', { uid });
+  const snap = await getDocs(q);
+  const docs = snap.docs || [];
+
+  const active = docs.filter((d) => {
+    const exp = d.data()?.expiresAt;
+    return !exp || exp.toMillis() > Date.now();
+  });
+  logMC('[GUARDS][ACTIVE_COUNT]', active.length);
+  if (active.length >= MAX_ACTIVE_DRAFTS_PER_USER) {
+    warnMC('[GUARDS][BLOCK]', 'too_many_active_drafts');
+    return { ok: false, reason: 'too_many_active_drafts' };
+  }
+
+  const lastCreatedAt = docs
+    .map((d) => d.data()?.createdAt?.toMillis?.() ?? 0)
+    .reduce((a, b) => Math.max(a, b), 0);
+  if (lastCreatedAt && Date.now() - lastCreatedAt < MIN_SECONDS_BETWEEN_DRAFTS * 1000) {
+    warnMC('[GUARDS][BLOCK]', 'rate_limited_recent', { sinceMs: Date.now() - lastCreatedAt });
+    return { ok: false, reason: 'rate_limited_recent' };
+  }
+  return { ok: true };
+}
 
 /**
- * Log homogène MissingChild
+ * Crée ou réutilise un DRAFT CHILD.
+ * @returns {Promise<{caseId: string}>} caseId vide si garde-fous bloquent.
  */
-export const logMC = (...args) => console.log('[MISSING_CHILD][HELPERS]', ...args);
+export async function getOrCreateDraftChildCase({
+  user,
+  uiColor = '#FF3B30',
+  radius_m = 3000,
+}) {
+  const uid = user?.uid || auth?.currentUser?.uid || 'anon';
+  const traceId = newTraceId();
+  logMC('[ENTRY]', { uid, traceId });
 
-export const warnMC = (...args) => console.warn('[MISSING_CHILD][HELPERS] ⚠️', ...args);
+  try {
+    const reuse = await findReusableDraftChild(uid);
+    if (reuse) {
+      logMC('[REUSE][OK]', { ...reuse, traceId });
+      return reuse;
+    }
+  } catch (e) {
+    warnMC('[REUSE][ERR]', e?.message || String(e));
+  }
+
+  try {
+    const guard = await canCreateDraftChildCase(uid);
+    if (!guard.ok) {
+      warnMC('[GUARDS][DENY]', guard);
+      return { caseId: '' };
+    }
+  } catch (e) {
+    warnMC('[GUARDS][ERR]', e?.message || String(e));
+    return { caseId: '' };
+  }
+
+  try {
+    const payload = {
+      createdBy: uid,
+      createdAt: serverTimestamp(),
+      expiresAt: tsPlusHours(MISSING_DRAFT_TTL_HOURS), // TTL Firestore activée sur ce champ
+      status: 'DRAFT',
+      caseType: 'CHILD',
+      flowOrigin: 'missing_start',
+      entryTraceId: traceId,
+      color: uiColor,
+      radius_m,
+      userSnap: { apelido: user?.apelido || '', username: user?.username || '' },
+      gc_hint: 'auto_12h_if_incomplete',
+      version: 1,
+    };
+    logMC('[ADD_DOC][missingCases]', payload);
+    const ref = await addDoc(collection(db, 'missingCases'), payload);
+    logMC('[ADD_DOC][OK]', { caseId: ref.id, traceId });
+    return { caseId: ref.id };
+  } catch (e) {
+    warnMC('[ADD_DOC][ERR]', e?.message || String(e));
+    return { caseId: '' };
+  }
+}

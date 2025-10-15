@@ -2,14 +2,13 @@
 // /app/missCh/missing-start.jsx
 // VigiApp — Flux "Criança desaparecida" (écran de départ / formulaire)
 // HARD-TRACE EDITION: commentaires exhaustifs + logs détaillés.
-// - Lit caseId depuis la query string, charge le DRAFT Firestore
+// - Si caseId manquant: crée/réutilise un DRAFT via helper, puis charge
 // - Enregistre un rascunho (draft) partiel
-// - Uploads réels via Cloud Functions HTTP (multipart) => URL "redacted" stockées
-// - Validations client (âge ≤ 12/13), CPF (11 chiffres), consentement
-// - Géoloc capturée à l’envoi (best effort)
-// - Partage: Share natif + bouton WhatsApp (si app installée, sinon fallback)
-// - Import dynamique du picker pour ne JAMAIS faire planter Metro
-// - Tracing : traceId global + mesure des durées par étape
+// - Uploads via CF HTTP (multipart) => URLs "redacted" stockées
+// - Validations client (âge ≤ 12/13), CPF (11 digits), consentement
+// - Géoloc best-effort à l’envoi
+// - Partage: natif + WhatsApp
+// - Tracing : traceId global + mesures par étape
 // ============================================================================
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -29,7 +28,7 @@ import {
 } from 'react-native';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { db } from '../../firebase';
+import { db, auth } from '../../firebase';
 import { doc, getDoc, updateDoc, Timestamp } from 'firebase/firestore';
 import {
   TriangleAlert,
@@ -45,7 +44,13 @@ import {
 } from 'lucide-react-native';
 
 // Libs locales
-import { formatDateBRToISO, todayISO } from '../../src/miss/lib/helpers';
+import {
+  formatDateBRToISO,
+  todayISO,
+  getOrCreateDraftChildCase,
+  warnMC,
+  onlyDigits,
+} from '../../src/miss/lib/helpers';
 import { validateDraftClient } from '../../src/miss/lib/validations';
 import { uploadIdDocument, uploadLinkDocument, uploadChildPhoto } from '../../src/miss/lib/uploads';
 
@@ -53,22 +58,14 @@ import { uploadIdDocument, uploadLinkDocument, uploadChildPhoto } from '../../sr
 // LOGGER / TRACER (verbeux, avec chronométrage par étape)
 // ============================================================================
 const NS = '[MISSING_CHILD/START]';
-
-function nowTs() {
-  return new Date().toISOString();
-}
-function newTraceId(prefix = 'trace') {
-  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-}
-function msSince(t0) {
-  return `${Math.max(0, Date.now() - t0)}ms`;
-}
+function nowTs() { return new Date().toISOString(); }
+function newTraceId(prefix = 'trace') { return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`; }
+function msSince(t0) { return `${Math.max(0, Date.now() - t0)}ms`; }
 const Log = {
   info: (...a) => console.log(NS, ...a),
   warn: (...a) => console.warn(NS, '⚠️', ...a),
   error: (...a) => console.error(NS, '❌', ...a),
-  step: (traceId, step, extra = {}) =>
-    console.log(NS, 'STEP', step, { traceId, at: nowTs(), ...extra }),
+  step: (traceId, step, extra = {}) => console.log(NS, 'STEP', step, { traceId, at: nowTs(), ...extra }),
 };
 
 // ============================================================================
@@ -77,7 +74,6 @@ const Log = {
 function useLiteToast() {
   const [msg, setMsg] = useState(null);
   const timer = useRef(null);
-
   const show = (text) => {
     clearTimeout(timer.current);
     const s = String(text);
@@ -85,40 +81,25 @@ function useLiteToast() {
     setMsg(s);
     timer.current = setTimeout(() => setMsg(null), 3500);
   };
-
   useEffect(() => () => clearTimeout(timer.current), []);
-
   const Toast = !msg ? null : (
-    <View style={styles.toastWrap}>
-      <Text style={styles.toastText}>{msg}</Text>
-    </View>
+    <View style={styles.toastWrap}><Text style={styles.toastText}>{msg}</Text></View>
   );
   return { show, Toast };
 }
-
-// ============================================================================
-// Helpers locaux
-// ============================================================================
-const onlyDigits = (v) => String(v || '').replace(/\D/g, '');
 
 // Détection de WhatsApp
 function useHasWhatsApp() {
   const [hasWA, setHasWA] = useState(false);
   useEffect(() => {
     Linking.canOpenURL('whatsapp://send')
-      .then((ok) => {
-        console.log(NS, 'WHATSAPP/canOpenURL', { ok });
-        setHasWA(!!ok);
-      })
-      .catch((e) => {
-        console.warn(NS, '⚠️ WHATSAPP/canOpenURL error', e?.message || String(e));
-        setHasWA(false);
-      });
+      .then((ok) => { console.log(NS, 'WHATSAPP/canOpenURL', { ok }); setHasWA(!!ok); })
+      .catch((e) => { console.warn(NS, '⚠️ WHATSAPP/canOpenURL error', e?.message || String(e)); setHasWA(false); });
   }, []);
   return hasWA;
 }
 
-// Construction du message de partage
+// Message de partage
 function buildShareMessage({ caseId, childFirstName, lastCidade, lastUF, lastSeenDateBR, lastSeenTime }) {
   const link = `https://vigi.app/case/${caseId}`;
   return (
@@ -130,43 +111,33 @@ function buildShareMessage({ caseId, childFirstName, lastCidade, lastUF, lastSee
   );
 }
 
-// Actions de partage
-async function shareNative(msg) {
-  console.log(NS, 'SHARE/NATIVE', { len: msg?.length || 0 });
-  await Share.share({ message: msg });
-}
+async function shareNative(msg) { console.log(NS, 'SHARE/NATIVE', { len: msg?.length || 0 }); await Share.share({ message: msg }); }
 async function shareWhatsApp(msg) {
   const url = `whatsapp://send?text=${encodeURIComponent(msg)}`;
   try {
     const ok = await Linking.canOpenURL(url);
     console.log(NS, 'WHATSAPP/check', { supported: ok, msgLen: msg?.length || 0 });
-    if (ok) {
-      await Linking.openURL(url);
-      console.log(NS, 'WHATSAPP/openURL/OK');
-    } else {
-      console.warn(NS, '⚠️ WHATSAPP/not installed → fallback Share');
-      await Share.share({ message: msg });
-    }
-  } catch (e) {
-    console.error(NS, '❌ WHATSAPP/openURL/ERR', e?.message || String(e));
-    await Share.share({ message: msg });
-  }
+    if (ok) { await Linking.openURL(url); console.log(NS, 'WHATSAPP/openURL/OK'); }
+    else { console.warn(NS, '⚠️ WHATSAPP/not installed → fallback Share'); await Share.share({ message: msg }); }
+  } catch (e) { console.error(NS, '❌ WHATSAPP/openURL/ERR', e?.message || String(e)); await Share.share({ message: msg }); }
 }
 
 // ============================================================================
 // Composant principal
 // ============================================================================
 export default function MissingChildStart() {
-  // Trace global pour cette session d’écran
   const screenTraceIdRef = useRef(newTraceId('mc_start'));
   const screenMountTsRef = useRef(Date.now());
 
   const router = useRouter();
-  const { caseId } = useLocalSearchParams();
+  const params = useLocalSearchParams();
+  const initialCaseId = String(params?.caseId || '');
+
+  // State
+  const [caseId, setCaseId] = useState(initialCaseId);
   const { show, Toast } = useLiteToast();
   const hasWA = useHasWhatsApp();
 
-  // State principal
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -182,14 +153,14 @@ export default function MissingChildStart() {
 
   // Criança
   const [childFirstName, setChildFirstName] = useState('');
-  const [childDobBR, setChildDobBR] = useState(''); // DD/MM/AAAA
-  const [childSex, setChildSex] = useState(''); // 'M' | 'F'
+  const [childDobBR, setChildDobBR] = useState('');
+  const [childSex, setChildSex] = useState('');
   const [lastSeenDateBR, setLastSeenDateBR] = useState(() => {
-    const iso = todayISO(); // YYYY-MM-DD
+    const iso = todayISO();
     const [y, m, d] = iso.split('-');
     return `${d}/${m}/${y}`;
   });
-  const [lastSeenTime, setLastSeenTime] = useState(''); // HH:mm
+  const [lastSeenTime, setLastSeenTime] = useState('');
 
   // Endereço
   const [lastRua, setLastRua] = useState('');
@@ -197,20 +168,20 @@ export default function MissingChildStart() {
   const [lastCidade, setLastCidade] = useState('');
   const [lastUF, setLastUF] = useState('');
 
-  // Media criança
+  // Media
   const [photoPath, setPhotoPath] = useState('');
 
-  // Contexte / infos
-  const [contextDesc, setContextDesc] = useState(''); // obligatoire
-  const [extraInfo, setExtraInfo] = useState(''); // facultatif
+  // Contexte
+  const [contextDesc, setContextDesc] = useState('');
+  const [extraInfo, setExtraInfo] = useState('');
 
   // Consentement
   const [consent, setConsent] = useState(false);
 
-  // Géoloc capturée à l’envoi
+  // Geo
   const geoRef = useRef(null);
 
-  // Partage: message calculé
+  // Share message basé sur state.caseId
   const shareMsg = buildShareMessage({
     caseId,
     childFirstName,
@@ -220,38 +191,69 @@ export default function MissingChildStart() {
     lastSeenTime,
   });
 
-  // --------------------------------------------------------------------------
-  // MOUNT / UNMOUNT TRACE
-  // --------------------------------------------------------------------------
+  // Trace mount/unmount
   useEffect(() => {
     const traceId = screenTraceIdRef.current;
     const mountTs = screenMountTsRef.current;
-    Log.info('MOUNT', { traceId, at: nowTs(), caseId });
-    return () => {
-      Log.warn('UNMOUNT', {
-        traceId,
-        alive: msSince(mountTs),
-      });
-    };
-  }, [caseId]);
+    Log.info('MOUNT', { traceId, at: nowTs(), caseId: initialCaseId || '(none)' });
+    return () => { Log.warn('UNMOUNT', { traceId, alive: msSince(mountTs) }); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // --------------------------------------------------------------------------
-  // CHARGEMENT DU DRAFT
-  // --------------------------------------------------------------------------
+  // 1) Si pas de caseId param → créer/réutiliser un DRAFT ici
   useEffect(() => {
+    if (initialCaseId) {return;} // déjà fourni par la route
+
+    let alive = true;
+    (async () => {
+      try {
+        Log.step(screenTraceIdRef.current, 'DRAFT_INIT/BEGIN');
+        setLoading(true);
+
+        const { caseId: newId } = await getOrCreateDraftChildCase({
+          user: { uid: auth.currentUser?.uid, apelido: '', username: '' },
+          uiColor: '#FF3B30',
+          radius_m: 3000,
+        });
+
+        if (!alive) {return;}
+
+        if (!newId) {
+          warnMC('[START][GUARDS_BLOCKED]');
+          Alert.alert(
+            'Ação bloqueada',
+            'Você atingiu o limite de rascunhos recentes. Tente novamente em alguns minutos.',
+            [{ text: 'OK', onPress: () => router.back() }],
+          );
+          return;
+        }
+
+        setCaseId(newId);
+        Log.step(screenTraceIdRef.current, 'DRAFT_INIT/END', { caseId: newId });
+      } catch (e) {
+        warnMC('[START][ERR]', e?.message || String(e));
+        Alert.alert('Erro', 'Não foi possível iniciar o relatório agora.', [
+          { text: 'OK', onPress: () => router.back() },
+        ]);
+      } finally {
+        setLoading(false);
+      }
+    })();
+
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialCaseId]);
+
+  // 2) Chargement du DRAFT (quand caseId est dispo)
+  useEffect(() => {
+    if (!caseId) {return;}
+
     const traceId = screenTraceIdRef.current;
     const t0 = Date.now();
 
     (async () => {
       try {
         Log.step(traceId, 'LOAD_DRAFT/BEGIN', { caseId });
-        if (!caseId) {
-          Log.warn('LOAD_DRAFT/NO_CASE_ID');
-          Alert.alert('Erro', 'Identificador do caso ausente.');
-          router.back();
-          return;
-        }
-
         const ref = doc(db, 'missingCases', String(caseId));
         const snap = await getDoc(ref);
         if (!snap.exists()) {
@@ -269,57 +271,28 @@ export default function MissingChildStart() {
           media: !!data.media,
         });
 
-        // Hydrate (non-sensibles)
-        if (data?.guardian?.fullName) {
-          setGuardianName(data.guardian.fullName);
-          Log.info('HYDRATE/guardian.fullName', data.guardian.fullName);
-        }
-        if (data?.child?.firstName) {
-          setChildFirstName(data.child.firstName);
-          Log.info('HYDRATE/child.firstName', data.child.firstName);
-        }
+        if (data?.guardian?.fullName) {setGuardianName(data.guardian.fullName);}
+        if (data?.child?.firstName) {setChildFirstName(data.child.firstName);}
         if (data?.child?.dob) {
           const [yy, mm, dd] = String(data.child.dob).split('-');
-          const v = `${dd}/${mm}/${yy}`;
-          setChildDobBR(v);
-          Log.info('HYDRATE/child.dob', { iso: data.child.dob, br: v });
+          setChildDobBR(`${dd}/${mm}/${yy}`);
         }
-        if (data?.child?.sex) {
-          setChildSex(data.child.sex);
-          Log.info('HYDRATE/child.sex', data.child.sex);
-        }
-
+        if (data?.child?.sex) {setChildSex(data.child.sex);}
         if (data?.child?.lastSeenAt) {
           const d = new Date(data.child.lastSeenAt);
           const iso = d.toISOString();
-          const dateBR = `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
-          setLastSeenDateBR(dateBR);
+          setLastSeenDateBR(`${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`);
           setLastSeenTime(iso.slice(11, 16));
-          Log.info('HYDRATE/child.lastSeenAt', { iso, br: { date: dateBR, time: iso.slice(11, 16) } });
         }
         if (data?.child?.lastKnownAddress) {
           setLastRua(data.child.lastKnownAddress.rua || '');
           setLastNumero(data.child.lastKnownAddress.numero || '');
           setLastCidade(data.child.lastKnownAddress.cidade || '');
           setLastUF(data.child.lastKnownAddress.uf || '');
-          Log.info('HYDRATE/child.lastKnownAddress', data.child.lastKnownAddress);
         }
-
-        if (data?.media?.photoRedacted) {
-          setPhotoPath(data.media.photoRedacted);
-          Log.info('HYDRATE/media.photoRedacted', data.media.photoRedacted);
-        }
-
-        if (data?.docs?.idDocRedacted) {
-          setHasIdDoc(true);
-          setIdDocPath(data.docs.idDocRedacted);
-          Log.info('HYDRATE/docs.idDocRedacted', data.docs.idDocRedacted);
-        }
-        if (data?.docs?.linkDocRedacted) {
-          setHasLinkDoc(true);
-          setLinkDocPath(data.docs.linkDocRedacted);
-          Log.info('HYDRATE/docs.linkDocRedacted', data.docs.linkDocRedacted);
-        }
+        if (data?.media?.photoRedacted) {setPhotoPath(data.media.photoRedacted);}
+        if (data?.docs?.idDocRedacted) { setHasIdDoc(true); setIdDocPath(data.docs.idDocRedacted); }
+        if (data?.docs?.linkDocRedacted) { setHasLinkDoc(true); setLinkDocPath(data.docs.linkDocRedacted); }
 
         setLoading(false);
         Log.step(traceId, 'LOAD_DRAFT/END', { ms: msSince(t0) });
@@ -331,9 +304,7 @@ export default function MissingChildStart() {
     })();
   }, [caseId, router, show]);
 
-  // --------------------------------------------------------------------------
-  // Derivés (avec logs calculés)
-  // --------------------------------------------------------------------------
+  // Derivés
   const canSaveDraft = useMemo(() => {
     const ok =
       guardianName.trim().length > 0 ||
@@ -352,7 +323,6 @@ export default function MissingChildStart() {
       cpfRaw,
       childFirstName,
       childDobBR,
-
       lastRua,
       lastNumero,
       lastCidade,
@@ -385,51 +355,30 @@ export default function MissingChildStart() {
     consent,
   ]);
 
-  // --------------------------------------------------------------------------
-  // PICKER (import dynamique + logs)
-  // --------------------------------------------------------------------------
+  // Picker / Uploads (inchangé, avec logs)
   async function pickFileFromLibrary(kind) {
     const t0 = Date.now();
     const traceId = screenTraceIdRef.current;
     Log.step(traceId, 'PICK/BEGIN', { kind });
-
     try {
       const ImagePicker = await import('expo-image-picker');
-
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       Log.info('PICK/perm', { status: perm?.status, granted: perm?.granted });
-      if (!perm.granted) {
-        show('Permissão recusada para acessar a galeria.');
-        Log.warn('PICK/denied');
-        return null;
-      }
-
+      if (!perm.granted) { show('Permissão recusada para acessar a galeria.'); Log.warn('PICK/denied'); return null; }
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: [ImagePicker.MediaType.IMAGE],
         allowsEditing: false,
         quality: 0.9,
       });
-      Log.info('PICK/result', {
-        canceled: result?.canceled,
-        count: result?.assets?.length || 0,
-        ms: msSince(t0),
-      });
-
+      Log.info('PICK/result', { canceled: result?.canceled, count: result?.assets?.length || 0, ms: msSince(t0) });
       if (result.canceled || !result.assets?.length) {return null;}
-
       const asset = result.assets[0];
       const uri = asset.uri;
-
-      // heuristique mime/name basiques (loggées)
       let name = asset.fileName || `upload_${Date.now()}.jpg`;
       let mime = asset.type === 'image' ? 'image/jpeg' : 'application/octet-stream';
-      if (uri?.endsWith('.png')) {
-        mime = 'image/png';
-        if (!name.endsWith('.png')) {name += '.png';}
-      }
+      if (uri?.endsWith('.png')) { mime = 'image/png'; if (!name.endsWith('.png')) {name += '.png';} }
       if (uri?.endsWith('.jpg') || uri?.endsWith('.jpeg')) {mime = 'image/jpeg';}
       if (uri?.endsWith('.webp')) {mime = 'image/webp';}
-
       const out = { uri, name, mime, kind };
       Log.step(traceId, 'PICK/END', { ms: msSince(t0), out });
       return out;
@@ -440,64 +389,30 @@ export default function MissingChildStart() {
     }
   }
 
-  // --------------------------------------------------------------------------
-  // UPLOADS (chaque type + logs verbeux)
-  // --------------------------------------------------------------------------
   async function onUpload(kind) {
     const t0 = Date.now();
     const traceId = screenTraceIdRef.current;
     Log.step(traceId, 'UPLOAD/BEGIN', { kind });
-
     const picked = await pickFileFromLibrary(kind);
-    if (!picked) {
-      Log.warn('UPLOAD/ABORT_NO_PICK', { kind });
-      return;
-    }
-
+    if (!picked) { Log.warn('UPLOAD/ABORT_NO_PICK', { kind }); return; }
     const { uri, name, mime } = picked;
-
     setBusy(true);
     try {
-      const common = {
-        uri,
-        name,
-        mime,
-        caseId: String(caseId),
-        userId: 'anon', // TODO: brancher uid si nécessaire
-        cpfRaw, // jamais stocké en clair
-        geo: geoRef.current || undefined,
-      };
+      const common = { uri, name, mime, caseId: String(caseId), userId: 'anon', cpfRaw, geo: geoRef.current || undefined };
       Log.info('UPLOAD/payload', { kind, ...common, uri: '(omitted)' });
-
       let resp;
       if (kind === 'id') {resp = await uploadIdDocument(common);}
       else if (kind === 'link') {resp = await uploadLinkDocument(common);}
       else if (kind === 'photo') {resp = await uploadChildPhoto(common);}
-      else {
-        Log.warn('UPLOAD/UNKNOWN_KIND', kind);
-        return;
-      }
+      else { Log.warn('UPLOAD/UNKNOWN_KIND', kind); return; }
 
       Log.info('UPLOAD/resp', { kind, ok: !!resp?.ok, meta: resp?.meta });
-      if (!resp?.ok) {
-        const reason = resp?.reason || 'Falha no upload.';
-        show(reason);
-        Log.warn('UPLOAD/KO', { kind, reason });
-        return;
-      }
+      if (!resp?.ok) { show(resp?.reason || 'Falha no upload.'); Log.warn('UPLOAD/KO', { kind }); return; }
 
-      if (kind === 'id') {
-        setHasIdDoc(true);
-        setIdDocPath(resp.redactedUrl);
-        show('Documento de identidade anexado.');
-      } else if (kind === 'link') {
-        setHasLinkDoc(true);
-        setLinkDocPath(resp.redactedUrl);
-        show('Documento de vínculo anexado.');
-      } else if (kind === 'photo') {
-        setPhotoPath(resp.redactedUrl);
-        show('Foto anexada.');
-      }
+      if (kind === 'id') { setHasIdDoc(true); setIdDocPath(resp.redactedUrl); show('Documento de identidade anexado.'); }
+      else if (kind === 'link') { setHasLinkDoc(true); setLinkDocPath(resp.redactedUrl); show('Documento de vínculo anexado.'); }
+      else if (kind === 'photo') { setPhotoPath(resp.redactedUrl); show('Foto anexada.'); }
+
       Log.step(traceId, 'UPLOAD/END', { kind, ms: msSince(t0) });
     } catch (e) {
       Log.error('UPLOAD/ERROR', e?.message || e);
@@ -507,41 +422,23 @@ export default function MissingChildStart() {
     }
   }
 
-  // --------------------------------------------------------------------------
-  // SAVE DRAFT
-  // --------------------------------------------------------------------------
   async function onSaveDraft() {
     const t0 = Date.now();
     const traceId = screenTraceIdRef.current;
     Log.step(traceId, 'SAVE_DRAFT/BEGIN');
-
     try {
-      if (!canSaveDraft) {
-        show('Preencha pelo menos un campo para salvar.');
-        Log.warn('SAVE_DRAFT/BLOCKED_EMPTY');
-        return;
-      }
+      if (!canSaveDraft) { show('Preencha pelo menos un campo para salvar.'); Log.warn('SAVE_DRAFT/BLOCKED_EMPTY'); return; }
       setBusy(true);
-
       const ref = doc(db, 'missingCases', String(caseId));
-
-      const lastSeenISO = lastSeenDateBR
-        ? `${formatDateBRToISO(lastSeenDateBR)}T${lastSeenTime || '00:00'}:00.000Z`
-        : null;
-
+      const lastSeenISO = lastSeenDateBR ? `${formatDateBRToISO(lastSeenDateBR)}T${lastSeenTime || '00:00'}:00.000Z` : null;
       const payload = {
-        guardian: { fullName: guardianName.trim() || '' /* cpfHash côté serveur */ },
+        guardian: { fullName: guardianName.trim() || '' },
         child: {
           firstName: childFirstName.trim() || '',
           dob: childDobBR ? formatDateBRToISO(childDobBR) : '',
           sex: childSex || '',
           lastSeenAt: lastSeenISO,
-          lastKnownAddress: {
-            rua: lastRua || '',
-            numero: lastNumero || '',
-            cidade: lastCidade || '',
-            uf: String(lastUF || '').toUpperCase(),
-          },
+          lastKnownAddress: { rua: lastRua || '', numero: lastNumero || '', cidade: lastCidade || '', uf: String(lastUF || '').toUpperCase() },
         },
         docs: { idDocRedacted: idDocPath || '', linkDocRedacted: linkDocPath || '' },
         media: { photoRedacted: photoPath || '' },
@@ -549,10 +446,8 @@ export default function MissingChildStart() {
         updatedAt: Timestamp.now(),
         status: 'draft',
       };
-
       Log.info('SAVE_DRAFT/payload', payload);
       await updateDoc(ref, payload);
-
       show('Rascunho salvo.');
       Log.step(traceId, 'SAVE_DRAFT/END', { ms: msSince(t0) });
     } catch (e) {
@@ -563,25 +458,15 @@ export default function MissingChildStart() {
     }
   }
 
-  // --------------------------------------------------------------------------
-  // GÉOLOC une fois (best effort)
-  // --------------------------------------------------------------------------
   async function captureGeolocationOnce() {
     const t0 = Date.now();
     const traceId = screenTraceIdRef.current;
     Log.step(traceId, 'GEO/BEGIN');
-
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       Log.info('GEO/perm', status);
-      if (status !== 'granted') {
-        Log.warn('GEO/denied');
-        return null;
-      }
-
-      const loc = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
+      if (status !== 'granted') { Log.warn('GEO/denied'); return null; }
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       const geo = { lat: loc.coords.latitude, lng: loc.coords.longitude, t: Date.now() };
       geoRef.current = geo;
       Log.step(traceId, 'GEO/END', { ms: msSince(t0), geo });
@@ -592,15 +477,11 @@ export default function MissingChildStart() {
     }
   }
 
-  // --------------------------------------------------------------------------
-  // SUBMIT: demande de vérification
-  // --------------------------------------------------------------------------
   async function onRequestVerification() {
     const t0 = Date.now();
     const traceId = screenTraceIdRef.current;
     Log.step(traceId, 'SUBMIT/BEGIN');
 
-    // 1) Validations client
     const v = validateDraftClient({
       guardianName,
       cpfRaw,
@@ -614,34 +495,17 @@ export default function MissingChildStart() {
       contextDesc,
       extraInfo,
     });
-    if (!v.ok) {
-      show(v.msg);
-      Log.warn('SUBMIT/VALIDATION_KO', v);
-      return;
-    }
+    if (!v.ok) { show(v.msg); Log.warn('SUBMIT/VALIDATION_KO', v); return; }
     if (!hasIdDoc || !idDocPath || !hasLinkDoc || !linkDocPath || !photoPath) {
-      const reason = 'Anexe os documentos e a foto.';
-      show(reason);
-      Log.warn('SUBMIT/MISSING_PROOFS');
-      return;
+      show('Anexe os documentos e a foto.'); Log.warn('SUBMIT/MISSING_PROOFS'); return;
     }
-    if (!consent) {
-      const reason = 'Confirme o consentimento para prosseguir.';
-      show(reason);
-      Log.warn('SUBMIT/NO_CONSENT');
-      return;
-    }
+    if (!consent) { show('Confirme o consentimento para prosseguir.'); Log.warn('SUBMIT/NO_CONSENT'); return; }
 
     setBusy(true);
     try {
-      // 2) Géoloc best effort
       await captureGeolocationOnce();
-
-      // 3) Save draft -> status pending
       const ref = doc(db, 'missingCases', String(caseId));
-      const lastSeenISO = lastSeenDateBR
-        ? `${formatDateBRToISO(lastSeenDateBR)}T${lastSeenTime || '00:00'}:00.000Z`
-        : null;
+      const lastSeenISO = lastSeenDateBR ? `${formatDateBRToISO(lastSeenDateBR)}T${lastSeenTime || '00:00'}:00.000Z` : null;
 
       const updatePayload = {
         guardian: { fullName: guardianName.trim() || '' },
@@ -650,12 +514,7 @@ export default function MissingChildStart() {
           dob: childDobBR ? formatDateBRToISO(childDobBR) : '',
           sex: childSex || '',
           lastSeenAt: lastSeenISO,
-          lastKnownAddress: {
-            rua: lastRua || '',
-            numero: lastNumero || '',
-            cidade: lastCidade || '',
-            uf: String(lastUF || '').toUpperCase(),
-          },
+          lastKnownAddress: { rua: lastRua || '', numero: lastNumero || '', cidade: lastCidade || '', uf: String(lastUF || '').toUpperCase() },
         },
         docs: { idDocRedacted: idDocPath || '', linkDocRedacted: linkDocPath || '' },
         media: { photoRedacted: photoPath || '' },
@@ -667,50 +526,30 @@ export default function MissingChildStart() {
       Log.info('SUBMIT/updateDoc/payload', updatePayload);
       await updateDoc(ref, updatePayload);
 
-      // 4) CF verifyGuardian (cpfRaw transmis côté CF, jamais stocké en clair)
       try {
         const body = {
           caseId: String(caseId),
           payload: {
-            guardian: {
-              fullName: guardianName.trim(),
-              cpfRaw: onlyDigits(cpfRaw),
-              docProofs: ['ID_FRONT', 'LINK_CHILD_DOC'],
-            },
+            guardian: { fullName: guardianName.trim(), cpfRaw: onlyDigits(cpfRaw), docProofs: ['ID_FRONT', 'LINK_CHILD_DOC'] },
             child: {
               firstName: childFirstName.trim(),
               dob: childDobBR ? formatDateBRToISO(childDobBR) : '',
               sex: childSex,
               lastSeenAt: lastSeenISO,
-              lastKnownAddress: {
-                rua: lastRua,
-                numero: lastNumero,
-                cidade: lastCidade,
-                uf: String(lastUF || '').toUpperCase(),
-              },
+              lastKnownAddress: { rua: lastRua, numero: lastNumero, cidade: lastCidade, uf: String(lastUF || '').toUpperCase() },
             },
             media: { photoRedacted: photoPath },
             meta: { geo: geoRef.current || null },
           },
         };
-        Log.info('SUBMIT/CF/verifyGuardian/REQ', {
-          ...body,
-          payload: { ...body.payload, guardian: { ...body.payload.guardian, cpfRaw: '(masked)' } },
-        });
-
+        Log.info('SUBMIT/CF/verifyGuardian/REQ', { ...body, payload: { ...body.payload, guardian: { ...body.payload.guardian, cpfRaw: '(masked)' } } });
         const resp = await fetch(
           'https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/verifyGuardian',
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-          },
+          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
         );
         const json = await resp.json().catch(() => null);
         Log.info('SUBMIT/CF/verifyGuardian/RESP', { status: resp.status, ok: resp.ok, json });
-
         if (!resp.ok) {throw new Error(`verifyGuardian http ${resp.status}`);}
-
         show('Enviado para verificação. Pronto para enviar ao público.');
       } catch (err) {
         Log.warn('SUBMIT/CF_FALLBACK', err?.message || err);
@@ -719,12 +558,7 @@ export default function MissingChildStart() {
       }
 
       Log.step(traceId, 'SUBMIT/END', { ms: msSince(t0) });
-
-      // 5) Navigate (home) après un court délai (UX)
-      setTimeout(() => {
-        Log.info('NAVIGATE/home');
-        router.replace({ pathname: '/(tabs)/home' });
-      }, 600);
+      setTimeout(() => { Log.info('NAVIGATE/home'); router.replace({ pathname: '/(tabs)/home' }); }, 600);
     } catch (e) {
       Log.error('SUBMIT/ERROR', e?.message || e);
       show('Falha ao enviar para verificação.');
@@ -733,61 +567,24 @@ export default function MissingChildStart() {
     }
   }
 
-  // --------------------------------------------------------------------------
-  // PARTAGE (System share + WhatsApp si dispo)
-  // --------------------------------------------------------------------------
-  async function onShareSystem() {
-    const traceId = screenTraceIdRef.current;
-    Log.step(traceId, 'SHARE/NATIVE/BEGIN');
-    try {
-      await shareNative(shareMsg);
-      Log.step(traceId, 'SHARE/NATIVE/END', { ok: true });
-    } catch (e) {
-      Log.error('SHARE/NATIVE/ERROR', e?.message || e);
-      show('Não foi possível compartilhar.');
-    }
-  }
-
-  async function onShareWhatsApp() {
-    const traceId = screenTraceIdRef.current;
-    Log.step(traceId, 'SHARE/WA/BEGIN');
-    try {
-      await shareWhatsApp(shareMsg);
-      Log.step(traceId, 'SHARE/WA/END', { ok: true });
-    } catch (e) {
-      Log.error('SHARE/WA/ERROR', e?.message || e);
-      show('Não foi possível compartilhar.');
-    }
-  }
-
-  // --------------------------------------------------------------------------
   // RENDER
-  // --------------------------------------------------------------------------
-  if (loading) {
+  if (loading || !caseId) {
     return (
       <View style={[styles.page, { alignItems: 'center', justifyContent: 'center' }]}>
         <ActivityIndicator color="#22C55E" />
+        <Text style={{ color: '#fff', marginTop: 8 }}>Preparando seu rascunho…</Text>
       </View>
     );
   }
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.select({ ios: 'padding', android: undefined })}
-      style={{ flex: 1 }}
-    >
+    <KeyboardAvoidingView behavior={Platform.select({ ios: 'padding', android: undefined })} style={{ flex: 1 }}>
       <View style={styles.page}>
         {Toast}
 
         {/* Top bar */}
         <View style={styles.topbar}>
-          <TouchableOpacity
-            onPress={() => {
-              Log.info('NAVIGATE/back');
-              router.back();
-            }}
-            style={styles.backBtn}
-          >
+          <TouchableOpacity onPress={() => { Log.info('NAVIGATE/back'); router.back(); }} style={styles.backBtn}>
             <ChevronLeft color="#fff" size={22} />
             <Text style={styles.backTxt}>Voltar</Text>
           </TouchableOpacity>
@@ -802,26 +599,19 @@ export default function MissingChildStart() {
             <View style={{ flex: 1 }}>
               <Text style={styles.alertTitle}>Atenção — uso responsável</Text>
               <Text style={styles.alertMsg}>
-                Este recurso é colaborativo e depende de{' '}
-                <Text style={{ fontWeight: 'bold' }}>boa fé e responsabilidade</Text>.{'\n'}
-                <Text style={{ fontWeight: 'bold' }}>
-                  VigiApp não substitui Polícia, Samu ou órgãos oficiais.
-                </Text>
-                {'\n'}
-                Apenas para crianças de até <Text style={{ fontWeight: 'bold' }}>12 anos</Text> (13
-                tolerado até o fim do ano).
+                Este recurso é colaborativo e depende de <Text style={{ fontWeight: 'bold' }}>boa fé e responsabilidade</Text>.{'\n'}
+                <Text style={{ fontWeight: 'bold' }}>VigiApp não substitui Polícia, Samu ou órgãos oficiais.</Text>{'\n'}
+                Apenas para crianças de até <Text style={{ fontWeight: 'bold' }}>12 anos</Text> (13 tolerado até o fim do ano).
               </Text>
             </View>
           </View>
 
-          {/* Checklist de documentos */}
+          {/* Checklist */}
           <View style={styles.checklist}>
             <Text style={styles.checkTitle}>Documentos necessários</Text>
             <Text style={styles.checkItem}>• Documento de identidade do responsável (frente)</Text>
             <Text style={styles.checkItem}>• Documento de vínculo responsável ↔ criança</Text>
-            <Text style={styles.checkItem}>
-              • Foto recente da criança (sem filtros, rosto visível)
-            </Text>
+            <Text style={styles.checkItem}>• Foto recente da criança (sem filtros, rosto visível)</Text>
           </View>
 
           {/* Responsável */}
@@ -836,10 +626,7 @@ export default function MissingChildStart() {
             placeholder="Nome completo do responsável"
             placeholderTextColor="#9aa0a6"
             value={guardianName}
-            onChangeText={(v) => {
-              setGuardianName(v);
-              Log.info('FIELD/guardianName', v);
-            }}
+            onChangeText={(v) => { setGuardianName(v); Log.info('FIELD/guardianName', v); }}
             autoCapitalize="words"
           />
 
@@ -850,35 +637,19 @@ export default function MissingChildStart() {
             placeholderTextColor="#9aa0a6"
             keyboardType="number-pad"
             value={cpfRaw}
-            onChangeText={(t) => {
-              const d = onlyDigits(t);
-              setCpfRaw(d);
-              Log.info('FIELD/cpfRaw(len)', d.length);
-            }}
+            onChangeText={(t) => { const d = onlyDigits(t); setCpfRaw(d); Log.info('FIELD/cpfRaw(len)', d.length); }}
             maxLength={11}
           />
 
           <View style={styles.row}>
-            <TouchableOpacity
-              style={[styles.btnGhost, hasIdDoc && styles.btnGhostOk]}
-              onPress={() => onUpload('id')}
-              disabled={busy}
-            >
+            <TouchableOpacity style={[styles.btnGhost, hasIdDoc && styles.btnGhostOk]} onPress={() => onUpload('id')} disabled={busy}>
               <FileCheck2 color={hasIdDoc ? '#22C55E' : '#7dd3fc'} size={16} />
-              <Text style={styles.btnGhostTxt}>
-                {hasIdDoc ? 'Documento de identidade ✅' : 'Anexar doc. identidade'}
-              </Text>
+              <Text style={styles.btnGhostTxt}>{hasIdDoc ? 'Documento de identidade ✅' : 'Anexar doc. identidade'}</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.btnGhost, hasLinkDoc && styles.btnGhostOk]}
-              onPress={() => onUpload('link')}
-              disabled={busy}
-            >
+            <TouchableOpacity style={[styles.btnGhost, hasLinkDoc && styles.btnGhostOk]} onPress={() => onUpload('link')} disabled={busy}>
               <FileCheck2 color={hasLinkDoc ? '#22C55E' : '#7dd3fc'} size={16} />
-              <Text style={styles.btnGhostTxt}>
-                {hasLinkDoc ? 'Doc. vínculo ✅' : 'Anexar doc. de vínculo'}
-              </Text>
+              <Text style={styles.btnGhostTxt}>{hasLinkDoc ? 'Doc. vínculo ✅' : 'Anexar doc. de vínculo'}</Text>
             </TouchableOpacity>
           </View>
 
@@ -894,10 +665,7 @@ export default function MissingChildStart() {
             placeholder="Primeiro nome"
             placeholderTextColor="#9aa0a6"
             value={childFirstName}
-            onChangeText={(v) => {
-              setChildFirstName(v);
-              Log.info('FIELD/childFirstName', v);
-            }}
+            onChangeText={(v) => { setChildFirstName(v); Log.info('FIELD/childFirstName', v); }}
             autoCapitalize="words"
           />
 
@@ -907,10 +675,7 @@ export default function MissingChildStart() {
             placeholder="Ex.: 21/04/2016"
             placeholderTextColor="#9aa0a6"
             value={childDobBR}
-            onChangeText={(v) => {
-              setChildDobBR(v);
-              Log.info('FIELD/childDobBR', v);
-            }}
+            onChangeText={(v) => { setChildDobBR(v); Log.info('FIELD/childDobBR', v); }}
             maxLength={10}
             keyboardType="number-pad"
           />
@@ -921,10 +686,7 @@ export default function MissingChildStart() {
               <TouchableOpacity
                 key={s}
                 style={sexoChipStyle(childSex, s)}
-                onPress={() => {
-                  setChildSex(s);
-                  Log.info('FIELD/childSex', s);
-                }}
+                onPress={() => { setChildSex(s); Log.info('FIELD/childSex', s); }}
               >
                 <Text style={styles.chipTxtActive}>{s === 'M' ? 'Menino' : 'Menina'}</Text>
               </TouchableOpacity>
@@ -943,10 +705,7 @@ export default function MissingChildStart() {
             placeholder="Ex.: 10/10/2025"
             placeholderTextColor="#9aa0a6"
             value={lastSeenDateBR}
-            onChangeText={(v) => {
-              setLastSeenDateBR(v);
-              Log.info('FIELD/lastSeenDateBR', v);
-            }}
+            onChangeText={(v) => { setLastSeenDateBR(v); Log.info('FIELD/lastSeenDateBR', v); }}
             maxLength={10}
             keyboardType="number-pad"
           />
@@ -957,37 +716,26 @@ export default function MissingChildStart() {
             placeholder="Ex.: 14:30"
             placeholderTextColor="#9aa0a6"
             value={lastSeenTime}
-            onChangeText={(v) => {
-              setLastSeenTime(v);
-              Log.info('FIELD/lastSeenTime', v);
-            }}
+            onChangeText={(v) => { setLastSeenTime(v); Log.info('FIELD/lastSeenTime', v); }}
             maxLength={5}
             keyboardType="number-pad"
           />
 
-          <Text style={styles.label}>
-            <MapPin color="#93c5fd" size={16} /> Rua (opcional) e número (opcional)
-          </Text>
+          <Text style={styles.label}><MapPin color="#93c5fd" size={16} /> Rua (opcional) e número (opcional)</Text>
           <View style={styles.row}>
             <TextInput
               style={[styles.input, { flex: 1 }]}
               placeholder="Rua"
               placeholderTextColor="#9aa0a6"
               value={lastRua}
-              onChangeText={(v) => {
-                setLastRua(v);
-                Log.info('FIELD/lastRua', v);
-              }}
+              onChangeText={(v) => { setLastRua(v); Log.info('FIELD/lastRua', v); }}
             />
             <TextInput
               style={[styles.input, { width: 120 }]}
               placeholder="N°"
               placeholderTextColor="#9aa0a6"
               value={lastNumero}
-              onChangeText={(v) => {
-                setLastNumero(v);
-                Log.info('FIELD/lastNumero', v);
-              }}
+              onChangeText={(v) => { setLastNumero(v); Log.info('FIELD/lastNumero', v); }}
               keyboardType="number-pad"
             />
           </View>
@@ -1000,10 +748,7 @@ export default function MissingChildStart() {
                 placeholder="Cidade"
                 placeholderTextColor="#9aa0a6"
                 value={lastCidade}
-                onChangeText={(v) => {
-                  setLastCidade(v);
-                  Log.info('FIELD/lastCidade', v);
-                }}
+                onChangeText={(v) => { setLastCidade(v); Log.info('FIELD/lastCidade', v); }}
                 autoCapitalize="words"
               />
             </View>
@@ -1014,32 +759,22 @@ export default function MissingChildStart() {
                 placeholder="CE"
                 placeholderTextColor="#9aa0a6"
                 value={lastUF}
-                onChangeText={(v) => {
-                  const u = String(v).toUpperCase();
-                  setLastUF(u);
-                  Log.info('FIELD/lastUF', u);
-                }}
+                onChangeText={(v) => { const u = String(v).toUpperCase(); setLastUF(u); Log.info('FIELD/lastUF', u); }}
                 maxLength={2}
                 autoCapitalize="characters"
               />
             </View>
           </View>
 
-          {/* Foto redigida (upload) */}
+          {/* Foto */}
           <Text style={styles.sectionTitle}>
             <ImageIcon color="#fca5a5" size={18} style={{ marginRight: 6 }} />
             Foto recente (redigida)
           </Text>
           <View style={styles.row}>
-            <TouchableOpacity
-              style={[styles.btnGhost, photoPath && styles.btnGhostOk]}
-              onPress={() => onUpload('photo')}
-              disabled={busy}
-            >
+            <TouchableOpacity style={[styles.btnGhost, photoPath && styles.btnGhostOk]} onPress={() => onUpload('photo')} disabled={busy}>
               <ImageIcon color={photoPath ? '#22C55E' : '#fca5a5'} size={16} />
-              <Text style={styles.btnGhostTxt}>
-                {photoPath ? 'Foto anexada ✅' : 'Anexar foto'}
-              </Text>
+              <Text style={styles.btnGhostTxt}>{photoPath ? 'Foto anexada ✅' : 'Anexar foto'}</Text>
             </TouchableOpacity>
           </View>
 
@@ -1050,10 +785,7 @@ export default function MissingChildStart() {
             placeholder="Onde/como aconteceu? Último trajeto, companhia, motivo provável..."
             placeholderTextColor="#9aa0a6"
             value={contextDesc}
-            onChangeText={(v) => {
-              setContextDesc(v);
-              Log.info('FIELD/contextDesc(len)', v.length);
-            }}
+            onChangeText={(v) => { setContextDesc(v); Log.info('FIELD/contextDesc(len)', v.length); }}
             multiline
           />
 
@@ -1063,36 +795,24 @@ export default function MissingChildStart() {
             placeholder="Ex.: roupa, cor do cabelo, óculos, mochila, apelidos..."
             placeholderTextColor="#9aa0a6"
             value={extraInfo}
-            onChangeText={(v) => {
-              setExtraInfo(v);
-              Log.info('FIELD/extraInfo(len)', v.length);
-            }}
+            onChangeText={(v) => { setExtraInfo(v); Log.info('FIELD/extraInfo(len)', v.length); }}
             multiline
           />
 
           {/* Consentement */}
           <TouchableOpacity
             style={[styles.consentBox, consent && styles.consentBoxOn]}
-            onPress={() => {
-              const nv = !consent;
-              setConsent(nv);
-              Log.info('FIELD/consent', nv);
-            }}
+            onPress={() => { const nv = !consent; setConsent(nv); Log.info('FIELD/consent', nv); }}
           >
             <User color={consent ? '#22C55E' : '#9aa0a6'} size={16} />
-            <Text style={styles.consentTxt}>
-              Confirmo que sou o responsável legal ou autorizado, agindo de boa fé.
-            </Text>
+            <Text style={styles.consentTxt}>Confirmo que sou o responsável legal ou autorizado, agindo de boa fé.</Text>
           </TouchableOpacity>
 
           {/* Actions */}
           <View style={{ height: 12 }} />
 
           <TouchableOpacity
-            style={[
-              styles.primaryBtn,
-              { backgroundColor: canRequestVerification ? '#22C55E' : '#475569' },
-            ]}
+            style={[styles.primaryBtn, { backgroundColor: canRequestVerification ? '#22C55E' : '#475569' }]}
             onPress={onRequestVerification}
             disabled={!canRequestVerification || busy}
           >
@@ -1100,15 +820,11 @@ export default function MissingChildStart() {
           </TouchableOpacity>
 
           <View style={styles.row}>
-            <TouchableOpacity
-              style={[styles.secondaryBtn, !canSaveDraft && { opacity: 0.6 }]}
-              onPress={onSaveDraft}
-              disabled={!canSaveDraft || busy}
-            >
+            <TouchableOpacity style={[styles.secondaryBtn, !canSaveDraft && { opacity: 0.6 }]} onPress={onSaveDraft} disabled={!canSaveDraft || busy}>
               <Text style={styles.secondaryTxt}>Salvar rascunho</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.shareBtn} onPress={onShareSystem} disabled={busy}>
+            <TouchableOpacity style={styles.shareBtn} onPress={async () => { await shareNative(shareMsg); }} disabled={busy}>
               <Share2 color="#0ea5e9" size={16} />
               <Text style={styles.shareTxt}>Compartilhar</Text>
             </TouchableOpacity>
@@ -1116,11 +832,7 @@ export default function MissingChildStart() {
 
           {hasWA && (
             <View style={{ marginTop: 10 }}>
-              <TouchableOpacity
-                style={[styles.shareBtn, { borderColor: '#22C55E' }]}
-                onPress={onShareWhatsApp}
-                disabled={busy}
-              >
+              <TouchableOpacity style={[styles.shareBtn, { borderColor: '#22C55E' }]} onPress={async () => { await shareWhatsApp(shareMsg); }} disabled={busy}>
                 <Share2 color="#22C55E" size={16} />
                 <Text style={[styles.shareTxt, { color: '#22C55E' }]}>WhatsApp</Text>
               </TouchableOpacity>
@@ -1134,9 +846,7 @@ export default function MissingChildStart() {
   );
 }
 
-// ============================================================================
-// Styles
-// ============================================================================
+// Styles (inchangés + util)
 function sexoChipStyle(current, s) {
   const active = current === s;
   const base = [styles.chip];
@@ -1286,5 +996,3 @@ const styles = StyleSheet.create({
   },
   toastText: { color: '#fff', textAlign: 'center', fontWeight: '700' },
 });
-
-

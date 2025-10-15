@@ -1,13 +1,17 @@
 // app/Report.jsx
 // -------------------------------------------------------------
-// VigiApp — Report d'incident PUBLIC (+ entrée spéciale « Criança desaparecida »)
-// Objectif : version paste-and-play, sans régression, logs/traces partout,
-// et route branchée vers /missCh/missing-child-start.jsx
+// VigiApp — Report d'incident PUBLIC
+// (+ entrées spéciales « Criança desaparecida », « Animal perdido », « Objeto perdido »)
+//
+// Objectif : version paste-and-play, sans régression, logs/traces partout.
+// - Flux INCIDENT PUBLIC inchangé (pipeline handleReportEvent + CF sendPublicAlertByAddress)
+// - ENFANT: crée un DRAFT dans /missingCases via helper getOrCreateDraftChildCase (TTL 12h)
+// - ANIMAL & OBJET: plus de draft; simple navigation vers leurs écrans, l'écriture se fait au submit
 //
 // Points clés:
 // - Création d’un signalement PUBLIC dans /publicAlerts via pipeline handleReportEvent
-// - Entrée spéciale CHILD: "Criança desaparecida" -> DRAFT dans /missingCases puis
-//   navigation vers /missCh/missing-child-start?caseId=...
+// - Entrée spéciale CHILD: "Criança desaparecida" -> DRAFT (expiresAt=+12h) -> /missCh/missing-start?caseId=...
+// - ANIMAL/OBJET: navigation immédiate -> /missAn/missing-animal-start & /missObj/missing-object-start
 // - Localisation: GPS -> adresse + CEP (Google-first via utils/cep)
 // - Sauvegarde via pipeline centralisé handleReportEvent (upsert + projections + métriques)
 // - Déclenchement non-bloquant de la CF d’alerte publique (après persistance)
@@ -50,7 +54,6 @@ import {
   orderBy,
   limit,
   onSnapshot,
-  addDoc, // snapshot /missingCases (enfant perdu)
 } from 'firebase/firestore';
 import { useRouter } from 'expo-router';
 import {
@@ -66,6 +69,8 @@ import {
   Send,
   UserX,
   TriangleAlert, // icône "Criança desaparecida" + pop-up
+  PawPrint,       // icône Animal
+  PackageSearch,  // icône Objet
 } from 'lucide-react-native';
 import { useAuthGuard } from '../hooks/useAuthGuard';
 import { resolveExactCepFromCoords, GOOGLE_MAPS_KEY } from '../utils/cep';
@@ -83,9 +88,13 @@ import { abuseState } from '../platform_services/observability/abuse_strikes';
 const DB_RETENTION_DAYS = 90; // TTL base (analytics/back) — incident public
 const ALERT_RADIUS_M = 1000; // Rayon fixe V1 pour "incident" (danger public)
 
-// [MISSING_CHILD] TTL côté front — le back fera l’auto-GC hard (Scheduled CF)
-const MISSING_DRAFT_TTL_HOURS = 12; // purge si non complété sous 12h
-const MISSING_DEFAULT_RADIUS_M = 3000; // rayon diffusion enfant perdu
+// Pour info front — le back fait l’auto-GC hard (Scheduled/TTL)
+// (removed unused variable MISSING_DEFAULT_RADIUS_M)
+
+// Couleurs UI des 3 cas "missing"
+const MISSING_CHILD_COLOR  = '#FF3B30';  // rouge
+const MISSING_ANIMAL_COLOR = '#F59E0B';  // orange
+const MISSING_OBJECT_COLOR = '#FFE600';  // jaune
 
 const UF_MAP = {
   acre: 'AC',
@@ -601,55 +610,23 @@ export default function ReportScreen() {
     }
   }, [isBtnActive, show]);
 
+const startMissingChildFlow = () => {
+  router.push({ pathname: '/missCh/missing-start' }); // pas de caseId
+};
+
+      
+
   // ---------------------------------------------------------------------------
-  // [MISSING_CHILD] — entrée spéciale
-  // - Crée un DRAFT dans /missingCases avec expiresAt = now + 12h
-  // - Route BRANCHÉE vers /missCh/missing-child-start?caseId=...
-  // - Ne touche pas à `categoria`.
+  // [MISSING_ANIMAL] / [MISSING_OBJECT] — plus de draft ; simple navigation
   // ---------------------------------------------------------------------------
-  const startMissingChildFlow = async () => {
-    try {
-      const uid = auth.currentUser?.uid || 'anon';
-      const traceId = newTraceId?.() || `trace_${Date.now().toString(36)}`;
-      const expires = new Date(Date.now() + MISSING_DRAFT_TTL_HOURS * 3600 * 1000);
+  const startMissingAnimalFlow = () => {
+    console.log('[MISSING_ANIMAL][ENTRY][CLICK]');
+    router.push({ pathname: '/missAn/missing-animal-start' });
+  };
 
-      console.log('[MISSING_CHILD][ENTRY][CLICK]', { uid, traceId });
-
-      const payload = {
-        createdBy: uid,
-        createdAt: serverTimestamp(),
-        expiresAt: Timestamp.fromDate(expires), // back purge >12h si status=DRAFT
-        status: 'DRAFT',
-        flowOrigin: 'report_screen',
-        entryTraceId: traceId,
-
-        // UI de diffusion (quand le case sera vérifié)
-        color: '#FF3B30',
-        radius_m: MISSING_DEFAULT_RADIUS_M,
-
-        // Snapshot user **non sensible**
-        userSnap: {
-          apelido: user?.apelido || '',
-          username: user?.username || '',
-        },
-
-        // Flags analytics/GC
-        gc_hint: 'auto_12h_if_incomplete',
-        version: 1,
-      };
-
-      console.log('[MISSING_CHILD][ENTRY][ADD_DOC] /missingCases', payload);
-      const ref = await addDoc(collection(db, 'missingCases'), payload);
-      const caseId = ref.id;
-      console.log('[MISSING_CHILD][ENTRY][OK]', { caseId });
-
-      // 🔗 ROUTE AJUSTÉE : /missCh/missing-child-start
-      console.log('[MISSING_CHILD][NAVIGATE] -> /missCh/missing-start', { caseId });
-      router.push({ pathname: '/missCh/missing-start', params: { caseId } });
-    } catch (e) {
-      console.log('[MISSING_CHILD][ENTRY][ERR]', e?.message || String(e));
-      show?.({ type: 'error', text: 'Não foi possível iniciar o fluxo agora.' });
-    }
+  const startMissingObjectFlow = () => {
+    console.log('[MISSING_OBJECT][ENTRY][CLICK]');
+    router.push({ pathname: '/missObj/missing-object-start' });
   };
 
   // -----------------------------------------------------------
@@ -1280,7 +1257,7 @@ export default function ReportScreen() {
 
               {/* -----------------------------------------------------------
                  Grille des catégories "incident public"
-                 + Insertion visuelle de "Criança desaparecida" juste AU-DESSUS de "Outros"
+                 + Insertion visuelle des 3 tuiles spéciales AU-DESSUS de "Outros"
                  (même rendu visuel, MAIS flux back séparé, sans toucher à `categoria`)
                  ----------------------------------------------------------- */}
               <View style={styles.categoriaGroup}>
@@ -1312,25 +1289,61 @@ export default function ReportScreen() {
                     </TouchableOpacity>
                   ))}
 
-                {/* 2) [MISSING_CHILD] Tuile spéciale — comportement 100% séparé */}
+                {/* 2) [MISSING_CHILD] Tuile spéciale — DRAFT via helper */}
                 <TouchableOpacity
                   accessibilityRole="button"
                   onPress={startMissingChildFlow}
                   style={[
                     styles.categoriaBtn,
                     {
-                      borderColor: '#FF3B30',
+                      borderColor: MISSING_CHILD_COLOR,
                       backgroundColor: '#2a1010', // fond rouge sombre pour se démarquer
                     },
                   ]}
                 >
-                  <TriangleAlert size={18} color={'#FF3B30'} style={{ marginRight: 7 }} />
-                  <Text style={[styles.categoriaText, { color: '#FF3B30', fontWeight: '700' }]}>
+                  <TriangleAlert size={18} color={MISSING_CHILD_COLOR} style={{ marginRight: 7 }} />
+                  <Text style={[styles.categoriaText, { color: MISSING_CHILD_COLOR, fontWeight: '700' }]}>
                     Criança desaparecida
                   </Text>
                 </TouchableOpacity>
 
-                {/* 3) La tuile "Outros" en dernier (après notre insertion) */}
+                {/* 3) [MISSING_ANIMAL] Tuile spéciale — NAV uniquement */}
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  onPress={startMissingAnimalFlow}
+                  style={[
+                    styles.categoriaBtn,
+                    {
+                      borderColor: MISSING_ANIMAL_COLOR,
+                      backgroundColor: '#2a1e0a', // sombre orangé
+                    },
+                  ]}
+                >
+                  <PawPrint size={18} color={MISSING_ANIMAL_COLOR} style={{ marginRight: 7 }} />
+                  <Text style={[styles.categoriaText, { color: MISSING_ANIMAL_COLOR, fontWeight: '700' }]}>
+                    Animal perdido
+                  </Text>
+                </TouchableOpacity>
+
+                {/* 4) [MISSING_OBJECT] Tuile spéciale — NAV uniquement */}
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  onPress={startMissingObjectFlow}
+                  style={[
+                    styles.categoriaBtn,
+                    {
+                      borderColor: MISSING_OBJECT_COLOR,
+                      backgroundColor: '#2a2a10', // sombre jaune
+                    },
+                  ]}
+                >
+                  <PackageSearch size={18} color={MISSING_OBJECT_COLOR} style={{ marginRight: 7 }} />
+                  <Text style={[styles.categoriaText, { color: MISSING_OBJECT_COLOR, fontWeight: '700' }]}>
+                    Objeto perdido
+                  </Text>
+                </TouchableOpacity>
+
+                {/* 5) La tuile "Outros" en dernier (après nos insertions) */}
                 {categories
                   .filter((c) => c.label === 'Outros')
                   .map(({ label, icon: Icon, color }) => (
@@ -1700,7 +1713,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
 
-  // Pop-up rectangulaire type CodePen (centrée)
+  // Pop-up “Sem número” — rectangle type CodePen (centrée)
   noticeWrap: {
     position: 'absolute',
     left: 0,

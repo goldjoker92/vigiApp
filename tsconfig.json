@@ -2,9 +2,17 @@
   "compilerOptions": {
     "allowJs": true,
     "jsx": "react-jsx",
-    "skipLibCheck": true,        // ne pas checker les d.ts des libs
+    "skipLibCheck": true,
     "noEmit": true,
     "baseUrl": "."
   },
-  "exclude": ["node_modules", ".expo", "android", "ios", "build", "dist"]
+  "exclude": [
+    "node_modules",
+    ".expo",
+    "android",
+    "ios",
+    "build",
+    "dist"
+  ],
+  "extends": "expo/tsconfig.base"
 }
