@@ -6,7 +6,6 @@
 // Objectif : version paste-and-play, sans régression, logs/traces partout.
 // - Flux INCIDENT PUBLIC inchangé (pipeline handleReportEvent + CF sendPublicAlertByAddress)
 // - ENFANT: crée un DRAFT dans /missingCases via helper getOrCreateDraftChildCase (TTL 12h)
-//           puis route -> /missCh/missing-start?caseId=...
 // - ANIMAL & OBJET: plus de draft; simple navigation vers leurs écrans, l'écriture se fait au submit
 //
 // Points clés:
@@ -81,42 +80,78 @@ import { handleReportEvent } from '../platform_services/alertPipeline';
 import { reportNewLexemesRaw } from '../platform_services/observability/mod_signals';
 import { checkReportAcceptable } from '../platform_services/abuse_monitor';
 import { abuseState } from '../platform_services/observability/abuse_strikes';
-// Draft enfant (TTL 12h)
-import { getOrCreateDraftChildCase } from '../platform_services/missingCases';
 
 // -------------------------------------------------------------
 // Constantes & utilitaires
 // -------------------------------------------------------------
 
-const DB_RETENTION_DAYS = 90;    // TTL base (analytics/back) — incident public
-const ALERT_RADIUS_M = 1000;     // Rayon fixe V1 pour "incident" (danger public)
+const DB_RETENTION_DAYS = 90; // TTL base (analytics/back) — incident public
+const ALERT_RADIUS_M = 1000; // Rayon fixe V1 pour "incident" (danger public)
 
-const MISSING_CHILD_COLOR  = '#FF3B30'; // rouge
-const MISSING_ANIMAL_COLOR = '#F59E0B'; // orange
-const MISSING_OBJECT_COLOR = '#FFE600'; // jaune
+// Pour info front — le back fait l’auto-GC hard (Scheduled/TTL)
+// (removed unused variable MISSING_DEFAULT_RADIUS_M)
+
+// Couleurs UI des 3 cas "missing"
+const MISSING_CHILD_COLOR  = '#FF3B30';  // rouge
+const MISSING_ANIMAL_COLOR = '#F59E0B';  // orange
+const MISSING_OBJECT_COLOR = '#FFE600';  // jaune
 
 const UF_MAP = {
-  acre: 'AC', alagoas: 'AL', amapá: 'AP', amapa: 'AP', amazonas: 'AM', bahia: 'BA',
-  ceará: 'CE', ceara: 'CE', 'distrito federal': 'DF', 'espírito santo': 'ES', 'espirito santo': 'ES',
-  goiás: 'GO', goias: 'GO', maranhão: 'MA', maranhao: 'MA', 'mato grosso': 'MT',
-  'mato grosso do sul': 'MS', 'minas gerais': 'MG', pará: 'PA', para: 'PA', paraíba: 'PB', paraiba: 'PB',
-  paraná: 'PR', parana: 'PR', pernambuco: 'PE', piauí: 'PI', piaui: 'PI', 'rio de janeiro': 'RJ',
-  'rio grande do norte': 'RN', 'rio grande do sul': 'RS', rondônia: 'RO', rondonia: 'RO', roraima: 'RR',
-  'santa catarina': 'SC', 'são paulo': 'SP', 'sao paulo': 'SP', sergipe: 'SE', tocantins: 'TO',
+  acre: 'AC',
+  alagoas: 'AL',
+  amapá: 'AP',
+  amapa: 'AP',
+  amazonas: 'AM',
+  bahia: 'BA',
+  ceará: 'CE',
+  ceara: 'CE',
+  'distrito federal': 'DF',
+  'espírito santo': 'ES',
+  'espirito santo': 'ES',
+  goiás: 'GO',
+  goias: 'GO',
+  maranhão: 'MA',
+  maranhao: 'MA',
+  'mato grosso': 'MT',
+  'mato grosso do sul': 'MS',
+  'minas gerais': 'MG',
+  pará: 'PA',
+  para: 'PA',
+  paraíba: 'PB',
+  paraiba: 'PB',
+  paraná: 'PR',
+  parana: 'PR',
+  pernambuco: 'PE',
+  piauí: 'PI',
+  piaui: 'PI',
+  'rio de janeiro': 'RJ',
+  'rio grande do norte': 'RN',
+  'rio grande do sul': 'RS',
+  rondônia: 'RO',
+  rondonia: 'RO',
+  roraima: 'RR',
+  'santa catarina': 'SC',
+  'são paulo': 'SP',
+  'sao paulo': 'SP',
+  sergipe: 'SE',
+  tocantins: 'TO',
 };
 
 const categories = [
-  { label: 'Roubo/Furto',            icon: ShieldAlert, severity: 'medium', color: '#FFA500' },
-  { label: 'Agressão',               icon: UserX,       severity: 'medium', color: '#FFA500' },
-  { label: 'Incidente de trânsito',  icon: Car,         severity: 'minor',  color: '#FFE600' },
-  { label: 'Incêndio',               icon: Flame,       severity: 'grave',  color: '#FF3B30' },
-  { label: 'Falta de luz',           icon: Bolt,        severity: 'minor',  color: '#FFE600' },
-  { label: 'Mal súbito (saúde)',     icon: HandHeart,   severity: 'grave',  color: '#FF3B30' },
-  { label: 'Outros',                 icon: FileQuestion,severity: 'minor',  color: '#007AFF' },
+  { label: 'Roubo/Furto', icon: ShieldAlert, severity: 'medium', color: '#FFA500' },
+  { label: 'Agressão', icon: UserX, severity: 'medium', color: '#FFA500' },
+  { label: 'Incidente de trânsito', icon: Car, severity: 'minor', color: '#FFE600' },
+  { label: 'Incêndio', icon: Flame, severity: 'grave', color: '#FF3B30' },
+  { label: 'Falta de luz', icon: Bolt, severity: 'minor', color: '#FFE600' },
+  { label: 'Mal súbito (saúde)', icon: HandHeart, severity: 'grave', color: '#FF3B30' },
+  { label: 'Outros', icon: FileQuestion, severity: 'minor', color: '#007AFF' },
 ];
 
 const normalize = (s = '') =>
-  s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  s
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
 const onlyDigits = (v = '') => String(v).replace(/\D/g, '');
 const formatCepDisplay = (digits) => (digits ? digits.replace(/(\d{5})(\d{3})/, '$1-$2') : '');
 
@@ -126,13 +161,16 @@ const severityToColor = (sev) =>
 const buildEnderecoLabel = (ruaNumero, cidade, estado) =>
   [ruaNumero, cidade && `${cidade}/${estado}`].filter(Boolean).join(' · ');
 
+// Détection présence de numéro
 const hasHouseNumber = (ruaNumero) => /\d+/.test(String(ruaNumero || ''));
 
 // Similarité Jaccard simple (tokens)
 function jaccardSimilarity(a = '', b = '') {
   const A = new Set(normalize(a).split(/\s+/).filter(Boolean));
   const B = new Set(normalize(b).split(/\s+/).filter(Boolean));
-  if (!A.size && !B.size) {return 1;}
+  if (!A.size && !B.size) {
+    return 1;
+  }
   const inter = new Set([...A].filter((x) => B.has(x))).size;
   const uni = new Set([...A, ...B]).size;
   return inter / uni;
@@ -146,28 +184,32 @@ function extractUF2FromNominatim(address = {}) {
     address['iso3166-2'];
   if (iso && typeof iso === 'string' && iso.includes('-')) {
     const code = iso.split('-').pop().toUpperCase();
-    if (/^[A-Z]{2}$/.test(code)) {return code;}
+    if (/^[A-Z]{2}$/.test(code)) {
+      return code;
+    }
   }
   if (address.state) {
     const m = UF_MAP[normalize(address.state)];
-    if (m) {return m;}
+    if (m) {
+      return m;
+    }
   }
   if (address.region) {
     const m = UF_MAP[normalize(address.region)];
-    if (m) {return m;}
+    if (m) {
+      return m;
+    }
   }
   return '';
 }
 
-// -------------------------------------------------------------
-// Trace helpers (client) — scope module
-// -------------------------------------------------------------
-const newTraceId = () =>
-  `trace_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+// --- Trace helpers (client)
 
-// -------------------------------------------------------------
+ 
+// ---------------------------------------------------------------------------
 // Safe utils — anti-casse / anti-freeze / validation
-// -------------------------------------------------------------
+// ---------------------------------------------------------------------------
+
 
 // Abonnement pushTraces SAFE (ne crash jamais si index manquant)
 function attachPushTracesLive(traceId) {
@@ -204,7 +246,9 @@ function attachPushTracesLive(traceId) {
     });
     return () => {
       console.log('[TRACE][CLIENT] unsubscribe', traceId);
-      try { unsub && unsub(); } catch {}
+      try {
+        unsub && unsub();
+      } catch {}
     };
   } catch (e) {
     console.log('[TRACE][CLIENT] subscribe error (outer)', e?.message || String(e));
@@ -216,21 +260,14 @@ function attachPushTracesLive(traceId) {
 // Validation "format brésilien" pour flux MANUEL (non bloquante sur numéro)
 // -------------------------------------------------------------
 const isValidUF = (uf) => /^[A-Z]{2}$/.test(String(uf || '').trim());
-// Unicode safe avec fallback si runtime n'accepte pas \p{L}
-const isValidCidade = (cidade) => {
-  const s = String(cidade || '').trim();
-  try {
-    return /^[\p{L}\s'.-]+$/u.test(s);
-  } catch {
-    return /^[A-Za-zÀ-ÖØ-öø-ÿ\s'.-]+$/.test(s);
-  }
-};
+const isValidCidade = (cidade) => /^[\p{L}\s'.-]+$/u.test(String(cidade || '').trim());
 const isValidCepIfPresent = (cep) => {
   const d = onlyDigits(cep || '');
   return !d || /^\d{8}$/.test(d);
 };
 
 function validateBrazilianManualAddress({ ruaNumero, cidade, estado, cep }) {
+  // NOTE: on NE bloque PAS si pas de numéro. On informe via pop-up.
   if (!String(cidade || '').trim() || !isValidCidade(cidade)) {
     return { ok: false, msg: '⚠️ Cidade inválida.' };
   }
@@ -278,7 +315,6 @@ async function fetchNominatimJSON(url, { signal } = {}) {
         headers: {
           Accept: 'application/json',
           'Accept-Language': 'pt-BR',
-          // RN peut ignorer User-Agent, pas bloquant
           'User-Agent': 'VigiApp/1.0 (contact: suporte@vigiapp.example)',
         },
         signal,
@@ -293,7 +329,9 @@ async function fetchNominatimJSON(url, { signal } = {}) {
       return json;
     } catch (e) {
       console.log('[REPORT][NOMI][RETRY]', { attempt, reason: e?.message || String(e) });
-      if (attempt >= 4) {throw e;}
+      if (attempt >= 4) {
+        throw e;
+      }
       await new Promise((r) => setTimeout(r, delay));
       delay *= 2;
     }
@@ -318,7 +356,9 @@ async function geocodeAddressToCoords({ ruaNumero, cidade, estado, cep, googleKe
         console.log('[REPORT][MANUAL][GEO] OK lat/lng =', loc);
         let cepOut = cep || '';
         const postal = first.address_components?.find((c) => c.types?.includes('postal_code'));
-        if (!cepOut && postal?.long_name) {cepOut = postal.long_name;}
+        if (!cepOut && postal?.long_name) {
+          cepOut = postal.long_name;
+        }
         return { ok: true, latitude: loc.lat, longitude: loc.lng, cep: cepOut };
       }
     }
@@ -355,7 +395,9 @@ async function geocodeAddressWithNominatim({ ruaNumero, cidade, estado, cep }) {
 }
 
 function haversineMeters(a, b) {
-  if (!a || !b) {return null;}
+  if (!a || !b) {
+    return null;
+  }
   const toRad = (x) => (x * Math.PI) / 180;
   const R = 6371000;
   const dLat = toRad(b.latitude - a.latitude);
@@ -363,7 +405,8 @@ function haversineMeters(a, b) {
   const lat1 = toRad(a.latitude);
   const lat2 = toRad(b.latitude);
   const sinDlat = Math.sin(dLat / 2);
-  const h = sinDlat * sinDlat + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const h =
+    sinDlat * sinDlat + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
@@ -381,17 +424,31 @@ function useToastQueue() {
   const activeRef = useRef(false);
 
   const play = () => {
-    if (activeRef.current) {return;}
+    if (activeRef.current) {
+      return;
+    }
     const next = queueRef.current.shift();
-    if (!next) {return;}
+    if (!next) {
+      return;
+    }
 
     activeRef.current = true;
     setCurrent(next);
     progress.setValue(1);
 
     Animated.parallel([
-      Animated.timing(opacity, { toValue: 1, duration: 140, useNativeDriver: true, easing: Easing.out(Easing.ease) }),
-      Animated.timing(translateY, { toValue: 0, duration: 140, useNativeDriver: true, easing: Easing.out(Easing.ease) }),
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 140,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.ease),
+      }),
+      Animated.timing(translateY, {
+        toValue: 0,
+        duration: 140,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.ease),
+      }),
     ]).start();
 
     Animated.timing(progress, {
@@ -421,13 +478,20 @@ function useToastQueue() {
   useEffect(() => () => timerRef.current && clearTimeout(timerRef.current), []);
 
   const ToastOverlay = useMemo(() => {
-    if (!current) {return null;}
-    const bg = current.type === 'success' ? '#0ea15f' : current.type === 'error' ? '#b91c1c' : '#2b2e36';
-    const border = current.type === 'success' ? '#22c55e' : current.type === 'error' ? '#ef4444' : '#3a3f4b';
+    if (!current) {
+      return null;
+    }
+    const bg =
+      current.type === 'success' ? '#0ea15f' : current.type === 'error' ? '#b91c1c' : '#2b2e36';
+    const border =
+      current.type === 'success' ? '#22c55e' : current.type === 'error' ? '#ef4444' : '#3a3f4b';
     return (
       <Animated.View
         pointerEvents="none"
-        style={[styles.toast, { opacity, transform: [{ translateY }], backgroundColor: bg, borderColor: border }]}
+        style={[
+          styles.toast,
+          { opacity, transform: [{ translateY }], backgroundColor: bg, borderColor: border },
+        ]}
       >
         <Text style={styles.toastText}>{current.text}</Text>
         <View style={styles.toastProgressTrack}>
@@ -452,16 +516,28 @@ function useToastQueue() {
 // -------------------------------------------------------------
 function getMissingFields({ categoria, descricao, ruaNumero, cidade, estado }) {
   const missing = [];
-  if (!categoria) {missing.push('• categoria');}
-  if (!String(descricao || '').trim()) {missing.push('• descrição');}
-  if (!String(ruaNumero || '').trim()) {missing.push('• rua');}
-  if (!String(cidade || '').trim()) {missing.push('• cidade');}
-  if (!String(estado || '').trim()) {missing.push('• estado/UF');}
+  if (!categoria) {
+    missing.push('• categoria');
+  }
+  if (!String(descricao || '').trim()) {
+    missing.push('• descrição');
+  }
+  if (!String(ruaNumero || '').trim()) {
+    missing.push('• rua');
+  }
+  if (!String(cidade || '').trim()) {
+    missing.push('• cidade');
+  }
+  if (!String(estado || '').trim()) {
+    missing.push('• estado/UF');
+  }
   return missing;
 }
 
 function showDisabledGuideToast(show, fields) {
-  if (!fields.length) {return;}
+  if (!fields.length) {
+    return;
+  }
   const text = `🚫 Campos obrigatórios faltando:\n${fields.join('\n')}`;
   console.log('[REPORT][TOAST][GUIDE] missing =', fields);
   show({ type: 'error', text });
@@ -490,7 +566,7 @@ export default function ReportScreen() {
   // Mode d'entrée (manual/auto)
   const [entryMode, setEntryMode] = useState('manual');
 
-  // Nominatim (lié au champ "Rua e numéro")
+  // Nominatim (lié au champ "Rua e número")
   const [nomiBusy, setNomiBusy] = useState(false);
   const [nomiItems, setNomiItems] = useState([]);
   const nomiTimerRef = useRef(null);
@@ -535,28 +611,20 @@ export default function ReportScreen() {
     }
   }, [isBtnActive, show]);
 
-  // ---------------------------------------------------------------------------
-  // [MISSING_CHILD] — DRAFT (TTL 12h) + nav avec caseId
-  // ---------------------------------------------------------------------------
-  const startMissingChildFlow = async () => {
-    try {
-      console.log('[MISSING_CHILD][ENTRY][CLICK]');
-      const { caseId } = await getOrCreateDraftChildCase({ ttlHours: 12 });
-      console.log('[MISSING_CHILD][DRAFT_OK]', caseId);
-      router.push({ pathname: '/missCh/missing-start', params: { caseId } });
-    } catch (e) {
-      console.log('[MISSING_CHILD][DRAFT_ERR]', e?.message || String(e));
-      Alert.alert('Erro', 'Não foi possível iniciar o caso. Tente novamente.');
-    }
-  };
+const startMissingChildFlow = () => {
+  router.push({ pathname: '/missCh/missing-start' }); // pas de caseId
+};
+
+      
 
   // ---------------------------------------------------------------------------
-  // [MISSING_ANIMAL] / [MISSING_OBJECT] — nav directe sans draft
+  // [MISSING_ANIMAL] / [MISSING_OBJECT] — plus de draft ; simple navigation
   // ---------------------------------------------------------------------------
   const startMissingAnimalFlow = () => {
     console.log('[MISSING_ANIMAL][ENTRY][CLICK]');
     router.push({ pathname: '/missAn/missing-animal-start' });
   };
+
   const startMissingObjectFlow = () => {
     console.log('[MISSING_OBJECT][ENTRY][CLICK]');
     router.push({ pathname: '/missObj/missing-object-start' });
@@ -569,13 +637,19 @@ export default function ReportScreen() {
     console.log('[REPORT][NOMI][TYPE]', ruaNumero);
 
     if (entryMode === 'auto') {
-      if (nomiItems.length) {setNomiItems([]);}
+      if (nomiItems.length) {
+        setNomiItems([]);
+      }
       return;
     }
 
-    if (nomiTimerRef.current) {clearTimeout(nomiTimerRef.current);}
+    if (nomiTimerRef.current) {
+      clearTimeout(nomiTimerRef.current);
+    }
     if (nomiAbortRef.current) {
-      try { nomiAbortRef.current.abort?.(); } catch {}
+      try {
+        nomiAbortRef.current.abort();
+      } catch {}
       nomiAbortRef.current = null;
     }
 
@@ -583,7 +657,9 @@ export default function ReportScreen() {
 
     if (nomiReopenThresholdRef.current > 0) {
       if (q.length < nomiReopenThresholdRef.current) {
-        if (nomiItems.length) {setNomiItems([]);}
+        if (nomiItems.length) {
+          setNomiItems([]);
+        }
         return;
       } else {
         nomiReopenThresholdRef.current = 0;
@@ -592,7 +668,9 @@ export default function ReportScreen() {
 
     const isGeneric = ['rua', 'avenida', 'av', 'estrada', 'rodovia'].includes(q.toLowerCase());
     if (!q || q.length < 3 || isGeneric) {
-      if (nomiItems.length) {console.log('[REPORT][NOMI][CLEAR_RESULTS]');}
+      if (nomiItems.length) {
+        console.log('[REPORT][NOMI][CLEAR_RESULTS]');
+      }
       setNomiItems([]);
       return;
     }
@@ -600,18 +678,24 @@ export default function ReportScreen() {
     nomiTimerRef.current = setTimeout(async () => {
       try {
         setNomiBusy(true);
-        const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&countrycodes=br&limit=8&accept-language=pt-BR&q=${encodeURIComponent(q)}`;
+        const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&countrycodes=br&limit=8&accept-language=pt-BR&q=${encodeURIComponent(
+          q,
+        )}`;
         console.log('[REPORT][NOMI][SEARCH]', url);
-        const controller = globalThis.AbortController ? new AbortController() : null;
+        const controller = new AbortController();
         nomiAbortRef.current = controller;
-        const json = await fetchNominatimJSON(url, { signal: controller?.signal });
+        const json = await fetchNominatimJSON(url, { signal: controller.signal });
 
         console.log('[REPORT][NOMI][RESULTS_COUNT]', Array.isArray(json) ? json.length : 0);
         if (Array.isArray(json)) {
           json.slice(0, 8).forEach((it) => {
             const { line1, line2 } = resultLabelFromNominatim(it);
             console.log('[REPORT][NOMI][PROPOSE]', {
-              place_id: it.place_id, line1, line2, lat: it.lat, lon: it.lon,
+              place_id: it.place_id,
+              line1,
+              line2,
+              lat: it.lat,
+              lon: it.lon,
             });
           });
         }
@@ -630,7 +714,7 @@ export default function ReportScreen() {
   }, [ruaNumero, entryMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // -----------------------------------------------------------
-  // AUTO: Localisation -> reverse + CEP
+  // AUTO: Localisation -> reverse + CEP (inchangé)
   // -----------------------------------------------------------
   const handleLocationAutoFlow = async () => {
     console.log('[REPORT][AUTO] handleLocation START');
@@ -655,7 +739,9 @@ export default function ReportScreen() {
         googleApiKey: GOOGLE_MAPS_KEY,
       });
       console.log('[REPORT][AUTO] resolve result =', {
-        cep: res.cep, addr: res.address, candidates: (res.candidates || []).length,
+        cep: res.cep,
+        addr: res.address,
+        candidates: (res.candidates || []).length,
       });
 
       const rua = res.address?.logradouro || '';
@@ -678,15 +764,21 @@ export default function ReportScreen() {
       } else {
         setCep('');
         setCepPrecision('general');
-        show({ type: 'info', text: 'ℹ️ CEP exato não encontrado — você pode inserir manualmente.' });
+        show({
+          type: 'info',
+          text: 'ℹ️ CEP exato não encontrado — você pode inserir manualmente.',
+        });
       }
 
       setNomiItems([]);
       nomiReopenThresholdRef.current = 0;
 
       const formNowComplete =
-        categoria && descricao.trim() && ruaNumeroVal &&
-        (cidadeVal || cidade).trim() && (uf || estado).trim();
+        categoria &&
+        descricao.trim() &&
+        ruaNumeroVal &&
+        (cidadeVal || cidade).trim() &&
+        (uf || estado).trim();
       if (formNowComplete) {
         console.log('[REPORT][AUTO] Form complete post-geo => enqueue ready toast');
         show({ type: 'success', text: '✅ Pronto pra enviar!' });
@@ -725,7 +817,10 @@ export default function ReportScreen() {
     const ruaHasNum = hasHouseNumber(ruaVal);
 
     const fmt = validateBrazilianManualAddress({
-      ruaNumero: ruaVal, cidade, estado: estado.toUpperCase(), cep,
+      ruaNumero: ruaVal,
+      cidade,
+      estado: estado.toUpperCase(),
+      cep,
     });
     if (!fmt.ok) {
       show({ type: 'error', text: fmt.msg });
@@ -750,7 +845,9 @@ export default function ReportScreen() {
         console.log('[REPORT][NO-NUM][SKIP_RESHOW]', { rua: ruaVal, sim });
       }
     } else {
-      if (warnedOnceRef.current) {console.log('[REPORT][NO-NUM][NUMBER_DETECTED]');}
+      if (warnedOnceRef.current) {
+        console.log('[REPORT][NO-NUM][NUMBER_DETECTED]');
+      }
     }
 
     if (local?.latitude && local?.longitude) {
@@ -770,20 +867,31 @@ export default function ReportScreen() {
     console.log('[REPORT][MANUAL][GEO_ATTEMPT] Google A', base);
     let g = await geocodeAddressToCoords(base);
     if (g.ok) {
-      if (!cep && g.cep) {setCep(g.cep);}
-      if (cepPrecision === 'none') {setCepPrecision('general');}
+      if (!cep && g.cep) {
+        setCep(g.cep);
+      }
+      if (cepPrecision === 'none') {
+        setCepPrecision('general');
+      }
       setEntryMode('manual');
       console.log('[REPORT][MANUAL][GEO_OK] Google A');
       return { latitude: g.latitude, longitude: g.longitude };
     }
 
-    const variants = [{ ...base, cep: '' }, { ...base, cep: onlyDigits(cep) }];
+    const variants = [
+      { ...base, cep: '' },
+      { ...base, cep: onlyDigits(cep) },
+    ];
     for (let i = 0; i < variants.length; i++) {
       console.log('[REPORT][MANUAL][GEO_ATTEMPT] Google B', variants[i]);
       g = await geocodeAddressToCoords(variants[i]);
       if (g.ok) {
-        if (!cep && g.cep) {setCep(g.cep);}
-        if (cepPrecision === 'none') {setCepPrecision('general');}
+        if (!cep && g.cep) {
+          setCep(g.cep);
+        }
+        if (cepPrecision === 'none') {
+          setCepPrecision('general');
+        }
         setEntryMode('manual');
         console.log('[REPORT][MANUAL][GEO_OK] Google B');
         return { latitude: g.latitude, longitude: g.longitude };
@@ -793,20 +901,30 @@ export default function ReportScreen() {
     console.log('[REPORT][MANUAL][GEO_ATTEMPT] NOMINATIM C');
     const n1 = await geocodeAddressWithNominatim(base);
     if (n1.ok) {
-      if (!cep && n1.cep) {setCep(formatCepDisplay(onlyDigits(n1.cep)));}
-      if (cepPrecision === 'none') {setCepPrecision('general');}
+      if (!cep && n1.cep) {
+        setCep(formatCepDisplay(onlyDigits(n1.cep)));
+      }
+      if (cepPrecision === 'none') {
+        setCepPrecision('general');
+      }
       setEntryMode('manual');
       console.log('[REPORT][MANUAL][GEO_OK] NOMINATIM C');
       return { latitude: n1.latitude, longitude: n1.longitude };
     }
 
-    const ruaNoNum = String(ruaVal).replace(/\s*,?\s*\d+.*/, '').trim();
+    const ruaNoNum = String(ruaVal)
+      .replace(/\s*,?\s*\d+.*/, '')
+      .trim();
     if (ruaNoNum && ruaNoNum !== ruaVal) {
       console.log('[REPORT][MANUAL][GEO_ATTEMPT] NOMINATIM D (rua sans numéro)', ruaNoNum);
       const n2 = await geocodeAddressWithNominatim({ ...base, ruaNumero: ruaNoNum });
       if (n2.ok) {
-        if (!cep && n2.cep) {setCep(formatCepDisplay(onlyDigits(n2.cep)));}
-        if (cepPrecision === 'none') {setCepPrecision('general');}
+        if (!cep && n2.cep) {
+          setCep(formatCepDisplay(onlyDigits(n2.cep)));
+        }
+        if (cepPrecision === 'none') {
+          setCepPrecision('general');
+        }
         setEntryMode('manual');
         console.log('[REPORT][MANUAL][GEO_OK] NOMINATIM D');
         return { latitude: n2.latitude, longitude: n2.longitude };
@@ -814,17 +932,34 @@ export default function ReportScreen() {
     }
 
     console.log('[REPORT][MANUAL][ABORT_NO_COORDS]');
-    show({ type: 'error', text: 'ℹ️ Endereço não encontrado. Verifique os campos ou selecione uma sugestão.' });
+    show({
+      type: 'error',
+      text: 'ℹ️ Endereço não encontrado. Verifique os campos ou selecione uma sugestão.',
+    });
     return null;
   };
 
   // AUTO: envoi — coords déjà présentes
   const handleSendAutoFlow = async () => {
     console.log('[REPORT][AUTO] handleSendAutoFlow');
-    if (local?.latitude && local?.longitude) {return local;}
+    if (local?.latitude && local?.longitude) {
+      return local;
+    }
     console.log('[REPORT][AUTO] Missing coords unexpectedly — fallback MANUAL geocode');
     return await handleSendManualFlow();
   };
+
+  // -----------------------------------------------------------
+  // Helper to generate a unique trace ID
+  // -----------------------------------------------------------
+  function newTraceId() {
+    return (
+      'trace_' +
+      Math.random().toString(36).substr(2, 9) +
+      '_' +
+      Date.now().toString(36)
+    );
+  }
 
   // -----------------------------------------------------------
   // Envoi du report (incident public) + TRACING
@@ -878,7 +1013,9 @@ export default function ReportScreen() {
           };
           console.log('[REPORT][DEVICE_AT_SEND][LAST_OK]', deviceAtSend);
         } else {
-          const current = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low });
+          const current = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Low,
+          });
           deviceAtSend = {
             latitude: current.coords.latitude,
             longitude: current.coords.longitude,
@@ -903,6 +1040,7 @@ export default function ReportScreen() {
       const sev = selectedCategory?.severity || 'medium';
       const mappedColor = severityToColor(sev);
       const enderecoLabel = buildEnderecoLabel(ruaNumero, cidade, estado.toUpperCase());
+
       const ruaHasNum = hasHouseNumber(ruaNumero);
 
       const payload = {
@@ -995,7 +1133,11 @@ export default function ReportScreen() {
         console.log('[REPORT][NOTIF][CALL] sendPublicAlertByAddress', body);
         const resp = await fetch(
           'https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/sendPublicAlertByAddress',
-          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          },
         );
         const json = await resp.json().catch(() => null);
         console.log('[REPORT][NOTIF][OK]', { status: resp.status, ok: resp.ok, json });
@@ -1003,7 +1145,10 @@ export default function ReportScreen() {
         console.log('[REPORT][NOTIF][ERR]', err?.message || String(err));
       }
 
-      console.log('✅ [TRACE][CLIENT] SHOW_MODAL_REGISTERED', { traceId, at: new Date().toISOString() });
+      console.log('✅ [TRACE][CLIENT] SHOW_MODAL_REGISTERED', {
+        traceId,
+        at: new Date().toISOString(),
+      });
       Alert.alert('Alerta enviado!', 'Seu alerta foi registrado.');
 
       console.log('🟣 [TRACE][CLIENT] END_PRESS_SUCCESS', { traceId, navigate: 'home' });
@@ -1041,23 +1186,30 @@ export default function ReportScreen() {
             <View style={{ flex: 1 }}>
               <Text style={styles.noticeTitle}>Seu alerta está sem número da rua</Text>
               <Text style={styles.noticeSub}>
-                Você pode enviar assim. Toque <Text style={{ fontWeight: '700' }}>OK</Text> para fechar esta mensagem
-                (o envio ocorre quando você tocar novamente em <Text style={{ fontWeight: '700' }}>Enviar alerta</Text>).
-                Se preferir informar o número agora, toque <Text style={{ fontWeight: '700' }}>Cancelar</Text>.
+                Você pode enviar assim. Toque <Text style={{ fontWeight: '700' }}>OK</Text> para
+                fechar esta mensagem (o envio ocorre quando você tocar novamente em{' '}
+                <Text style={{ fontWeight: '700' }}>Enviar alerta</Text>). Se preferir informar o
+                número agora, toque <Text style={{ fontWeight: '700' }}>Cancelar</Text>.
               </Text>
             </View>
           </View>
 
           <View style={styles.noticeBtns}>
             <TouchableOpacity
-              onPress={() => { console.log('[REPORT][NO-NUM][OK]'); setNoNumberVisible(false); }}
+              onPress={() => {
+                console.log('[REPORT][NO-NUM][OK]');
+                setNoNumberVisible(false);
+              }}
               style={[styles.noticeBtn, styles.noticeBtnPrimary]}
             >
               <Text style={styles.noticeBtnPrimaryText}>OK</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={() => { console.log('[REPORT][NO-NUM][CANCEL]'); setNoNumberVisible(false); }}
+              onPress={() => {
+                console.log('[REPORT][NO-NUM][CANCEL]');
+                setNoNumberVisible(false);
+              }}
               style={[styles.noticeBtn, styles.noticeBtnSecondary]}
             >
               <Text style={styles.noticeBtnSecondaryText}>Cancelar</Text>
@@ -1089,14 +1241,18 @@ export default function ReportScreen() {
           behavior={Platform.select({ ios: 'padding', android: undefined })}
           keyboardVerticalOffset={Platform.select({ ios: 64, android: 0 })}
         >
-          <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            contentContainerStyle={styles.scrollContainer}
+            keyboardShouldPersistTaps="handled"
+          >
             <View style={styles.container}>
               <View style={styles.alertCard}>
                 <AlertTriangle color="#fff" size={26} style={{ marginRight: 12 }} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.alertTitle}>⚠️ Atenção!</Text>
                   <Text style={styles.alertMsg}>
-                    Toda declaração feita no aplicativo envolve sua <Text style={{ fontWeight: 'bold' }}>boa fé</Text> e{' '}
+                    Toda declaração feita no aplicativo envolve sua{' '}
+                    <Text style={{ fontWeight: 'bold' }}>boa fé</Text> e{' '}
                     <Text style={{ fontWeight: 'bold' }}>responsabilidade</Text>
                     {'\n'}Nunca substitua os serviços de emergência!
                     {'\n'}
@@ -1112,8 +1268,13 @@ export default function ReportScreen() {
                 Sinalizar um evento público
               </Text>
 
-              {/* Catégories + tuiles spéciales */}
+              {/* -----------------------------------------------------------
+                 Grille des catégories "incident public"
+                 + Insertion visuelle des 3 tuiles spéciales AU-DESSUS de "Outros"
+                 (même rendu visuel, MAIS flux back séparé, sans toucher à `categoria`)
+                 ----------------------------------------------------------- */}
               <View style={styles.categoriaGroup}>
+                {/* 1) Toutes les catégories sauf "Outros" */}
                 {categories
                   .filter((c) => c.label !== 'Outros')
                   .map(({ label, icon: Icon, color }) => (
@@ -1125,7 +1286,11 @@ export default function ReportScreen() {
                       ]}
                       onPress={() => setCategoria(label)}
                     >
-                      <Icon size={18} color={categoria === label ? '#fff' : color} style={{ marginRight: 7 }} />
+                      <Icon
+                        size={18}
+                        color={categoria === label ? '#fff' : color}
+                        style={{ marginRight: 7 }}
+                      />
                       <Text
                         style={[
                           styles.categoriaText,
@@ -1137,13 +1302,16 @@ export default function ReportScreen() {
                     </TouchableOpacity>
                   ))}
 
-                {/* ENFANT — DRAFT + nav */}
+                {/* 2) [MISSING_CHILD] Tuile spéciale — DRAFT via helper */}
                 <TouchableOpacity
                   accessibilityRole="button"
                   onPress={startMissingChildFlow}
                   style={[
                     styles.categoriaBtn,
-                    { borderColor: MISSING_CHILD_COLOR, backgroundColor: '#2a1010' },
+                    {
+                      borderColor: MISSING_CHILD_COLOR,
+                      backgroundColor: '#2a1010', // fond rouge sombre pour se démarquer
+                    },
                   ]}
                 >
                   <TriangleAlert size={18} color={MISSING_CHILD_COLOR} style={{ marginRight: 7 }} />
@@ -1152,13 +1320,16 @@ export default function ReportScreen() {
                   </Text>
                 </TouchableOpacity>
 
-                {/* ANIMAL — nav simple */}
+                {/* 3) [MISSING_ANIMAL] Tuile spéciale — NAV uniquement */}
                 <TouchableOpacity
                   accessibilityRole="button"
                   onPress={startMissingAnimalFlow}
                   style={[
                     styles.categoriaBtn,
-                    { borderColor: MISSING_ANIMAL_COLOR, backgroundColor: '#2a1e0a' },
+                    {
+                      borderColor: MISSING_ANIMAL_COLOR,
+                      backgroundColor: '#2a1e0a', // sombre orangé
+                    },
                   ]}
                 >
                   <PawPrint size={18} color={MISSING_ANIMAL_COLOR} style={{ marginRight: 7 }} />
@@ -1167,13 +1338,16 @@ export default function ReportScreen() {
                   </Text>
                 </TouchableOpacity>
 
-                {/* OBJET — nav simple */}
+                {/* 4) [MISSING_OBJECT] Tuile spéciale — NAV uniquement */}
                 <TouchableOpacity
                   accessibilityRole="button"
                   onPress={startMissingObjectFlow}
                   style={[
                     styles.categoriaBtn,
-                    { borderColor: MISSING_OBJECT_COLOR, backgroundColor: '#2a2a10' },
+                    {
+                      borderColor: MISSING_OBJECT_COLOR,
+                      backgroundColor: '#2a2a10', // sombre jaune
+                    },
                   ]}
                 >
                   <PackageSearch size={18} color={MISSING_OBJECT_COLOR} style={{ marginRight: 7 }} />
@@ -1182,7 +1356,7 @@ export default function ReportScreen() {
                   </Text>
                 </TouchableOpacity>
 
-                {/* Outros en dernier */}
+                {/* 5) La tuile "Outros" en dernier (après nos insertions) */}
                 {categories
                   .filter((c) => c.label === 'Outros')
                   .map(({ label, icon: Icon, color }) => (
@@ -1194,7 +1368,11 @@ export default function ReportScreen() {
                       ]}
                       onPress={() => setCategoria(label)}
                     >
-                      <Icon size={18} color={categoria === label ? '#fff' : color} style={{ marginRight: 7 }} />
+                      <Icon
+                        size={18}
+                        color={categoria === label ? '#fff' : color}
+                        style={{ marginRight: 7 }}
+                      />
                       <Text
                         style={[
                           styles.categoriaText,
@@ -1231,7 +1409,7 @@ export default function ReportScreen() {
 
               <Text style={styles.label}>Localização</Text>
 
-              {/* Rua e número (autocomplete OSM) */}
+              {/* Champ 1 — Rua e número (autocomplete OSM) */}
               <View style={{ position: 'relative' }}>
                 <TextInput
                   style={styles.input}
@@ -1256,7 +1434,12 @@ export default function ReportScreen() {
                           android_ripple={{ color: 'rgba(255,255,255,0.08)' }}
                           onPress={() => {
                             console.log('[REPORT][NOMI][SELECT]', {
-                              place_id: item.place_id, lat: item.lat, lon: item.lon, line1, line2, uf2,
+                              place_id: item.place_id,
+                              lat: item.lat,
+                              lon: item.lon,
+                              line1,
+                              line2,
+                              uf2,
                             });
                             const a = item.address || {};
                             const rua = a.road || a.pedestrian || a.residential || '';
@@ -1266,8 +1449,12 @@ export default function ReportScreen() {
 
                             const ruaNumeroVal = [rua, num].filter(Boolean).join(', ');
                             setRuaNumero(ruaNumeroVal);
-                            if (city) {setCidade(city);}
-                            if (uf2) {setEstado(uf2);}
+                            if (city) {
+                              setCidade(city);
+                            }
+                            if (uf2) {
+                              setEstado(uf2);
+                            }
                             if (cepOSM) {
                               setCep(formatCepDisplay(onlyDigits(cepOSM)));
                               setCepPrecision('general');
@@ -1304,7 +1491,7 @@ export default function ReportScreen() {
                 )}
               </View>
 
-              {/* Cidade */}
+              {/* Champ 2 — Cidade */}
               <TextInput
                 style={styles.input}
                 placeholder="Cidade (obrigatório)"
@@ -1313,7 +1500,7 @@ export default function ReportScreen() {
                 onChangeText={setCidade}
               />
 
-              {/* UF (2 lettres) */}
+              {/* Champ 3 — UF (2 lettres) */}
               <TextInput
                 style={styles.input}
                 placeholder="Estado/UF (ex.: CE) (obrigatório)"
@@ -1324,7 +1511,7 @@ export default function ReportScreen() {
                 maxLength={2}
               />
 
-              {/* CEP (optionnel) */}
+              {/* Champ 4 — CEP (optionnel) */}
               <TextInput
                 style={styles.input}
                 placeholder="CEP (opcional)"
@@ -1365,11 +1552,19 @@ export default function ReportScreen() {
 
               <Pressable
                 accessibilityRole="button"
-                android_ripple={isBtnActive ? { color: 'rgba(255,255,255,0.2)', borderless: false } : null}
+                android_ripple={
+                  isBtnActive ? { color: 'rgba(255,255,255,0.2)', borderless: false } : null
+                }
                 onPress={() => {
                   console.log('👆 [TRACE][CLIENT] BUTTON_PRESS', { at: new Date().toISOString() });
                   if (!isBtnActive) {
-                    const missing = getMissingFields({ categoria, descricao, ruaNumero, cidade, estado });
+                    const missing = getMissingFields({
+                      categoria,
+                      descricao,
+                      ruaNumero,
+                      cidade,
+                      estado,
+                    });
                     showDisabledGuideToast(show, missing);
                     return;
                   }
@@ -1582,3 +1777,4 @@ const styles = StyleSheet.create({
   noticeBtnSecondary: {},
   noticeBtnSecondaryText: { color: '#fff', fontWeight: '600' },
 });
+
