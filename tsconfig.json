@@ -1,41 +1,10 @@
 {
-  "extends": "./node_modules/expo/tsconfig.base",
   "compilerOptions": {
-    /* Pas de sortie TS → on laisse Metro gérer */
+    "allowJs": true,
+    "jsx": "react-jsx",
+    "skipLibCheck": true,        // ne pas checker les d.ts des libs
     "noEmit": true,
-    "skipLibCheck": true,
-
-    /* JavaScript + JSX support */
-    "allowJs": true, // accepte .js/.jsx
-    "checkJs": false, // passe à true si tu veux activer le type-check JS
-    "jsx": "react-jsx", // JSX moderne
-
-    /* Module/target */
-    "target": "ES2020",
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-
-    /* Alias */
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["app/*", "src/*"] // `@/` pointera sur tes dossiers `app/` et `src/`
-    },
-
-    /* Types minimaux utiles pour RN */
-    "types": ["react", "react-native"]
+    "baseUrl": "."
   },
-
-  "include": [
-    "app/**/*",
-    "src/**/*",
-    "index.js",
-    "index.jsx",
-    "index.ts",
-    "index.tsx",
-    "log/mapLog.js"
-  ],
-
-  "exclude": ["node_modules", "android", "ios", ".expo", "dist", "build", "coverage"]
+  "exclude": ["node_modules", ".expo", "android", "ios", "build", "dist"]
 }

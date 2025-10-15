@@ -405,7 +405,7 @@ export default function MissingChildStart() {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.All,
+        mediaTypes: [ImagePicker.MediaType.IMAGE],
         allowsEditing: false,
         quality: 0.9,
       });
@@ -1286,3 +1286,5 @@ const styles = StyleSheet.create({
   },
   toastText: { color: '#fff', textAlign: 'center', fontWeight: '700' },
 });
+
+
