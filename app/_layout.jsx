@@ -1,47 +1,32 @@
 // app/_layout.jsx
 // ============================================================================
-// VigiApp — Root Layout (avec garde-fous globaux)
-// ============================================================================
-
-import { Slot, router } from 'expo-router';
+import 'react-native-gesture-handler';
 import React, { useEffect, useMemo, useRef, useState, Suspense } from 'react';
+import { Slot, router } from 'expo-router';
 import { View, Linking, Text, Pressable } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as SystemUI from 'expo-system-ui';
 import * as Notifications from 'expo-notifications';
 
-// Ads / Stripe
 import { AdBanner, AdBootstrap } from '../src/ads/ads';
-import CustomTopToast from './components/CustomTopToast'; // chemin local plus lisible
+import CustomTopToast from './components/CustomTopToast';
 import { StripeBootstrap } from '../src/payments/stripe';
 
-// User + achats
 import { useUserStore } from '../store/users';
-
-// RevenueCat
 import { initRevenueCat } from '../services/purchases';
 
-// Notifications
 import {
   attachNotificationListeners,
   getFcmDeviceTokenAsync,
   initNotifications,
   wireAuthGateForNotifications,
 } from '../src/notifications';
-
-// Device register (orchestrateur)
 import { attachDeviceAutoRefresh } from '../libs/registerCurrentDevice';
 
-// Firebase Auth
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../firebase';
 
-// -------------------------
-// Error Boundary global
-// -------------------------
-
-// ----------------------------------------------------------------------------
 // Logs homogènes
-// ----------------------------------------------------------------------------
 const log = (...a) => console.log('[LAYOUT]', ...a);
 const warn = (...a) => console.warn('[LAYOUT] ⚠️', ...a);
 const logN = (...a) => console.log('[NOTIF]', ...a);
@@ -52,20 +37,12 @@ const logAds = (...a) => console.log('[ADS]', ...a);
 
 // Flag global RC
 const RC_FLAG = '__VIGIAPP_RC_CONFIGURED__';
-if (globalThis[RC_FLAG] === undefined) {
-  globalThis[RC_FLAG] = false;
-}
+if (globalThis[RC_FLAG] === undefined) {globalThis[RC_FLAG] = false;}
+
 class RootErrorBoundary extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = { error: null };
-  }
-  static getDerivedStateFromError(error) {
-    return { error };
-  }
-  componentDidCatch(error, info) {
-    console.error('[ROOT][ErrorBoundary]', error, info);
-  }
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(error) { return { error }; }
+  componentDidCatch(error, info) { console.error('[ROOT][ErrorBoundary]', error, info); }
   render() {
     if (this.state.error) {
       return (
@@ -75,12 +52,7 @@ class RootErrorBoundary extends React.Component {
             Pas de panique. On a intercepté l’écran qui plantait.
           </Text>
           <Pressable
-            onPress={() => {
-              this.setState({ error: null });
-              try {
-                router.replace('/'); // retour à l’accueil = filet de sécurité
-              } catch {}
-            }}
+            onPress={() => { this.setState({ error: null }); try { router.replace('/'); } catch {} }}
             style={{ paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, backgroundColor: '#222' }}
           >
             <Text style={{ color: 'white' }}>Revenir à l’accueil</Text>
@@ -92,75 +64,16 @@ class RootErrorBoundary extends React.Component {
   }
 }
 
-// -----------------------------------------------------------------------------
-// Deep link helper avec "safe push"
-// -----------------------------------------------------------------------------
-function safePush(pathname, params) {
-  try {
-    // On normalise quelques routes connues pour éviter les fautes
-    if (pathname === 'public-alerts' || pathname === '/public-alerts') {
-      pathname = '/public-alerts/[id]';
-    }
-    // On tente la navigation ; si Expo Router n’a pas la route, +not-found prendra le relais.
-    router.push({ pathname, params });
-  } catch (e) {
-    console.warn('[ROUTER][safePush] fallback replace("/")', e?.message || e);
-    try {
-      router.replace('/');
-    } catch {}
-  }
-}
+function RCReadyHook() { logRC('RCReadyHook attached'); return null; }
 
-function pushPublicAlertFromUrl(rawUrl) {
-  if (!rawUrl) {return;}
-  console.log('[NOTIF][tap] rawUrl =', rawUrl);
-
-  const url = String(rawUrl).trim();
-  // accepte: vigiapp://public-alerts/XYZ, public-alerts/XYZ, /public-alerts/XYZ
-  const m = url.match(/(?:^vigiapp:\/\/|^\/?)(public-alerts)\/([^/?#]+)/i);
-  const id = m?.[2];
-
-  if (id) {
-    setTimeout(() => safePush('/public-alerts/[id]', { id }), 50);
-    return;
-  }
-
-  // fallback brut : on laisse le système tenter l’URL (ex: https://…)
-  Linking.openURL(url).catch((e) => {
-    console.warn('[NOTIF] openURL fail', e?.message || e);
-  });
-}
-
-function RCReadyHook() {
-  logRC('RCReadyHook attached');
-  return null;
-}
-
-export default function Layout() {
-  // -------------------------
-  // AUTH
-  // -------------------------
+// --- InnerLayout : consomme les insets SOUS le Provider ---
+function InnerLayout() {
   const [authUid, setAuthUid] = useState(null);
-
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
-      setAuthUid(u?.uid || null);
-      log('[AUTH] onAuthStateChanged →', u?.uid || '(null)');
-    });
-    return () => unsub?.();
-  }, []);
-
-  // -------------------------
-  // Sélecteurs user
-  // -------------------------
   const storeUid = useUserStore((s) => s?.user?.uid);
   const userCep = useUserStore((s) => s?.user?.cep ?? s?.profile?.cep ?? null);
   const userCity = useUserStore((s) => s?.user?.cidade ?? s?.profile?.cidade ?? null);
   const userId = authUid || storeUid || null;
 
-  // -------------------------
-  // Insets / Ads
-  // -------------------------
   const insets = useSafeAreaInsets();
   const BANNER_HEIGHT = 50;
 
@@ -170,150 +83,96 @@ export default function Layout() {
     return offset;
   }, [insets]);
 
-  // -------------------------
-  // NOTIFICATIONS + DEVICE REGISTER
-  // -------------------------
   useEffect(() => {
-    let detachNotif;
-    let detachDevice;
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setAuthUid(u?.uid || null);
+      log('[AUTH] onAuthStateChanged →', u?.uid || '(null)');
+    });
+    return () => unsub?.();
+  }, []);
 
+  useEffect(() => {
+    let detachNotif; let detachDevice;
     (async () => {
+      try { wireAuthGateForNotifications(); } catch (e) { warnN('auth-gate:', e?.message || e); }
+      try { await initNotifications(); } catch (e) { warnN('init:', e?.message || e); }
       try {
-        logN('wireAuthGateForNotifications()');
-        wireAuthGateForNotifications();
-      } catch (e) {
-        warnN('auth-gate:', e?.message || e);
-      }
-
-      try {
-        logN('initNotifications()');
-        await initNotifications();
-        logN('init OK');
-      } catch (e) {
-        warnN('init:', e?.message || e);
-      }
-
-      try {
-        logN('attachNotificationListeners()');
         detachNotif = attachNotificationListeners({
-          onReceive: (n) => {
-            logN('onReceive(FG):', n?.request?.content?.data);
-          },
+          onReceive: (n) => logN('onReceive(FG):', n?.request?.content?.data),
           onResponse: (r) => {
             const data = r?.notification?.request?.content?.data || {};
-            logN('onResponse(tap):', data);
             const rawUrl = data.url || data.deepLink || data.link || data.open;
-            pushPublicAlertFromUrl(rawUrl);
+            if (!rawUrl) {return;}
+            try {
+              const m = String(rawUrl).trim().match(/(?:^vigiapp:\/\/|^\/?)(public-alerts)\/([^/?#]+)/i);
+              const id = m?.[2];
+              if (id) {setTimeout(() => router.push({ pathname: '/public-alerts/[id]', params: { id } }), 50);}
+              else {Linking.openURL(rawUrl).catch(() => {});}
+            } catch {}
           },
         });
-      } catch (e) {
-        warnN('listeners:', e?.message || e);
-      }
+      } catch (e) { warnN('listeners:', e?.message || e); }
 
       try {
         const initial = await Notifications.getLastNotificationResponseAsync();
         const data = initial?.notification?.request?.content?.data || {};
         const rawUrl = data.url || data.deepLink || data.link || data.open;
         if (rawUrl) {
-          logN('initial notif on launch:', data);
-          pushPublicAlertFromUrl(rawUrl);
+          const m = String(rawUrl).trim().match(/(?:^vigiapp:\/\/|^\/?)(public-alerts)\/([^/?#]+)/i);
+          const id = m?.[2];
+          if (id) {setTimeout(() => router.push({ pathname: '/public-alerts/[id]', params: { id } }), 50);}
+          else {Linking.openURL(rawUrl).catch(() => {});}
         }
-      } catch (e) {
-        warnN('initialNotif:', e?.message || e);
-      }
+      } catch (e) { warnN('initialNotif:', e?.message || e); }
 
       try {
         const token = await getFcmDeviceTokenAsync();
-        if (token) {logN('FCM token ✅', token);}
-        else {warnN('FCM token indisponible');}
-      } catch (e) {
-        warnN('fcm token:', e?.message || e);
-      }
+        if (token) {logN('FCM token ✅', token);} else {warnN('FCM token indisponible');}
+      } catch (e) { warnN('fcm token:', e?.message || e); }
 
       log('[Device] userId =', userId || '(anon)');
       try {
         if (userId) {
-          detachDevice = attachDeviceAutoRefresh({
-            userId,
-            userCep,
-            userCity,
-            groups: [],
-          });
+          detachDevice = attachDeviceAutoRefresh({ userId, userCep, userCity, groups: [] });
           logN('Device auto-refresh attached ✅');
         } else {
           warnN('Device auto-refresh NON lancé (pas de userId)');
         }
-      } catch (e) {
-        warnN('attachDeviceAutoRefresh:', e?.message || e);
-      }
+      } catch (e) { warnN('attachDeviceAutoRefresh:', e?.message || e); }
     })();
-
-    return () => {
-      try {
-        detachNotif?.();
-        logN('listeners detached ✅');
-      } catch {}
-      try {
-        detachDevice?.();
-        logN('device auto-refresh detached ✅');
-      } catch {}
-    };
+    return () => { try { detachNotif?.(); } catch {} try { detachDevice?.(); } catch {} };
   }, [userId, userCep, userCity]);
 
-  // -------------------------
-  // REVENUECAT
-  // -------------------------
   const rcInitPromiseRef = useRef(null);
   const [rcReady, setRcReady] = useState(globalThis[RC_FLAG] === true);
-
   useEffect(() => {
     (async () => {
       try {
-        if (globalThis[RC_FLAG] === true) {
-          setRcReady(true);
-          return;
-        }
-        if (rcInitPromiseRef.current) {
-          await rcInitPromiseRef.current;
-          setRcReady(true);
-          return;
-        }
-        logRC('initRevenueCat() with appUserID =', authUid || '(null)');
+        if (globalThis[RC_FLAG] === true) { setRcReady(true); return; }
+        if (rcInitPromiseRef.current) { await rcInitPromiseRef.current; setRcReady(true); return; }
         rcInitPromiseRef.current = initRevenueCat(authUid || null);
         await rcInitPromiseRef.current;
         globalThis[RC_FLAG] = true;
         setRcReady(true);
-        logRC('RevenueCat OK');
-      } catch (e) {
-        errRC('init:', e?.message || e);
-      } finally {
-        rcInitPromiseRef.current = null;
-      }
+      } catch (e) { errRC('init:', e?.message || e); }
+      finally { rcInitPromiseRef.current = null; }
     })();
   }, [authUid]);
 
-  useEffect(() => {
-    warn('Layout mounted');
-    return () => warn('Layout unmounted');
-  }, []);
+  useEffect(() => { warn('Layout mounted'); return () => warn('Layout unmounted'); }, []);
 
-  // -------------------------
-  // RENDER
-  // -------------------------
   return (
     <StripeBootstrap>
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, backgroundColor: '#101114' }}>
         <AdBootstrap />
         <CustomTopToast />
         <View style={{ flex: 1, paddingBottom: bottomOffset }}>
           <RootErrorBoundary>
-            <Suspense
-              fallback={
-                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                  <Text>Chargement…</Text>
-                </View>
-              }
-            >
+            <Suspense fallback={
+              <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                <Text>Chargement…</Text>
+              </View>
+            }>
               <Slot />
             </Suspense>
           </RootErrorBoundary>
@@ -321,9 +180,7 @@ export default function Layout() {
         <View
           style={{
             position: 'absolute',
-            left: 0,
-            right: 0,
-            bottom: 0,
+            left: 0, right: 0, bottom: 0,
             paddingBottom: insets?.bottom ?? 0,
             backgroundColor: 'transparent',
           }}
@@ -333,6 +190,16 @@ export default function Layout() {
         {rcReady ? <RCReadyHook /> : null}
       </View>
     </StripeBootstrap>
+  );
+}
+
+export default function Layout() {
+  // Fond système propre pour edge-to-edge (status/nav bars)
+  useEffect(() => { SystemUI.setBackgroundColorAsync('#101114').catch(() => {}); }, []);
+  return (
+    <SafeAreaProvider>
+      <InnerLayout />
+    </SafeAreaProvider>
   );
 }
 // ============================================================================

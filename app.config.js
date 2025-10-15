@@ -47,6 +47,7 @@ export default ({ config }) => ({
     package: 'com.guigui92.vigiapp',
     runtimeVersion: '1.0.0',
     googleServicesFile: './credentials/google-services.json',
+    edgeToEdgeEnabled: true, 
     // Injected: Google Maps API key for Android
     config: {
       googleMaps: {
