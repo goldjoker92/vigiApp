@@ -84,7 +84,7 @@
     "react-native-svg": "15.11.2",
     "react-native-swipe-list-view": "3.2.9",
     "react-native-toast-message": "2.3.3",
-    "zod": "4.1.5",
+    "zod": "4.1.12",
     "zustand": "5.0.6"
   },
   "devDependencies": {

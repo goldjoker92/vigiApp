@@ -1,42 +1,86 @@
+// app/(tabs)/components/CustomTabBar.jsx
+import React, { useMemo, useCallback } from 'react';
 import { View, TouchableOpacity, Text, StyleSheet, Platform } from 'react-native';
-import { House, User, AlertCircle, MapPinned, Users } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
+import { House, User, AlertCircle, MapPinned, Users } from 'lucide-react-native';
 
-const TABS = [
-  { name: 'home', label: 'Início', icon: House },
-  { name: 'mapa', label: 'Mapa', icon: MapPinned },
-  { name: 'vizinhos', label: 'Vizinhos', icon: Users },
-  { name: 'profile', label: 'Perfil', icon: User },
-];
+const ICONS = {
+  home: House,
+  mapa: MapPinned,
+  vizinhos: Users,
+  profile: User,
+};
 
-export default function CustomTabBar({ state, _descriptors, navigation }) {
+const TAB_BAR_HEIGHT = 78;
+
+function CustomTabBarImpl({ state, descriptors, navigation }) {
   const router = useRouter();
+
+  const activeRoute = state.routes[state.index];
+  const activeName = activeRoute?.name;
+  const fabBg = activeName === 'mapa' ? '#007AFF' : '#FF4444';
+
+  // ✅ Garde-fou DEV : prévient les doublons de noms
+  if (__DEV__) {
+    const names = state.routes.map(r => r.name);
+    const dups = names.filter((n, i) => names.indexOf(n) !== i);
+    if (dups.length) {
+      console.warn('[TabBar] Noms d’onglets en double:', dups, '— vérifie tes <Tabs.Screen name="...">');
+    }
+  }
+
+  // ✅ Stable key builder
+  const tabKey = (route) => `tab-${String(route.name)}`;
+
+  const onPressTab = useCallback(
+    (route, isFocused) => {
+      const event = navigation.emit({
+        type: 'tabPress',
+        target: route.key,
+        canPreventDefault: true,
+      });
+      if (!isFocused && !event.defaultPrevented) {
+        navigation.navigate(route.name);
+      }
+    },
+    [navigation]
+  );
+
+  const tabs = useMemo(() => {
+    return state.routes.map((route, index) => {
+      const isFocused = state.index === index;
+      const options = descriptors[route.key]?.options || {};
+      const label =
+        options.tabBarLabel ||
+        options.title ||
+        (route.name ? route.name.charAt(0).toUpperCase() + route.name.slice(1) : '');
+
+      const Icon = ICONS[route.name] || House;
+
+      return (
+        <TouchableOpacity
+          key={tabKey(route)} // ✅ Clé sûre et stable
+          accessibilityRole="button"
+          accessibilityState={isFocused ? { selected: true } : {}}
+          onPress={() => onPressTab(route, isFocused)}
+          onLongPress={() => navigation.emit({ type: 'tabLongPress', target: route.key })}
+          style={styles.tabBtn}
+          activeOpacity={0.7}
+        >
+          <Icon color={isFocused ? '#00C859' : '#bbb'} size={26} />
+          <Text style={[styles.tabLabel, isFocused && { color: '#00C859' }]}>{label}</Text>
+        </TouchableOpacity>
+      );
+    });
+  }, [state.routes, state.index, descriptors, onPressTab, navigation]);
+
   return (
     <>
-      <View style={styles.tabBar}>
-        {TABS.map((tab, idx) => {
-          const isFocused = state.index === idx;
-          const Icon = tab.icon;
-          return (
-            <TouchableOpacity
-              key={tab.name}
-              onPress={() => navigation.navigate(tab.name)}
-              style={styles.tabBtn}
-              activeOpacity={0.7}
-            >
-              <Icon color={isFocused ? '#00C859' : '#bbb'} size={26} />
-              <Text style={[styles.tabLabel, isFocused && { color: '#00C859' }]}>{tab.label}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+      <View style={styles.tabBar}>{tabs}</View>
 
       {/* Bouton flottant Sinalizar */}
       <TouchableOpacity
-        style={[
-          styles.fab,
-          { backgroundColor: state.index === 1 ? '#007AFF' : '#FF4444' }, // <- couleur dynamique: bleu si tab "mapa" actif, rouge sinon
-        ]}
+        style={[styles.fab, { backgroundColor: fabBg }]}
         activeOpacity={0.9}
         onPress={() => router.push('/grupo-sinalizar')}
       >
@@ -47,7 +91,7 @@ export default function CustomTabBar({ state, _descriptors, navigation }) {
   );
 }
 
-const TAB_BAR_HEIGHT = 78;
+export default React.memo(CustomTabBarImpl);
 
 const styles = StyleSheet.create({
   tabBar: {
