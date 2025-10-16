@@ -58,12 +58,24 @@ const safeCoord = (lat, lng) =>
 // --- date utils
 const normalizeToDate = (v) => {
   try {
-    if (!v) return null;
-    if (v instanceof Date) return v;
-    if (typeof v?.toDate === 'function') return v.toDate();
-    if (typeof v === 'object' && 'seconds' in v) return new Date(v.seconds * 1000);
-    if (typeof v === 'number') return new Date(v);
-    if (typeof v === 'string') return new Date(v);
+    if (!v) {
+      return null;
+    }
+    if (v instanceof Date) {
+      return v;
+    }
+    if (typeof v?.toDate === 'function') {
+      return v.toDate();
+    }
+    if (typeof v === 'object' && 'seconds' in v) {
+      return new Date(v.seconds * 1000);
+    }
+    if (typeof v === 'number') {
+      return new Date(v);
+    }
+    if (typeof v === 'string') {
+      return new Date(v);
+    }
     return null;
   } catch {
     return null;
@@ -72,27 +84,39 @@ const normalizeToDate = (v) => {
 const pad = (n) => (n < 10 ? `0${n}` : `${n}`);
 const fmtDate = (inp) => {
   const d = normalizeToDate(inp);
-  if (!d || Number.isNaN(d.getTime())) return '—';
+  if (!d || Number.isNaN(d.getTime())) {
+    return '—';
+  }
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
 // libellé relatif en PT (sobre)
 const relTimePt = (date) => {
   const d = normalizeToDate(date);
-  if (!d) return null;
+  if (!d) {
+    return null;
+  }
   const diffMs = Date.now() - d.getTime();
-  if (diffMs < 45 * 1000) return 'agora';
+  if (diffMs < 45 * 1000) {
+    return 'agora';
+  }
   const min = Math.round(diffMs / 60000);
-  if (min < 60) return `há ${min} min`;
+  if (min < 60) {
+    return `há ${min} min`;
+  }
   const h = Math.round(min / 60);
-  if (h < 24) return `há ${h} h`;
+  if (h < 24) {
+    return `há ${h} h`;
+  }
   const dys = Math.round(h / 24);
   return `há ${dys} d`;
 };
 
 // --- distance
 function haversineM(lat1, lon1, lat2, lon2) {
-  if (![lat1, lon1, lat2, lon2].every(isNum)) return NaN;
+  if (![lat1, lon1, lat2, lon2].every(isNum)) {
+    return NaN;
+  }
   const R = 6371000;
   const toRad = (x) => (x * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);
@@ -103,9 +127,13 @@ function haversineM(lat1, lon1, lat2, lon2) {
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 const distanciaTxt = (u, a) => {
-  if (!u || !a) return '—';
+  if (!u || !a) {
+    return '—';
+  }
   const d = haversineM(u.latitude, u.longitude, a.latitude, a.longitude);
-  if (!isNum(d)) return '—';
+  if (!isNum(d)) {
+    return '—';
+  }
   return d < 1000 ? `${Math.round(d)} m` : `${(d / 1000).toFixed(1)} km`;
 };
 
@@ -118,12 +146,18 @@ const pickLastReportAt = (a) => a?.lastReportAt || null;
 const pickReports = (a) =>
   a?.reportsCount ?? a?.declaracoes ?? (a?.declarantsMap ? Object.keys(a.declarantsMap).length : 1);
 const pickCoords = (a) => {
-  if (a?.location) return safeCoord(a.location.latitude, a.location.longitude);
+  if (a?.location) {
+    return safeCoord(a.location.latitude, a.location.longitude);
+  }
   return safeCoord(a?.lat, a?.lng);
 };
 const buildEndereco = (a) => {
-  if (typeof a?.endereco === 'string' && a.endereco.trim()) return a.endereco.trim();
-  if (typeof a?.ruaNumero === 'string' && a.ruaNumero.trim()) return a.ruaNumero.trim();
+  if (typeof a?.endereco === 'string' && a.endereco.trim()) {
+    return a.endereco.trim();
+  }
+  if (typeof a?.ruaNumero === 'string' && a.ruaNumero.trim()) {
+    return a.ruaNumero.trim();
+  }
   const rua = a?.rua || a?.street || '';
   const numero = a?.numero || a?.number || '';
   const left = [rua, numero].filter(Boolean).join(', ');
@@ -239,7 +273,9 @@ export default function PublicAlertPage() {
     (async () => {
       try {
         const d = await fetchAlertDoc(id);
-        if (mounted) setRaw(d);
+        if (mounted) {
+          setRaw(d);
+        }
       } catch (e) {
         console.error(TAG, 'fetch error', e?.message || e);
       }
@@ -257,7 +293,9 @@ export default function PublicAlertPage() {
       try {
         console.log('[public-alerts/[id].jsx] geo: request permission');
         const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') return;
+        if (status !== 'granted') {
+          return;
+        }
         const { coords } = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
         });
@@ -296,7 +334,9 @@ export default function PublicAlertPage() {
 
   // 6) région carte (guard coords)
   const region = useMemo(() => {
-    if (!alert.coords) return null;
+    if (!alert.coords) {
+      return null;
+    }
     const deltas = radiusToDeltas(alert.radiusM, alert.coords.latitude);
     return { ...alert.coords, ...deltas };
   }, [alert.coords, alert.radiusM]);
@@ -338,7 +378,9 @@ export default function PublicAlertPage() {
 
   // 9) recentrage
   const handleRecenter = useCallback(() => {
-    if (!region) return;
+    if (!region) {
+      return;
+    }
     try {
       mapRef.current?.animateToRegion(region, 300);
       console.log(TAG, 'recenter to', region);
@@ -388,7 +430,11 @@ export default function PublicAlertPage() {
           {region ? (
             <View style={S.mapWrap}>
               <MapView ref={mapRef} style={S.map} initialRegion={region} pointerEvents="auto">
-                <Marker coordinate={alert.coords} title={alert.tipo || 'Incidente'} pinColor="red" />
+                <Marker
+                  coordinate={alert.coords}
+                  title={alert.tipo || 'Incidente'}
+                  pinColor="red"
+                />
                 <Circle
                   center={alert.coords}
                   radius={alert.radiusM}
@@ -398,7 +444,10 @@ export default function PublicAlertPage() {
                 />
                 {userLoc && <Marker coordinate={userLoc} title="Você" pinColor={C.ok} />}
               </MapView>
-              <Pressable onPress={handleRecenter} style={({ pressed }) => [S.recenter, pressed && { opacity: 0.85 }]}>
+              <Pressable
+                onPress={handleRecenter}
+                style={({ pressed }) => [S.recenter, pressed && { opacity: 0.85 }]}
+              >
                 <Icon name="crosshairs-gps" size={scale(18)} color={C.bg} />
               </Pressable>
             </View>

@@ -17,6 +17,12 @@ import { auth } from '../firebase';
 import { loadUserProfile } from '../utils/loadUserProfile';
 import { DEV_ACCOUNTS, DEV_PASSWORD } from '../src/dev/accounts';
 
+
+const __GMAPS_KEY__ = process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY;
+if (Platform.OS === 'android' && (!__GMAPS_KEY__ || __GMAPS_KEY__.trim() === '')) {
+  console.warn('🚨 Clé Google Maps manquante ! Fallback SafeMapView activé.');
+}
+
 export default function LoginScreen() {
   const router = useRouter();
   const [email, setEmail] = useState('');

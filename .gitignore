@@ -61,30 +61,26 @@ reports/
 README-ADMIN-PRIVATE.md
 *.local
 husky_report.md
-
-
-husky_report.md
-
-full-log.txt
-
 full-log.txt
 *.apk
 
+# ───────── NPM / lockfiles ─────────
 package-lock.json
 
-package-lock.json
+# ───────── Dossiers natifs copiés ailleurs ─────────
 android/
 ios/
 
-/platform_services/
+# ✅ On N’IGNORE PLUS platform_services
+# (il était bloqué ici avant, on le retire)
+# /platform_services/
+# platform_services/observability/
+# On FORCÉ l’inclusion :
+!platform_services/**
 
-platform_services/observability/
-
+# ───────── Autres ─────────
 client/.session.json
 .history
 .husky
 .lh
-android/
-ios/
-
 .env.sample

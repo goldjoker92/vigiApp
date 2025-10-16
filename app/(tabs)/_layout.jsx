@@ -11,15 +11,13 @@ import { useUserStore } from '../../store/users';
 import { isProfileIncomplete } from '../../utils/isProfileIncomplete';
 import { House, MapPinned, Users, User } from 'lucide-react-native';
 
-// If the correct path is 'src/hooks/useAdsSetup', update to:
 import { useAdsSetup } from '../../hooks/useAdsSetup';
-// Or, if the file does not exist, create 'hooks/useAdsSetup.js' or '.ts' in your project.
 import AdBanner from '../components/AdBanner';
 
 // TODO: branche à RevenueCat/Firestore
 const useHasPro = () => false;
 
-// Routes où on masque la bannière (ajuste selon ton app)
+// Routes où on masque la bannière
 const HIDE_ROUTES = new Set([
   '/auth/login',
   '/auth/signup',
@@ -28,12 +26,11 @@ const HIDE_ROUTES = new Set([
   '/checkout',
   '/camera',
   '/video',
-  // Optionnel: si ta carte est plein écran et doit rester clean
-  '/(tabs)/mapa',
+  '/(tabs)/mapa', // carte plein écran
 ]);
 
 export default function TabsLayout() {
-  // Init consent + SDK Ads (une fois, au niveau layout)
+  // Init consent + SDK Ads
   useAdsSetup();
 
   const [drawerOpen, setDrawerOpen] = React.useState(false);
@@ -44,12 +41,14 @@ export default function TabsLayout() {
   const pathname = usePathname();
   const hasPro = useHasPro();
 
+  // Redirige si profil incomplet
   React.useEffect(() => {
     if (isProfileIncomplete(user)) {
       router.replace('/auth/profile-onboarding');
     }
   }, [user, router]);
 
+  // Détecte clavier (pour masquer la pub)
   React.useEffect(() => {
     const s1 = Keyboard.addListener('keyboardDidShow', () => setKbVisible(true));
     const s2 = Keyboard.addListener('keyboardDidHide', () => setKbVisible(false));
@@ -62,8 +61,11 @@ export default function TabsLayout() {
   const shouldHideAd =
     hasPro || kbVisible || Array.from(HIDE_ROUTES).some((r) => pathname.startsWith(r));
 
-  // On ajoute un padding bas quand la bannière est affichée
+  // Padding bas quand la bannière est affichée
   const contentPaddingBottom = shouldHideAd ? 0 : 60;
+
+  // ✅ Corrige: expo-router Tabs attend une FONCTION pour tabBar
+  const renderTabBar = React.useCallback((props) => <CustomTabBar {...props} />, []);
 
   return (
     <View style={{ flex: 1, backgroundColor: '#181A20' }}>
@@ -82,8 +84,15 @@ export default function TabsLayout() {
       {/* Conteneur des tabs avec padding bas si pub */}
       <View style={{ flex: 1, paddingBottom: contentPaddingBottom }}>
         <Tabs
-          tabBar={(props) => <CustomTabBar {...props} />}
-          screenOptions={{ headerShown: false }}
+          tabBar={renderTabBar}
+          screenOptions={{
+            headerShown: false,
+            // Anti “saut”/remount
+            unmountOnBlur: false,
+            freezeOnBlur: true,
+            detachInactiveScreens: false,
+            lazy: false,
+          }}
         >
           <Tabs.Screen
             name="home"
@@ -102,7 +111,7 @@ export default function TabsLayout() {
           <Tabs.Screen
             name="vizinhos"
             options={{
-              tabBarLabel: 'vizinhos',
+              tabBarLabel: 'Vizinhos',
               tabBarIcon: ({ color }) => <Users color={color} size={26} />,
             }}
           />
