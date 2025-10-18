@@ -434,9 +434,7 @@ const ChipGroup = ({ options, activeKey, onSelect }) => (
 export default function MissingStart() {
   screenTraceIdRef = useRef(newTraceId('missing'));
   
-  
-  const screenMountTsRef = useRef(Date.now());
-const lastActionRef = useRef('mount');
+  const lastActionRef = useRef('mount');
 const { guard, running, withBackoff } = useSubmitGuard({ cooldownMs: 1200, maxParallel: 1 });
 
   const router = useRouter();
@@ -496,12 +494,7 @@ const { guard, running, withBackoff } = useSubmitGuard({ cooldownMs: 1200, maxPa
     const traceId = screenTraceIdRef.current;
     const mountTs = screenMountTsRef.current;
     Log.info('MOUNT', { traceId, at: nowTs(), type, caseId: initialParamCaseId || '(none)' });
-    
-  // ensure we reference the screen mount timestamp ref
-  // (in case it was removed by a patch)
-  const __ensureMountRef = screenMountTsRef.current;
-  void __ensureMountRef;
-  return () => {
+    return () => {
       Log.warn('UNMOUNT', { reason: lastActionRef.current, traceId, alive: msSince(mountTs) });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -859,7 +852,7 @@ const { guard, running, withBackoff } = useSubmitGuard({ cooldownMs: 1200, maxPa
       Log.step(traceId, 'SUBMIT/END', { ms: msSince(t0), status: 'validated' });
       setTimeout(() => {
         Log.info('NAVIGATE/home');
-        lastActionRef.current = 'submit_success_navigate'; router.replace({ pathname: '/(tabs)/home' });
+        router.replace({ pathname: '/(tabs)/home' });
       }, 700);
     } catch (e) {
       Log.error('SUBMIT/ERROR', e?.message || e);

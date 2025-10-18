@@ -1,0 +1,1650 @@
+[
+  {
+    "buildConfig": {
+      "automaticUpdatePolicy": {},
+      "build": "projects/322173277588/locations/southamerica-east1/builds/6d23716a-60fb-4753-a89e-1e5dd2e9580c",
+      "dockerRegistry": "ARTIFACT_REGISTRY",
+      "dockerRepository": "projects/vigiapp-c7108/locations/southamerica-east1/repositories/gcf-artifacts",
+      "entryPoint": "testFCM",
+      "environmentVariables": {
+        "GOOGLE_NODE_RUN_SCRIPTS": ""
+      },
+      "runtime": "nodejs20",
+      "serviceAccount": "projects/vigiapp-c7108/serviceAccounts/322173277588-compute@developer.gserviceaccount.com",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1758629526479137",
+          "object": "testFCM/function-source.zip"
+        }
+      },
+      "sourceProvenance": {
+        "resolvedStorageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1758629526479137",
+          "object": "testFCM/function-source.zip"
+        }
+      }
+    },
+    "createTime": "2025-09-14T18:49:27.290752439Z",
+    "environment": "GEN_2",
+    "labels": {
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "f2082bcd67b41ae03d91f78dfa4f11882b7d322f"
+    },
+    "name": "projects/vigiapp-c7108/locations/southamerica-east1/functions/testFCM",
+    "satisfiesPzi": true,
+    "satisfiesPzs": true,
+    "serviceConfig": {
+      "allTrafficOnLatestRevision": true,
+      "availableCpu": "1",
+      "availableMemory": "256Mi",
+      "environmentVariables": {
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/vigiapp-c7108/locations/southamerica-east1/services/testFCM",
+        "FIREBASE_CONFIG": "{\"projectId\":\"vigiapp-c7108\",\"storageBucket\":\"vigiapp-c7108.firebasestorage.app\"}",
+        "FUNCTION_SIGNATURE_TYPE": "http",
+        "FUNCTION_TARGET": "testFCM",
+        "GCLOUD_PROJECT": "vigiapp-c7108",
+        "LOG_EXECUTION_ID": "true"
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "maxInstanceCount": 10,
+      "maxInstanceRequestConcurrency": 80,
+      "revision": "testfcm-00005-nip",
+      "service": "projects/vigiapp-c7108/locations/southamerica-east1/services/testfcm",
+      "serviceAccountEmail": "322173277588-compute@developer.gserviceaccount.com",
+      "timeoutSeconds": 60,
+      "uri": "https://testfcm-pfdobxp2na-rj.a.run.app"
+    },
+    "state": "ACTIVE",
+    "updateTime": "2025-09-23T12:12:14.795973728Z",
+    "url": "https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/testFCM"
+  },
+  {
+    "buildConfig": {
+      "automaticUpdatePolicy": {},
+      "build": "projects/322173277588/locations/southamerica-east1/builds/6d23716a-60fb-4753-a89e-1e5dd2e9580c",
+      "dockerRegistry": "ARTIFACT_REGISTRY",
+      "dockerRepository": "projects/vigiapp-c7108/locations/southamerica-east1/repositories/gcf-artifacts",
+      "entryPoint": "purgeAndArchiveOldRequestsAndChats",
+      "environmentVariables": {
+        "GOOGLE_NODE_RUN_SCRIPTS": ""
+      },
+      "runtime": "nodejs20",
+      "serviceAccount": "projects/vigiapp-c7108/serviceAccounts/322173277588-compute@developer.gserviceaccount.com",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1758629527007031",
+          "object": "purgeAndArchiveOldRequestsAndChats/function-source.zip"
+        }
+      },
+      "sourceProvenance": {
+        "resolvedStorageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1758629527007031",
+          "object": "purgeAndArchiveOldRequestsAndChats/function-source.zip"
+        }
+      }
+    },
+    "createTime": "2025-09-14T15:15:36.221456092Z",
+    "environment": "GEN_2",
+    "labels": {
+      "deployment-scheduled": "true",
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "f2082bcd67b41ae03d91f78dfa4f11882b7d322f"
+    },
+    "name": "projects/vigiapp-c7108/locations/southamerica-east1/functions/purgeAndArchiveOldRequestsAndChats",
+    "satisfiesPzi": true,
+    "satisfiesPzs": true,
+    "serviceConfig": {
+      "allTrafficOnLatestRevision": true,
+      "availableCpu": "1",
+      "availableMemory": "256Mi",
+      "environmentVariables": {
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/vigiapp-c7108/locations/southamerica-east1/services/purgeAndArchiveOldRequestsAndChats",
+        "FIREBASE_CONFIG": "{\"projectId\":\"vigiapp-c7108\",\"storageBucket\":\"vigiapp-c7108.firebasestorage.app\"}",
+        "FUNCTION_SIGNATURE_TYPE": "http",
+        "FUNCTION_TARGET": "purgeAndArchiveOldRequestsAndChats",
+        "GCLOUD_PROJECT": "vigiapp-c7108",
+        "LOG_EXECUTION_ID": "true"
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "maxInstanceCount": 10,
+      "maxInstanceRequestConcurrency": 80,
+      "revision": "purgeandarchiveoldrequestsandchats-00006-sas",
+      "service": "projects/vigiapp-c7108/locations/southamerica-east1/services/purgeandarchiveoldrequestsandchats",
+      "serviceAccountEmail": "322173277588-compute@developer.gserviceaccount.com",
+      "timeoutSeconds": 60,
+      "uri": "https://purgeandarchiveoldrequestsandchats-pfdobxp2na-rj.a.run.app"
+    },
+    "state": "ACTIVE",
+    "updateTime": "2025-09-23T12:12:16.103626896Z",
+    "url": "https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/purgeAndArchiveOldRequestsAndChats"
+  },
+  {
+    "buildConfig": {
+      "automaticUpdatePolicy": {},
+      "build": "projects/322173277588/locations/southamerica-east1/builds/6d23716a-60fb-4753-a89e-1e5dd2e9580c",
+      "dockerRegistry": "ARTIFACT_REGISTRY",
+      "dockerRepository": "projects/vigiapp-c7108/locations/southamerica-east1/repositories/gcf-artifacts",
+      "entryPoint": "sendPublicAlertByCenterUser",
+      "environmentVariables": {
+        "GOOGLE_NODE_RUN_SCRIPTS": ""
+      },
+      "runtime": "nodejs20",
+      "serviceAccount": "projects/vigiapp-c7108/serviceAccounts/322173277588-compute@developer.gserviceaccount.com",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1758629451718496",
+          "object": "sendPublicAlertByCenterUser/function-source.zip"
+        }
+      },
+      "sourceProvenance": {
+        "resolvedStorageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1758629451718496",
+          "object": "sendPublicAlertByCenterUser/function-source.zip"
+        }
+      }
+    },
+    "createTime": "2025-09-23T12:10:52.208952526Z",
+    "environment": "GEN_2",
+    "labels": {
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "f2082bcd67b41ae03d91f78dfa4f11882b7d322f"
+    },
+    "name": "projects/vigiapp-c7108/locations/southamerica-east1/functions/sendPublicAlertByCenterUser",
+    "satisfiesPzi": true,
+    "satisfiesPzs": true,
+    "serviceConfig": {
+      "allTrafficOnLatestRevision": true,
+      "availableCpu": "1",
+      "availableMemory": "256Mi",
+      "environmentVariables": {
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/vigiapp-c7108/locations/southamerica-east1/services/sendPublicAlertByCenterUser",
+        "FIREBASE_CONFIG": "{\"projectId\":\"vigiapp-c7108\",\"storageBucket\":\"vigiapp-c7108.firebasestorage.app\"}",
+        "FUNCTION_TARGET": "sendPublicAlertByCenterUser",
+        "GCLOUD_PROJECT": "vigiapp-c7108",
+        "LOG_EXECUTION_ID": "true"
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "maxInstanceCount": 10,
+      "maxInstanceRequestConcurrency": 80,
+      "revision": "sendpublicalertbycenteruser-00001-hin",
+      "service": "projects/vigiapp-c7108/locations/southamerica-east1/services/sendpublicalertbycenteruser",
+      "serviceAccountEmail": "322173277588-compute@developer.gserviceaccount.com",
+      "timeoutSeconds": 60,
+      "uri": "https://sendpublicalertbycenteruser-pfdobxp2na-rj.a.run.app"
+    },
+    "state": "ACTIVE",
+    "updateTime": "2025-09-23T12:12:05.381032879Z",
+    "url": "https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/sendPublicAlertByCenterUser"
+  },
+  {
+    "buildConfig": {
+      "automaticUpdatePolicy": {},
+      "build": "projects/322173277588/locations/southamerica-east1/builds/2c4c6184-9ca9-4010-95bb-fffe64798ebf",
+      "dockerRegistry": "ARTIFACT_REGISTRY",
+      "dockerRepository": "projects/vigiapp-c7108/locations/southamerica-east1/repositories/gcf-artifacts",
+      "entryPoint": "sendPublicAlertByAddress",
+      "environmentVariables": {
+        "GOOGLE_NODE_RUN_SCRIPTS": ""
+      },
+      "runtime": "nodejs20",
+      "serviceAccount": "projects/vigiapp-c7108/serviceAccounts/322173277588-compute@developer.gserviceaccount.com",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1759972802862159",
+          "object": "sendPublicAlertByAddress/function-source.zip"
+        }
+      },
+      "sourceProvenance": {
+        "resolvedStorageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1759972802862159",
+          "object": "sendPublicAlertByAddress/function-source.zip"
+        }
+      }
+    },
+    "createTime": "2025-09-16T00:28:41.890248780Z",
+    "environment": "GEN_2",
+    "labels": {
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "211a375c1e068773bcd6b186f6890188401eaba7"
+    },
+    "name": "projects/vigiapp-c7108/locations/southamerica-east1/functions/sendPublicAlertByAddress",
+    "satisfiesPzi": true,
+    "satisfiesPzs": true,
+    "serviceConfig": {
+      "allTrafficOnLatestRevision": true,
+      "availableCpu": "1",
+      "availableMemory": "256Mi",
+      "environmentVariables": {
+        "ANDROID_CHANNEL_ID": "alerts-high",
+        "BATCH_SIZE": "500",
+        "DEFAULT_RADIUS_M": "1000",
+        "DEFAULT_TTL_SECONDS": "3600",
+        "DEVICES_COLLECTION": "devices",
+        "DEVICE_CEP_FIELD": "cep",
+        "DEVICE_CHANNEL_PUBLIC_FIELD": "channels.publicAlerts",
+        "DEVICE_CITY_FIELD": "cidade",
+        "DEVICE_ENABLED_FIELD": "enabled",
+        "DEVICE_LAST_SEEN_FIELD": "updatedAt",
+        "DEVICE_LAT_FIELD": "lat",
+        "DEVICE_LNG_FIELD": "lng",
+        "DISABLE_FCM_COLOR": "false",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/vigiapp-c7108/locations/southamerica-east1/services/sendPublicAlertByAddress",
+        "EXPO_PUBLIC_GOOGLE_MAPS_KEY": "AIzaSyASbum_pXW-fbkmvrZcN7Gh2PU__fc6vNw",
+        "EXPO_PUBLIC_LOCATIONIQ_KEY": "pk.1232cf03955ddc8cd35123ce53430a1c",
+        "FIREBASE_CONFIG": "{\"projectId\":\"vigiapp-c7108\",\"storageBucket\":\"vigiapp-c7108.firebasestorage.app\"}",
+        "FUNCTION_TARGET": "sendPublicAlertByAddress",
+        "GCLOUD_PROJECT": "vigiapp-c7108",
+        "LOG_EXECUTION_ID": "true",
+        "LOG_LEVEL": "info",
+        "MAX_RADIUS_M": "3000",
+        "MIN_RADIUS_M": "50"
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "maxInstanceCount": 20,
+      "maxInstanceRequestConcurrency": 40,
+      "revision": "sendpublicalertbyaddress-00010-jil",
+      "service": "projects/vigiapp-c7108/locations/southamerica-east1/services/sendpublicalertbyaddress",
+      "serviceAccountEmail": "322173277588-compute@developer.gserviceaccount.com",
+      "timeoutSeconds": 60,
+      "uri": "https://sendpublicalertbyaddress-pfdobxp2na-rj.a.run.app"
+    },
+    "state": "ACTIVE",
+    "updateTime": "2025-10-09T01:20:54.819204764Z",
+    "url": "https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/sendPublicAlertByAddress"
+  },
+  {
+    "buildConfig": {
+      "automaticUpdatePolicy": {},
+      "build": "projects/322173277588/locations/southamerica-east1/builds/6eaef471-4eab-4889-bcf6-80f69efb3138",
+      "dockerRegistry": "ARTIFACT_REGISTRY",
+      "dockerRepository": "projects/vigiapp-c7108/locations/southamerica-east1/repositories/gcf-artifacts",
+      "entryPoint": "ackPublicAlertReceipt",
+      "environmentVariables": {
+        "GOOGLE_NODE_RUN_SCRIPTS": ""
+      },
+      "runtime": "nodejs20",
+      "serviceAccount": "projects/vigiapp-c7108/serviceAccounts/322173277588-compute@developer.gserviceaccount.com",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1759972802924220",
+          "object": "ackPublicAlertReceipt/function-source.zip"
+        }
+      },
+      "sourceProvenance": {
+        "resolvedStorageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1759972802924220",
+          "object": "ackPublicAlertReceipt/function-source.zip"
+        }
+      }
+    },
+    "createTime": "2025-10-04T22:23:40.551270793Z",
+    "environment": "GEN_2",
+    "labels": {
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "211a375c1e068773bcd6b186f6890188401eaba7"
+    },
+    "name": "projects/vigiapp-c7108/locations/southamerica-east1/functions/ackPublicAlertReceipt",
+    "satisfiesPzi": true,
+    "satisfiesPzs": true,
+    "serviceConfig": {
+      "allTrafficOnLatestRevision": true,
+      "availableCpu": "1",
+      "availableMemory": "128Mi",
+      "environmentVariables": {
+        "ANDROID_CHANNEL_ID": "alerts-high",
+        "BATCH_SIZE": "500",
+        "DEFAULT_RADIUS_M": "1000",
+        "DEFAULT_TTL_SECONDS": "3600",
+        "DEVICES_COLLECTION": "devices",
+        "DEVICE_CEP_FIELD": "cep",
+        "DEVICE_CHANNEL_PUBLIC_FIELD": "channels.publicAlerts",
+        "DEVICE_CITY_FIELD": "cidade",
+        "DEVICE_ENABLED_FIELD": "enabled",
+        "DEVICE_LAST_SEEN_FIELD": "updatedAt",
+        "DEVICE_LAT_FIELD": "lat",
+        "DEVICE_LNG_FIELD": "lng",
+        "DISABLE_FCM_COLOR": "false",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/vigiapp-c7108/locations/southamerica-east1/services/ackPublicAlertReceipt",
+        "EXPO_PUBLIC_GOOGLE_MAPS_KEY": "AIzaSyASbum_pXW-fbkmvrZcN7Gh2PU__fc6vNw",
+        "EXPO_PUBLIC_LOCATIONIQ_KEY": "pk.1232cf03955ddc8cd35123ce53430a1c",
+        "FIREBASE_CONFIG": "{\"projectId\":\"vigiapp-c7108\",\"storageBucket\":\"vigiapp-c7108.firebasestorage.app\"}",
+        "FUNCTION_TARGET": "ackPublicAlertReceipt",
+        "GCLOUD_PROJECT": "vigiapp-c7108",
+        "LOG_EXECUTION_ID": "true",
+        "LOG_LEVEL": "info",
+        "MAX_RADIUS_M": "3000",
+        "MIN_RADIUS_M": "50"
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "maxInstanceCount": 20,
+      "maxInstanceRequestConcurrency": 80,
+      "revision": "ackpublicalertreceipt-00003-sit",
+      "service": "projects/vigiapp-c7108/locations/southamerica-east1/services/ackpublicalertreceipt",
+      "serviceAccountEmail": "322173277588-compute@developer.gserviceaccount.com",
+      "timeoutSeconds": 20,
+      "uri": "https://ackpublicalertreceipt-pfdobxp2na-rj.a.run.app"
+    },
+    "state": "ACTIVE",
+    "updateTime": "2025-10-09T01:21:04.354636081Z",
+    "url": "https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/ackPublicAlertReceipt"
+  },
+  {
+    "buildConfig": {
+      "automaticUpdatePolicy": {},
+      "build": "projects/322173277588/locations/southamerica-east1/builds/6d23716a-60fb-4753-a89e-1e5dd2e9580c",
+      "dockerRegistry": "ARTIFACT_REGISTRY",
+      "dockerRepository": "projects/vigiapp-c7108/locations/southamerica-east1/repositories/gcf-artifacts",
+      "entryPoint": "getAlertFootprints",
+      "environmentVariables": {
+        "GOOGLE_NODE_RUN_SCRIPTS": ""
+      },
+      "runtime": "nodejs20",
+      "serviceAccount": "projects/vigiapp-c7108/serviceAccounts/322173277588-compute@developer.gserviceaccount.com",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1758629524843643",
+          "object": "getAlertFootprints/function-source.zip"
+        }
+      },
+      "sourceProvenance": {
+        "resolvedStorageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1758629524843643",
+          "object": "getAlertFootprints/function-source.zip"
+        }
+      }
+    },
+    "createTime": "2025-09-23T12:12:05.378007202Z",
+    "environment": "GEN_2",
+    "labels": {
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "f2082bcd67b41ae03d91f78dfa4f11882b7d322f"
+    },
+    "name": "projects/vigiapp-c7108/locations/southamerica-east1/functions/getAlertFootprints",
+    "satisfiesPzi": true,
+    "satisfiesPzs": true,
+    "serviceConfig": {
+      "allTrafficOnLatestRevision": true,
+      "availableCpu": "1",
+      "availableMemory": "256Mi",
+      "environmentVariables": {
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/vigiapp-c7108/locations/southamerica-east1/services/getAlertFootprints",
+        "FIREBASE_CONFIG": "{\"projectId\":\"vigiapp-c7108\",\"storageBucket\":\"vigiapp-c7108.firebasestorage.app\"}",
+        "FUNCTION_SIGNATURE_TYPE": "http",
+        "FUNCTION_TARGET": "getAlertFootprints",
+        "GCLOUD_PROJECT": "vigiapp-c7108",
+        "LOG_EXECUTION_ID": "true"
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "maxInstanceCount": 10,
+      "maxInstanceRequestConcurrency": 80,
+      "revision": "getalertfootprints-00001-qug",
+      "service": "projects/vigiapp-c7108/locations/southamerica-east1/services/getalertfootprints",
+      "serviceAccountEmail": "322173277588-compute@developer.gserviceaccount.com",
+      "timeoutSeconds": 60,
+      "uri": "https://getalertfootprints-pfdobxp2na-rj.a.run.app"
+    },
+    "state": "ACTIVE",
+    "updateTime": "2025-09-23T12:12:13.406046048Z",
+    "url": "https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/getAlertFootprints"
+  },
+  {
+    "buildConfig": {
+      "automaticUpdatePolicy": {},
+      "build": "projects/322173277588/locations/southamerica-east1/builds/cbda32d8-7ba0-491d-a52d-d221eb4f5542",
+      "dockerRegistry": "ARTIFACT_REGISTRY",
+      "dockerRepository": "projects/vigiapp-c7108/locations/southamerica-east1/repositories/gcf-artifacts",
+      "entryPoint": "sendPublicAlertByCEP",
+      "environmentVariables": {
+        "GOOGLE_NODE_RUN_SCRIPTS": ""
+      },
+      "runtime": "nodejs18",
+      "serviceAccount": "projects/vigiapp-c7108/serviceAccounts/322173277588-compute@developer.gserviceaccount.com",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1758125600723260",
+          "object": "sendPublicAlertByCEP/function-source.zip"
+        }
+      },
+      "sourceProvenance": {
+        "resolvedStorageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1758125600723260",
+          "object": "sendPublicAlertByCEP/function-source.zip"
+        }
+      }
+    },
+    "createTime": "2025-09-14T15:16:38.287929292Z",
+    "environment": "GEN_2",
+    "labels": {
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "73b10498aa033be782ee228df634bcd3a2191459"
+    },
+    "name": "projects/vigiapp-c7108/locations/southamerica-east1/functions/sendPublicAlertByCEP",
+    "satisfiesPzi": true,
+    "satisfiesPzs": true,
+    "serviceConfig": {
+      "allTrafficOnLatestRevision": true,
+      "availableCpu": "1",
+      "availableMemory": "256Mi",
+      "environmentVariables": {
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/vigiapp-c7108/locations/southamerica-east1/services/sendPublicAlertByCEP",
+        "FIREBASE_CONFIG": "{\"projectId\":\"vigiapp-c7108\",\"storageBucket\":\"vigiapp-c7108.firebasestorage.app\"}",
+        "FUNCTION_SIGNATURE_TYPE": "http",
+        "FUNCTION_TARGET": "sendPublicAlertByCEP",
+        "GCLOUD_PROJECT": "vigiapp-c7108",
+        "LOG_EXECUTION_ID": "true"
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "maxInstanceCount": 10,
+      "maxInstanceRequestConcurrency": 80,
+      "revision": "sendpublicalertbycep-00004-ziy",
+      "service": "projects/vigiapp-c7108/locations/southamerica-east1/services/sendpublicalertbycep",
+      "serviceAccountEmail": "322173277588-compute@developer.gserviceaccount.com",
+      "timeoutSeconds": 60,
+      "uri": "https://sendpublicalertbycep-pfdobxp2na-rj.a.run.app"
+    },
+    "state": "ACTIVE",
+    "updateTime": "2025-09-17T16:14:32.522755225Z",
+    "url": "https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/sendPublicAlertByCEP"
+  },
+  {
+    "buildConfig": {
+      "automaticUpdatePolicy": {},
+      "build": "projects/322173277588/locations/southamerica-east1/builds/7e57a671-c59c-40fb-823d-f227f3f2cbb6",
+      "dockerRegistry": "ARTIFACT_REGISTRY",
+      "dockerRepository": "projects/vigiapp-c7108/locations/southamerica-east1/repositories/gcf-artifacts",
+      "entryPoint": "helloWorld",
+      "environmentVariables": {
+        "GOOGLE_NODE_RUN_SCRIPTS": ""
+      },
+      "runtime": "nodejs18",
+      "serviceAccount": "projects/vigiapp-c7108/serviceAccounts/322173277588-compute@developer.gserviceaccount.com",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1758125405482177",
+          "object": "helloWorld/function-source.zip"
+        }
+      },
+      "sourceProvenance": {
+        "resolvedStorageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1758125405482177",
+          "object": "helloWorld/function-source.zip"
+        }
+      }
+    },
+    "createTime": "2025-09-17T16:10:05.938533842Z",
+    "environment": "GEN_2",
+    "labels": {
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "95c55e928c8bd3991db7be3befe090329d590c84"
+    },
+    "name": "projects/vigiapp-c7108/locations/southamerica-east1/functions/helloWorld",
+    "satisfiesPzi": true,
+    "satisfiesPzs": true,
+    "serviceConfig": {
+      "allTrafficOnLatestRevision": true,
+      "availableCpu": "1",
+      "availableMemory": "256Mi",
+      "environmentVariables": {
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/vigiapp-c7108/locations/southamerica-east1/services/helloWorld",
+        "FIREBASE_CONFIG": "{\"projectId\":\"vigiapp-c7108\",\"storageBucket\":\"vigiapp-c7108.firebasestorage.app\"}",
+        "FUNCTION_TARGET": "helloWorld",
+        "GCLOUD_PROJECT": "vigiapp-c7108",
+        "LOG_EXECUTION_ID": "true"
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "maxInstanceCount": 10,
+      "maxInstanceRequestConcurrency": 80,
+      "revision": "helloworld-00001-pol",
+      "service": "projects/vigiapp-c7108/locations/southamerica-east1/services/helloworld",
+      "serviceAccountEmail": "322173277588-compute@developer.gserviceaccount.com",
+      "timeoutSeconds": 60,
+      "uri": "https://helloworld-pfdobxp2na-rj.a.run.app"
+    },
+    "state": "ACTIVE",
+    "updateTime": "2025-09-17T16:11:20.984777795Z",
+    "url": "https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/helloWorld"
+  },
+  {
+    "buildConfig": {
+      "automaticUpdatePolicy": {},
+      "build": "projects/322173277588/locations/southamerica-east1/builds/6d23716a-60fb-4753-a89e-1e5dd2e9580c",
+      "dockerRegistry": "ARTIFACT_REGISTRY",
+      "dockerRepository": "projects/vigiapp-c7108/locations/southamerica-east1/repositories/gcf-artifacts",
+      "entryPoint": "sendPrivateAlertByGroup",
+      "environmentVariables": {
+        "GOOGLE_NODE_RUN_SCRIPTS": ""
+      },
+      "runtime": "nodejs20",
+      "serviceAccount": "projects/vigiapp-c7108/serviceAccounts/322173277588-compute@developer.gserviceaccount.com",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1758629527106078",
+          "object": "sendPrivateAlertByGroup/function-source.zip"
+        }
+      },
+      "sourceProvenance": {
+        "resolvedStorageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1758629527106078",
+          "object": "sendPrivateAlertByGroup/function-source.zip"
+        }
+      }
+    },
+    "createTime": "2025-09-14T15:16:38.474341473Z",
+    "environment": "GEN_2",
+    "labels": {
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "f2082bcd67b41ae03d91f78dfa4f11882b7d322f"
+    },
+    "name": "projects/vigiapp-c7108/locations/southamerica-east1/functions/sendPrivateAlertByGroup",
+    "satisfiesPzi": true,
+    "satisfiesPzs": true,
+    "serviceConfig": {
+      "allTrafficOnLatestRevision": true,
+      "availableCpu": "1",
+      "availableMemory": "256Mi",
+      "environmentVariables": {
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/vigiapp-c7108/locations/southamerica-east1/services/sendPrivateAlertByGroup",
+        "FIREBASE_CONFIG": "{\"projectId\":\"vigiapp-c7108\",\"storageBucket\":\"vigiapp-c7108.firebasestorage.app\"}",
+        "FUNCTION_SIGNATURE_TYPE": "http",
+        "FUNCTION_TARGET": "sendPrivateAlertByGroup",
+        "GCLOUD_PROJECT": "vigiapp-c7108",
+        "LOG_EXECUTION_ID": "true"
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "maxInstanceCount": 10,
+      "maxInstanceRequestConcurrency": 80,
+      "revision": "sendprivatealertbygroup-00006-fav",
+      "service": "projects/vigiapp-c7108/locations/southamerica-east1/services/sendprivatealertbygroup",
+      "serviceAccountEmail": "322173277588-compute@developer.gserviceaccount.com",
+      "timeoutSeconds": 30,
+      "uri": "https://sendprivatealertbygroup-pfdobxp2na-rj.a.run.app"
+    },
+    "state": "ACTIVE",
+    "updateTime": "2025-09-23T12:12:14.474767564Z",
+    "url": "https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/sendPrivateAlertByGroup"
+  },
+  {
+    "buildConfig": {
+      "automaticUpdatePolicy": {},
+      "build": "projects/322173277588/locations/southamerica-east1/builds/4e6709b0-ffd0-4235-81e6-60cdc7faa90d",
+      "dockerRegistry": "ARTIFACT_REGISTRY",
+      "dockerRepository": "projects/vigiapp-c7108/locations/southamerica-east1/repositories/gcf-artifacts",
+      "entryPoint": "api",
+      "environmentVariables": {
+        "GOOGLE_NODE_RUN_SCRIPTS": ""
+      },
+      "runtime": "nodejs20",
+      "serviceAccount": "projects/vigiapp-c7108/serviceAccounts/322173277588-compute@developer.gserviceaccount.com",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1758861173644446",
+          "object": "api/function-source.zip"
+        }
+      },
+      "sourceProvenance": {
+        "resolvedStorageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1758861173644446",
+          "object": "api/function-source.zip"
+        }
+      }
+    },
+    "createTime": "2025-09-26T04:27:39.010432106Z",
+    "environment": "GEN_2",
+    "labels": {
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-codebase": "authapi",
+      "firebase-functions-hash": "b4dae7148e3126991dc0817e3ac8b459290f22dc"
+    },
+    "name": "projects/vigiapp-c7108/locations/southamerica-east1/functions/api",
+    "satisfiesPzi": true,
+    "satisfiesPzs": true,
+    "serviceConfig": {
+      "allTrafficOnLatestRevision": true,
+      "availableCpu": "1",
+      "availableMemory": "256Mi",
+      "environmentVariables": {
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/vigiapp-c7108/locations/southamerica-east1/services/api",
+        "FIREBASE_CONFIG": "{\"projectId\":\"vigiapp-c7108\",\"storageBucket\":\"vigiapp-c7108.firebasestorage.app\"}",
+        "FUNCTION_TARGET": "api",
+        "GCLOUD_PROJECT": "vigiapp-c7108",
+        "LOG_EXECUTION_ID": "true"
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "maxInstanceCount": 20,
+      "maxInstanceRequestConcurrency": 80,
+      "revision": "api-00002-gib",
+      "service": "projects/vigiapp-c7108/locations/southamerica-east1/services/api",
+      "serviceAccountEmail": "322173277588-compute@developer.gserviceaccount.com",
+      "timeoutSeconds": 60,
+      "uri": "https://api-pfdobxp2na-rj.a.run.app"
+    },
+    "state": "ACTIVE",
+    "updateTime": "2025-09-26T04:33:47.399863418Z",
+    "url": "https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/api"
+  },
+  {
+    "buildConfig": {
+      "automaticUpdatePolicy": {},
+      "build": "projects/322173277588/locations/southamerica-east1/builds/036423d4-06b3-4c7f-90d1-fe1b352299d6",
+      "dockerRegistry": "ARTIFACT_REGISTRY",
+      "dockerRepository": "projects/vigiapp-c7108/locations/southamerica-east1/repositories/gcf-artifacts",
+      "entryPoint": "fanoutPublicAlert",
+      "environmentVariables": {
+        "GOOGLE_NODE_RUN_SCRIPTS": ""
+      },
+      "runtime": "nodejs20",
+      "serviceAccount": "projects/vigiapp-c7108/serviceAccounts/322173277588-compute@developer.gserviceaccount.com",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1758858801607968",
+          "object": "fanoutPublicAlert/function-source.zip"
+        }
+      },
+      "sourceProvenance": {
+        "resolvedStorageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1758858801607968",
+          "object": "fanoutPublicAlert/function-source.zip"
+        }
+      }
+    },
+    "createTime": "2025-09-20T22:00:23.136123839Z",
+    "environment": "GEN_2",
+    "eventTrigger": {
+      "eventFilters": [
+        {
+          "attribute": "namespace",
+          "value": "(default)"
+        },
+        {
+          "attribute": "document",
+          "operator": "match-path-pattern",
+          "value": "publicAlerts/{alertId}"
+        },
+        {
+          "attribute": "database",
+          "value": "(default)"
+        }
+      ],
+      "eventType": "google.cloud.firestore.document.v1.created",
+      "pubsubTopic": "projects/vigiapp-c7108/topics/eventarc-southamerica-east1-fanoutpublicalert-934972-792",
+      "retryPolicy": "RETRY_POLICY_DO_NOT_RETRY",
+      "serviceAccountEmail": "322173277588-compute@developer.gserviceaccount.com",
+      "trigger": "projects/vigiapp-c7108/locations/southamerica-east1/triggers/fanoutpublicalert-934972",
+      "triggerRegion": "southamerica-east1"
+    },
+    "labels": {
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "e6c28b6afb26139cbf06c17e4ec1077fe62943db"
+    },
+    "name": "projects/vigiapp-c7108/locations/southamerica-east1/functions/fanoutPublicAlert",
+    "satisfiesPzi": true,
+    "satisfiesPzs": true,
+    "serviceConfig": {
+      "allTrafficOnLatestRevision": true,
+      "availableCpu": "1",
+      "availableMemory": "256Mi",
+      "environmentVariables": {
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/vigiapp-c7108/locations/southamerica-east1/services/fanoutPublicAlert",
+        "FIREBASE_CONFIG": "{\"projectId\":\"vigiapp-c7108\",\"storageBucket\":\"vigiapp-c7108.firebasestorage.app\"}",
+        "FUNCTIONS_MAX_INSTANCES": "10",
+        "FUNCTIONS_REGION": "southamerica-east1",
+        "FUNCTION_SIGNATURE_TYPE": "cloudevent",
+        "FUNCTION_TARGET": "fanoutPublicAlert",
+        "GCLOUD_PROJECT": "vigiapp-c7108",
+        "GOOGLE_MAPS_API_KEY": "AIzaSyASbum_pXW-fbkmvrZcN7Gh2PU__fc6vNw",
+        "LOCATIONIQ_KEY": "pk.1232cf03955ddc8cd35123ce53430a1c",
+        "LOG_EXECUTION_ID": "true",
+        "OPENCAGE_API_KEY": "9b589a29e8484f8bbfaf86683690535f",
+        "PUBLIC_ALERT_API_KEY": "zq5kd8tTLnD13RFujYherOUpMv79VcWGPlHgZmQBNC2E6awSfiA0osXKyJI4xb"
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "maxInstanceCount": 10,
+      "maxInstanceRequestConcurrency": 80,
+      "revision": "fanoutpublicalert-00006-xun",
+      "service": "projects/vigiapp-c7108/locations/southamerica-east1/services/fanoutpublicalert",
+      "serviceAccountEmail": "322173277588-compute@developer.gserviceaccount.com",
+      "timeoutSeconds": 60,
+      "uri": "https://fanoutpublicalert-pfdobxp2na-rj.a.run.app"
+    },
+    "state": "ACTIVE",
+    "updateTime": "2025-09-26T03:54:35.189770608Z",
+    "url": "https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/fanoutPublicAlert"
+  },
+  {
+    "buildConfig": {
+      "automaticUpdatePolicy": {},
+      "build": "projects/322173277588/locations/southamerica-east1/builds/6d23716a-60fb-4753-a89e-1e5dd2e9580c",
+      "dockerRegistry": "ARTIFACT_REGISTRY",
+      "dockerRepository": "projects/vigiapp-c7108/locations/southamerica-east1/repositories/gcf-artifacts",
+      "entryPoint": "testFCM",
+      "environmentVariables": {
+        "GOOGLE_NODE_RUN_SCRIPTS": ""
+      },
+      "runtime": "nodejs20",
+      "serviceAccount": "projects/vigiapp-c7108/serviceAccounts/322173277588-compute@developer.gserviceaccount.com",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1758629526479137",
+          "object": "testFCM/function-source.zip"
+        }
+      },
+      "sourceProvenance": {
+        "resolvedStorageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1758629526479137",
+          "object": "testFCM/function-source.zip"
+        }
+      }
+    },
+    "createTime": "2025-09-14T18:49:27.290752439Z",
+    "environment": "GEN_2",
+    "labels": {
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "f2082bcd67b41ae03d91f78dfa4f11882b7d322f"
+    },
+    "name": "projects/vigiapp-c7108/locations/southamerica-east1/functions/testFCM",
+    "satisfiesPzi": true,
+    "satisfiesPzs": true,
+    "serviceConfig": {
+      "allTrafficOnLatestRevision": true,
+      "availableCpu": "1",
+      "availableMemory": "256Mi",
+      "environmentVariables": {
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/vigiapp-c7108/locations/southamerica-east1/services/testFCM",
+        "FIREBASE_CONFIG": "{\"projectId\":\"vigiapp-c7108\",\"storageBucket\":\"vigiapp-c7108.firebasestorage.app\"}",
+        "FUNCTION_SIGNATURE_TYPE": "http",
+        "FUNCTION_TARGET": "testFCM",
+        "GCLOUD_PROJECT": "vigiapp-c7108",
+        "LOG_EXECUTION_ID": "true"
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "maxInstanceCount": 10,
+      "maxInstanceRequestConcurrency": 80,
+      "revision": "testfcm-00005-nip",
+      "service": "projects/vigiapp-c7108/locations/southamerica-east1/services/testfcm",
+      "serviceAccountEmail": "322173277588-compute@developer.gserviceaccount.com",
+      "timeoutSeconds": 60,
+      "uri": "https://testfcm-pfdobxp2na-rj.a.run.app"
+    },
+    "state": "ACTIVE",
+    "updateTime": "2025-09-23T12:12:14.795973728Z",
+    "url": "https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/testFCM"
+  },
+  {
+    "buildConfig": {
+      "automaticUpdatePolicy": {},
+      "build": "projects/322173277588/locations/southamerica-east1/builds/6d23716a-60fb-4753-a89e-1e5dd2e9580c",
+      "dockerRegistry": "ARTIFACT_REGISTRY",
+      "dockerRepository": "projects/vigiapp-c7108/locations/southamerica-east1/repositories/gcf-artifacts",
+      "entryPoint": "purgeAndArchiveOldRequestsAndChats",
+      "environmentVariables": {
+        "GOOGLE_NODE_RUN_SCRIPTS": ""
+      },
+      "runtime": "nodejs20",
+      "serviceAccount": "projects/vigiapp-c7108/serviceAccounts/322173277588-compute@developer.gserviceaccount.com",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1758629527007031",
+          "object": "purgeAndArchiveOldRequestsAndChats/function-source.zip"
+        }
+      },
+      "sourceProvenance": {
+        "resolvedStorageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1758629527007031",
+          "object": "purgeAndArchiveOldRequestsAndChats/function-source.zip"
+        }
+      }
+    },
+    "createTime": "2025-09-14T15:15:36.221456092Z",
+    "environment": "GEN_2",
+    "labels": {
+      "deployment-scheduled": "true",
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "f2082bcd67b41ae03d91f78dfa4f11882b7d322f"
+    },
+    "name": "projects/vigiapp-c7108/locations/southamerica-east1/functions/purgeAndArchiveOldRequestsAndChats",
+    "satisfiesPzi": true,
+    "satisfiesPzs": true,
+    "serviceConfig": {
+      "allTrafficOnLatestRevision": true,
+      "availableCpu": "1",
+      "availableMemory": "256Mi",
+      "environmentVariables": {
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/vigiapp-c7108/locations/southamerica-east1/services/purgeAndArchiveOldRequestsAndChats",
+        "FIREBASE_CONFIG": "{\"projectId\":\"vigiapp-c7108\",\"storageBucket\":\"vigiapp-c7108.firebasestorage.app\"}",
+        "FUNCTION_SIGNATURE_TYPE": "http",
+        "FUNCTION_TARGET": "purgeAndArchiveOldRequestsAndChats",
+        "GCLOUD_PROJECT": "vigiapp-c7108",
+        "LOG_EXECUTION_ID": "true"
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "maxInstanceCount": 10,
+      "maxInstanceRequestConcurrency": 80,
+      "revision": "purgeandarchiveoldrequestsandchats-00006-sas",
+      "service": "projects/vigiapp-c7108/locations/southamerica-east1/services/purgeandarchiveoldrequestsandchats",
+      "serviceAccountEmail": "322173277588-compute@developer.gserviceaccount.com",
+      "timeoutSeconds": 60,
+      "uri": "https://purgeandarchiveoldrequestsandchats-pfdobxp2na-rj.a.run.app"
+    },
+    "state": "ACTIVE",
+    "updateTime": "2025-09-23T12:12:16.103626896Z",
+    "url": "https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/purgeAndArchiveOldRequestsAndChats"
+  },
+  {
+    "buildConfig": {
+      "automaticUpdatePolicy": {},
+      "build": "projects/322173277588/locations/southamerica-east1/builds/6d23716a-60fb-4753-a89e-1e5dd2e9580c",
+      "dockerRegistry": "ARTIFACT_REGISTRY",
+      "dockerRepository": "projects/vigiapp-c7108/locations/southamerica-east1/repositories/gcf-artifacts",
+      "entryPoint": "sendPublicAlertByCenterUser",
+      "environmentVariables": {
+        "GOOGLE_NODE_RUN_SCRIPTS": ""
+      },
+      "runtime": "nodejs20",
+      "serviceAccount": "projects/vigiapp-c7108/serviceAccounts/322173277588-compute@developer.gserviceaccount.com",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1758629451718496",
+          "object": "sendPublicAlertByCenterUser/function-source.zip"
+        }
+      },
+      "sourceProvenance": {
+        "resolvedStorageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1758629451718496",
+          "object": "sendPublicAlertByCenterUser/function-source.zip"
+        }
+      }
+    },
+    "createTime": "2025-09-23T12:10:52.208952526Z",
+    "environment": "GEN_2",
+    "labels": {
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "f2082bcd67b41ae03d91f78dfa4f11882b7d322f"
+    },
+    "name": "projects/vigiapp-c7108/locations/southamerica-east1/functions/sendPublicAlertByCenterUser",
+    "satisfiesPzi": true,
+    "satisfiesPzs": true,
+    "serviceConfig": {
+      "allTrafficOnLatestRevision": true,
+      "availableCpu": "1",
+      "availableMemory": "256Mi",
+      "environmentVariables": {
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/vigiapp-c7108/locations/southamerica-east1/services/sendPublicAlertByCenterUser",
+        "FIREBASE_CONFIG": "{\"projectId\":\"vigiapp-c7108\",\"storageBucket\":\"vigiapp-c7108.firebasestorage.app\"}",
+        "FUNCTION_TARGET": "sendPublicAlertByCenterUser",
+        "GCLOUD_PROJECT": "vigiapp-c7108",
+        "LOG_EXECUTION_ID": "true"
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "maxInstanceCount": 10,
+      "maxInstanceRequestConcurrency": 80,
+      "revision": "sendpublicalertbycenteruser-00001-hin",
+      "service": "projects/vigiapp-c7108/locations/southamerica-east1/services/sendpublicalertbycenteruser",
+      "serviceAccountEmail": "322173277588-compute@developer.gserviceaccount.com",
+      "timeoutSeconds": 60,
+      "uri": "https://sendpublicalertbycenteruser-pfdobxp2na-rj.a.run.app"
+    },
+    "state": "ACTIVE",
+    "updateTime": "2025-09-23T12:12:05.381032879Z",
+    "url": "https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/sendPublicAlertByCenterUser"
+  },
+  {
+    "buildConfig": {
+      "automaticUpdatePolicy": {},
+      "build": "projects/322173277588/locations/southamerica-east1/builds/2c4c6184-9ca9-4010-95bb-fffe64798ebf",
+      "dockerRegistry": "ARTIFACT_REGISTRY",
+      "dockerRepository": "projects/vigiapp-c7108/locations/southamerica-east1/repositories/gcf-artifacts",
+      "entryPoint": "sendPublicAlertByAddress",
+      "environmentVariables": {
+        "GOOGLE_NODE_RUN_SCRIPTS": ""
+      },
+      "runtime": "nodejs20",
+      "serviceAccount": "projects/vigiapp-c7108/serviceAccounts/322173277588-compute@developer.gserviceaccount.com",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1759972802862159",
+          "object": "sendPublicAlertByAddress/function-source.zip"
+        }
+      },
+      "sourceProvenance": {
+        "resolvedStorageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1759972802862159",
+          "object": "sendPublicAlertByAddress/function-source.zip"
+        }
+      }
+    },
+    "createTime": "2025-09-16T00:28:41.890248780Z",
+    "environment": "GEN_2",
+    "labels": {
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "211a375c1e068773bcd6b186f6890188401eaba7"
+    },
+    "name": "projects/vigiapp-c7108/locations/southamerica-east1/functions/sendPublicAlertByAddress",
+    "satisfiesPzi": true,
+    "satisfiesPzs": true,
+    "serviceConfig": {
+      "allTrafficOnLatestRevision": true,
+      "availableCpu": "1",
+      "availableMemory": "256Mi",
+      "environmentVariables": {
+        "ANDROID_CHANNEL_ID": "alerts-high",
+        "BATCH_SIZE": "500",
+        "DEFAULT_RADIUS_M": "1000",
+        "DEFAULT_TTL_SECONDS": "3600",
+        "DEVICES_COLLECTION": "devices",
+        "DEVICE_CEP_FIELD": "cep",
+        "DEVICE_CHANNEL_PUBLIC_FIELD": "channels.publicAlerts",
+        "DEVICE_CITY_FIELD": "cidade",
+        "DEVICE_ENABLED_FIELD": "enabled",
+        "DEVICE_LAST_SEEN_FIELD": "updatedAt",
+        "DEVICE_LAT_FIELD": "lat",
+        "DEVICE_LNG_FIELD": "lng",
+        "DISABLE_FCM_COLOR": "false",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/vigiapp-c7108/locations/southamerica-east1/services/sendPublicAlertByAddress",
+        "EXPO_PUBLIC_GOOGLE_MAPS_KEY": "AIzaSyASbum_pXW-fbkmvrZcN7Gh2PU__fc6vNw",
+        "EXPO_PUBLIC_LOCATIONIQ_KEY": "pk.1232cf03955ddc8cd35123ce53430a1c",
+        "FIREBASE_CONFIG": "{\"projectId\":\"vigiapp-c7108\",\"storageBucket\":\"vigiapp-c7108.firebasestorage.app\"}",
+        "FUNCTION_TARGET": "sendPublicAlertByAddress",
+        "GCLOUD_PROJECT": "vigiapp-c7108",
+        "LOG_EXECUTION_ID": "true",
+        "LOG_LEVEL": "info",
+        "MAX_RADIUS_M": "3000",
+        "MIN_RADIUS_M": "50"
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "maxInstanceCount": 20,
+      "maxInstanceRequestConcurrency": 40,
+      "revision": "sendpublicalertbyaddress-00010-jil",
+      "service": "projects/vigiapp-c7108/locations/southamerica-east1/services/sendpublicalertbyaddress",
+      "serviceAccountEmail": "322173277588-compute@developer.gserviceaccount.com",
+      "timeoutSeconds": 60,
+      "uri": "https://sendpublicalertbyaddress-pfdobxp2na-rj.a.run.app"
+    },
+    "state": "ACTIVE",
+    "updateTime": "2025-10-09T01:20:54.819204764Z",
+    "url": "https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/sendPublicAlertByAddress"
+  },
+  {
+    "buildConfig": {
+      "automaticUpdatePolicy": {},
+      "build": "projects/322173277588/locations/southamerica-east1/builds/6eaef471-4eab-4889-bcf6-80f69efb3138",
+      "dockerRegistry": "ARTIFACT_REGISTRY",
+      "dockerRepository": "projects/vigiapp-c7108/locations/southamerica-east1/repositories/gcf-artifacts",
+      "entryPoint": "ackPublicAlertReceipt",
+      "environmentVariables": {
+        "GOOGLE_NODE_RUN_SCRIPTS": ""
+      },
+      "runtime": "nodejs20",
+      "serviceAccount": "projects/vigiapp-c7108/serviceAccounts/322173277588-compute@developer.gserviceaccount.com",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1759972802924220",
+          "object": "ackPublicAlertReceipt/function-source.zip"
+        }
+      },
+      "sourceProvenance": {
+        "resolvedStorageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1759972802924220",
+          "object": "ackPublicAlertReceipt/function-source.zip"
+        }
+      }
+    },
+    "createTime": "2025-10-04T22:23:40.551270793Z",
+    "environment": "GEN_2",
+    "labels": {
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "211a375c1e068773bcd6b186f6890188401eaba7"
+    },
+    "name": "projects/vigiapp-c7108/locations/southamerica-east1/functions/ackPublicAlertReceipt",
+    "satisfiesPzi": true,
+    "satisfiesPzs": true,
+    "serviceConfig": {
+      "allTrafficOnLatestRevision": true,
+      "availableCpu": "1",
+      "availableMemory": "128Mi",
+      "environmentVariables": {
+        "ANDROID_CHANNEL_ID": "alerts-high",
+        "BATCH_SIZE": "500",
+        "DEFAULT_RADIUS_M": "1000",
+        "DEFAULT_TTL_SECONDS": "3600",
+        "DEVICES_COLLECTION": "devices",
+        "DEVICE_CEP_FIELD": "cep",
+        "DEVICE_CHANNEL_PUBLIC_FIELD": "channels.publicAlerts",
+        "DEVICE_CITY_FIELD": "cidade",
+        "DEVICE_ENABLED_FIELD": "enabled",
+        "DEVICE_LAST_SEEN_FIELD": "updatedAt",
+        "DEVICE_LAT_FIELD": "lat",
+        "DEVICE_LNG_FIELD": "lng",
+        "DISABLE_FCM_COLOR": "false",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/vigiapp-c7108/locations/southamerica-east1/services/ackPublicAlertReceipt",
+        "EXPO_PUBLIC_GOOGLE_MAPS_KEY": "AIzaSyASbum_pXW-fbkmvrZcN7Gh2PU__fc6vNw",
+        "EXPO_PUBLIC_LOCATIONIQ_KEY": "pk.1232cf03955ddc8cd35123ce53430a1c",
+        "FIREBASE_CONFIG": "{\"projectId\":\"vigiapp-c7108\",\"storageBucket\":\"vigiapp-c7108.firebasestorage.app\"}",
+        "FUNCTION_TARGET": "ackPublicAlertReceipt",
+        "GCLOUD_PROJECT": "vigiapp-c7108",
+        "LOG_EXECUTION_ID": "true",
+        "LOG_LEVEL": "info",
+        "MAX_RADIUS_M": "3000",
+        "MIN_RADIUS_M": "50"
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "maxInstanceCount": 20,
+      "maxInstanceRequestConcurrency": 80,
+      "revision": "ackpublicalertreceipt-00003-sit",
+      "service": "projects/vigiapp-c7108/locations/southamerica-east1/services/ackpublicalertreceipt",
+      "serviceAccountEmail": "322173277588-compute@developer.gserviceaccount.com",
+      "timeoutSeconds": 20,
+      "uri": "https://ackpublicalertreceipt-pfdobxp2na-rj.a.run.app"
+    },
+    "state": "ACTIVE",
+    "updateTime": "2025-10-09T01:21:04.354636081Z",
+    "url": "https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/ackPublicAlertReceipt"
+  },
+  {
+    "buildConfig": {
+      "automaticUpdatePolicy": {},
+      "build": "projects/322173277588/locations/southamerica-east1/builds/6d23716a-60fb-4753-a89e-1e5dd2e9580c",
+      "dockerRegistry": "ARTIFACT_REGISTRY",
+      "dockerRepository": "projects/vigiapp-c7108/locations/southamerica-east1/repositories/gcf-artifacts",
+      "entryPoint": "getAlertFootprints",
+      "environmentVariables": {
+        "GOOGLE_NODE_RUN_SCRIPTS": ""
+      },
+      "runtime": "nodejs20",
+      "serviceAccount": "projects/vigiapp-c7108/serviceAccounts/322173277588-compute@developer.gserviceaccount.com",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1758629524843643",
+          "object": "getAlertFootprints/function-source.zip"
+        }
+      },
+      "sourceProvenance": {
+        "resolvedStorageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1758629524843643",
+          "object": "getAlertFootprints/function-source.zip"
+        }
+      }
+    },
+    "createTime": "2025-09-23T12:12:05.378007202Z",
+    "environment": "GEN_2",
+    "labels": {
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "f2082bcd67b41ae03d91f78dfa4f11882b7d322f"
+    },
+    "name": "projects/vigiapp-c7108/locations/southamerica-east1/functions/getAlertFootprints",
+    "satisfiesPzi": true,
+    "satisfiesPzs": true,
+    "serviceConfig": {
+      "allTrafficOnLatestRevision": true,
+      "availableCpu": "1",
+      "availableMemory": "256Mi",
+      "environmentVariables": {
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/vigiapp-c7108/locations/southamerica-east1/services/getAlertFootprints",
+        "FIREBASE_CONFIG": "{\"projectId\":\"vigiapp-c7108\",\"storageBucket\":\"vigiapp-c7108.firebasestorage.app\"}",
+        "FUNCTION_SIGNATURE_TYPE": "http",
+        "FUNCTION_TARGET": "getAlertFootprints",
+        "GCLOUD_PROJECT": "vigiapp-c7108",
+        "LOG_EXECUTION_ID": "true"
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "maxInstanceCount": 10,
+      "maxInstanceRequestConcurrency": 80,
+      "revision": "getalertfootprints-00001-qug",
+      "service": "projects/vigiapp-c7108/locations/southamerica-east1/services/getalertfootprints",
+      "serviceAccountEmail": "322173277588-compute@developer.gserviceaccount.com",
+      "timeoutSeconds": 60,
+      "uri": "https://getalertfootprints-pfdobxp2na-rj.a.run.app"
+    },
+    "state": "ACTIVE",
+    "updateTime": "2025-09-23T12:12:13.406046048Z",
+    "url": "https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/getAlertFootprints"
+  },
+  {
+    "buildConfig": {
+      "automaticUpdatePolicy": {},
+      "build": "projects/322173277588/locations/southamerica-east1/builds/cbda32d8-7ba0-491d-a52d-d221eb4f5542",
+      "dockerRegistry": "ARTIFACT_REGISTRY",
+      "dockerRepository": "projects/vigiapp-c7108/locations/southamerica-east1/repositories/gcf-artifacts",
+      "entryPoint": "sendPublicAlertByCEP",
+      "environmentVariables": {
+        "GOOGLE_NODE_RUN_SCRIPTS": ""
+      },
+      "runtime": "nodejs18",
+      "serviceAccount": "projects/vigiapp-c7108/serviceAccounts/322173277588-compute@developer.gserviceaccount.com",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1758125600723260",
+          "object": "sendPublicAlertByCEP/function-source.zip"
+        }
+      },
+      "sourceProvenance": {
+        "resolvedStorageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1758125600723260",
+          "object": "sendPublicAlertByCEP/function-source.zip"
+        }
+      }
+    },
+    "createTime": "2025-09-14T15:16:38.287929292Z",
+    "environment": "GEN_2",
+    "labels": {
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "73b10498aa033be782ee228df634bcd3a2191459"
+    },
+    "name": "projects/vigiapp-c7108/locations/southamerica-east1/functions/sendPublicAlertByCEP",
+    "satisfiesPzi": true,
+    "satisfiesPzs": true,
+    "serviceConfig": {
+      "allTrafficOnLatestRevision": true,
+      "availableCpu": "1",
+      "availableMemory": "256Mi",
+      "environmentVariables": {
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/vigiapp-c7108/locations/southamerica-east1/services/sendPublicAlertByCEP",
+        "FIREBASE_CONFIG": "{\"projectId\":\"vigiapp-c7108\",\"storageBucket\":\"vigiapp-c7108.firebasestorage.app\"}",
+        "FUNCTION_SIGNATURE_TYPE": "http",
+        "FUNCTION_TARGET": "sendPublicAlertByCEP",
+        "GCLOUD_PROJECT": "vigiapp-c7108",
+        "LOG_EXECUTION_ID": "true"
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "maxInstanceCount": 10,
+      "maxInstanceRequestConcurrency": 80,
+      "revision": "sendpublicalertbycep-00004-ziy",
+      "service": "projects/vigiapp-c7108/locations/southamerica-east1/services/sendpublicalertbycep",
+      "serviceAccountEmail": "322173277588-compute@developer.gserviceaccount.com",
+      "timeoutSeconds": 60,
+      "uri": "https://sendpublicalertbycep-pfdobxp2na-rj.a.run.app"
+    },
+    "state": "ACTIVE",
+    "updateTime": "2025-09-17T16:14:32.522755225Z",
+    "url": "https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/sendPublicAlertByCEP"
+  },
+  {
+    "buildConfig": {
+      "automaticUpdatePolicy": {},
+      "build": "projects/322173277588/locations/southamerica-east1/builds/7e57a671-c59c-40fb-823d-f227f3f2cbb6",
+      "dockerRegistry": "ARTIFACT_REGISTRY",
+      "dockerRepository": "projects/vigiapp-c7108/locations/southamerica-east1/repositories/gcf-artifacts",
+      "entryPoint": "helloWorld",
+      "environmentVariables": {
+        "GOOGLE_NODE_RUN_SCRIPTS": ""
+      },
+      "runtime": "nodejs18",
+      "serviceAccount": "projects/vigiapp-c7108/serviceAccounts/322173277588-compute@developer.gserviceaccount.com",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1758125405482177",
+          "object": "helloWorld/function-source.zip"
+        }
+      },
+      "sourceProvenance": {
+        "resolvedStorageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1758125405482177",
+          "object": "helloWorld/function-source.zip"
+        }
+      }
+    },
+    "createTime": "2025-09-17T16:10:05.938533842Z",
+    "environment": "GEN_2",
+    "labels": {
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "95c55e928c8bd3991db7be3befe090329d590c84"
+    },
+    "name": "projects/vigiapp-c7108/locations/southamerica-east1/functions/helloWorld",
+    "satisfiesPzi": true,
+    "satisfiesPzs": true,
+    "serviceConfig": {
+      "allTrafficOnLatestRevision": true,
+      "availableCpu": "1",
+      "availableMemory": "256Mi",
+      "environmentVariables": {
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/vigiapp-c7108/locations/southamerica-east1/services/helloWorld",
+        "FIREBASE_CONFIG": "{\"projectId\":\"vigiapp-c7108\",\"storageBucket\":\"vigiapp-c7108.firebasestorage.app\"}",
+        "FUNCTION_TARGET": "helloWorld",
+        "GCLOUD_PROJECT": "vigiapp-c7108",
+        "LOG_EXECUTION_ID": "true"
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "maxInstanceCount": 10,
+      "maxInstanceRequestConcurrency": 80,
+      "revision": "helloworld-00001-pol",
+      "service": "projects/vigiapp-c7108/locations/southamerica-east1/services/helloworld",
+      "serviceAccountEmail": "322173277588-compute@developer.gserviceaccount.com",
+      "timeoutSeconds": 60,
+      "uri": "https://helloworld-pfdobxp2na-rj.a.run.app"
+    },
+    "state": "ACTIVE",
+    "updateTime": "2025-09-17T16:11:20.984777795Z",
+    "url": "https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/helloWorld"
+  },
+  {
+    "buildConfig": {
+      "automaticUpdatePolicy": {},
+      "build": "projects/322173277588/locations/southamerica-east1/builds/6d23716a-60fb-4753-a89e-1e5dd2e9580c",
+      "dockerRegistry": "ARTIFACT_REGISTRY",
+      "dockerRepository": "projects/vigiapp-c7108/locations/southamerica-east1/repositories/gcf-artifacts",
+      "entryPoint": "sendPrivateAlertByGroup",
+      "environmentVariables": {
+        "GOOGLE_NODE_RUN_SCRIPTS": ""
+      },
+      "runtime": "nodejs20",
+      "serviceAccount": "projects/vigiapp-c7108/serviceAccounts/322173277588-compute@developer.gserviceaccount.com",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1758629527106078",
+          "object": "sendPrivateAlertByGroup/function-source.zip"
+        }
+      },
+      "sourceProvenance": {
+        "resolvedStorageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1758629527106078",
+          "object": "sendPrivateAlertByGroup/function-source.zip"
+        }
+      }
+    },
+    "createTime": "2025-09-14T15:16:38.474341473Z",
+    "environment": "GEN_2",
+    "labels": {
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "f2082bcd67b41ae03d91f78dfa4f11882b7d322f"
+    },
+    "name": "projects/vigiapp-c7108/locations/southamerica-east1/functions/sendPrivateAlertByGroup",
+    "satisfiesPzi": true,
+    "satisfiesPzs": true,
+    "serviceConfig": {
+      "allTrafficOnLatestRevision": true,
+      "availableCpu": "1",
+      "availableMemory": "256Mi",
+      "environmentVariables": {
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/vigiapp-c7108/locations/southamerica-east1/services/sendPrivateAlertByGroup",
+        "FIREBASE_CONFIG": "{\"projectId\":\"vigiapp-c7108\",\"storageBucket\":\"vigiapp-c7108.firebasestorage.app\"}",
+        "FUNCTION_SIGNATURE_TYPE": "http",
+        "FUNCTION_TARGET": "sendPrivateAlertByGroup",
+        "GCLOUD_PROJECT": "vigiapp-c7108",
+        "LOG_EXECUTION_ID": "true"
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "maxInstanceCount": 10,
+      "maxInstanceRequestConcurrency": 80,
+      "revision": "sendprivatealertbygroup-00006-fav",
+      "service": "projects/vigiapp-c7108/locations/southamerica-east1/services/sendprivatealertbygroup",
+      "serviceAccountEmail": "322173277588-compute@developer.gserviceaccount.com",
+      "timeoutSeconds": 30,
+      "uri": "https://sendprivatealertbygroup-pfdobxp2na-rj.a.run.app"
+    },
+    "state": "ACTIVE",
+    "updateTime": "2025-09-23T12:12:14.474767564Z",
+    "url": "https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/sendPrivateAlertByGroup"
+  },
+  {
+    "buildConfig": {
+      "automaticUpdatePolicy": {},
+      "build": "projects/322173277588/locations/southamerica-east1/builds/4e6709b0-ffd0-4235-81e6-60cdc7faa90d",
+      "dockerRegistry": "ARTIFACT_REGISTRY",
+      "dockerRepository": "projects/vigiapp-c7108/locations/southamerica-east1/repositories/gcf-artifacts",
+      "entryPoint": "api",
+      "environmentVariables": {
+        "GOOGLE_NODE_RUN_SCRIPTS": ""
+      },
+      "runtime": "nodejs20",
+      "serviceAccount": "projects/vigiapp-c7108/serviceAccounts/322173277588-compute@developer.gserviceaccount.com",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1758861173644446",
+          "object": "api/function-source.zip"
+        }
+      },
+      "sourceProvenance": {
+        "resolvedStorageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1758861173644446",
+          "object": "api/function-source.zip"
+        }
+      }
+    },
+    "createTime": "2025-09-26T04:27:39.010432106Z",
+    "environment": "GEN_2",
+    "labels": {
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-codebase": "authapi",
+      "firebase-functions-hash": "b4dae7148e3126991dc0817e3ac8b459290f22dc"
+    },
+    "name": "projects/vigiapp-c7108/locations/southamerica-east1/functions/api",
+    "satisfiesPzi": true,
+    "satisfiesPzs": true,
+    "serviceConfig": {
+      "allTrafficOnLatestRevision": true,
+      "availableCpu": "1",
+      "availableMemory": "256Mi",
+      "environmentVariables": {
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/vigiapp-c7108/locations/southamerica-east1/services/api",
+        "FIREBASE_CONFIG": "{\"projectId\":\"vigiapp-c7108\",\"storageBucket\":\"vigiapp-c7108.firebasestorage.app\"}",
+        "FUNCTION_TARGET": "api",
+        "GCLOUD_PROJECT": "vigiapp-c7108",
+        "LOG_EXECUTION_ID": "true"
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "maxInstanceCount": 20,
+      "maxInstanceRequestConcurrency": 80,
+      "revision": "api-00002-gib",
+      "service": "projects/vigiapp-c7108/locations/southamerica-east1/services/api",
+      "serviceAccountEmail": "322173277588-compute@developer.gserviceaccount.com",
+      "timeoutSeconds": 60,
+      "uri": "https://api-pfdobxp2na-rj.a.run.app"
+    },
+    "state": "ACTIVE",
+    "updateTime": "2025-09-26T04:33:47.399863418Z",
+    "url": "https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/api"
+  },
+  {
+    "buildConfig": {
+      "automaticUpdatePolicy": {},
+      "build": "projects/322173277588/locations/southamerica-east1/builds/036423d4-06b3-4c7f-90d1-fe1b352299d6",
+      "dockerRegistry": "ARTIFACT_REGISTRY",
+      "dockerRepository": "projects/vigiapp-c7108/locations/southamerica-east1/repositories/gcf-artifacts",
+      "entryPoint": "fanoutPublicAlert",
+      "environmentVariables": {
+        "GOOGLE_NODE_RUN_SCRIPTS": ""
+      },
+      "runtime": "nodejs20",
+      "serviceAccount": "projects/vigiapp-c7108/serviceAccounts/322173277588-compute@developer.gserviceaccount.com",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1758858801607968",
+          "object": "fanoutPublicAlert/function-source.zip"
+        }
+      },
+      "sourceProvenance": {
+        "resolvedStorageSource": {
+          "bucket": "gcf-v2-sources-322173277588-southamerica-east1",
+          "generation": "1758858801607968",
+          "object": "fanoutPublicAlert/function-source.zip"
+        }
+      }
+    },
+    "createTime": "2025-09-20T22:00:23.136123839Z",
+    "environment": "GEN_2",
+    "eventTrigger": {
+      "eventFilters": [
+        {
+          "attribute": "database",
+          "value": "(default)"
+        },
+        {
+          "attribute": "namespace",
+          "value": "(default)"
+        },
+        {
+          "attribute": "document",
+          "operator": "match-path-pattern",
+          "value": "publicAlerts/{alertId}"
+        }
+      ],
+      "eventType": "google.cloud.firestore.document.v1.created",
+      "pubsubTopic": "projects/vigiapp-c7108/topics/eventarc-southamerica-east1-fanoutpublicalert-934972-792",
+      "retryPolicy": "RETRY_POLICY_DO_NOT_RETRY",
+      "serviceAccountEmail": "322173277588-compute@developer.gserviceaccount.com",
+      "trigger": "projects/vigiapp-c7108/locations/southamerica-east1/triggers/fanoutpublicalert-934972",
+      "triggerRegion": "southamerica-east1"
+    },
+    "labels": {
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "e6c28b6afb26139cbf06c17e4ec1077fe62943db"
+    },
+    "name": "projects/vigiapp-c7108/locations/southamerica-east1/functions/fanoutPublicAlert",
+    "satisfiesPzi": true,
+    "satisfiesPzs": true,
+    "serviceConfig": {
+      "allTrafficOnLatestRevision": true,
+      "availableCpu": "1",
+      "availableMemory": "256Mi",
+      "environmentVariables": {
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/vigiapp-c7108/locations/southamerica-east1/services/fanoutPublicAlert",
+        "FIREBASE_CONFIG": "{\"projectId\":\"vigiapp-c7108\",\"storageBucket\":\"vigiapp-c7108.firebasestorage.app\"}",
+        "FUNCTIONS_MAX_INSTANCES": "10",
+        "FUNCTIONS_REGION": "southamerica-east1",
+        "FUNCTION_SIGNATURE_TYPE": "cloudevent",
+        "FUNCTION_TARGET": "fanoutPublicAlert",
+        "GCLOUD_PROJECT": "vigiapp-c7108",
+        "GOOGLE_MAPS_API_KEY": "AIzaSyASbum_pXW-fbkmvrZcN7Gh2PU__fc6vNw",
+        "LOCATIONIQ_KEY": "pk.1232cf03955ddc8cd35123ce53430a1c",
+        "LOG_EXECUTION_ID": "true",
+        "OPENCAGE_API_KEY": "9b589a29e8484f8bbfaf86683690535f",
+        "PUBLIC_ALERT_API_KEY": "zq5kd8tTLnD13RFujYherOUpMv79VcWGPlHgZmQBNC2E6awSfiA0osXKyJI4xb"
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "maxInstanceCount": 10,
+      "maxInstanceRequestConcurrency": 80,
+      "revision": "fanoutpublicalert-00006-xun",
+      "service": "projects/vigiapp-c7108/locations/southamerica-east1/services/fanoutpublicalert",
+      "serviceAccountEmail": "322173277588-compute@developer.gserviceaccount.com",
+      "timeoutSeconds": 60,
+      "uri": "https://fanoutpublicalert-pfdobxp2na-rj.a.run.app"
+    },
+    "state": "ACTIVE",
+    "updateTime": "2025-09-26T03:54:35.189770608Z",
+    "url": "https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/fanoutPublicAlert"
+  },
+  {
+    "buildConfig": {
+      "automaticUpdatePolicy": {},
+      "build": "projects/322173277588/locations/us-central1/builds/36364d8c-e8fd-4a45-91c1-d0db3a8ea0c8",
+      "dockerRegistry": "ARTIFACT_REGISTRY",
+      "dockerRepository": "projects/vigiapp-c7108/locations/us-central1/repositories/gcf-artifacts",
+      "entryPoint": "ping",
+      "environmentVariables": {
+        "GOOGLE_NODE_RUN_SCRIPTS": ""
+      },
+      "runtime": "nodejs20",
+      "serviceAccount": "projects/vigiapp-c7108/serviceAccounts/322173277588-compute@developer.gserviceaccount.com",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-322173277588-us-central1",
+          "generation": "1758858798745394",
+          "object": "ping/function-source.zip"
+        }
+      },
+      "sourceProvenance": {
+        "resolvedStorageSource": {
+          "bucket": "gcf-v2-sources-322173277588-us-central1",
+          "generation": "1758858798745394",
+          "object": "ping/function-source.zip"
+        }
+      }
+    },
+    "createTime": "2025-09-17T18:52:25.215520489Z",
+    "environment": "GEN_2",
+    "labels": {
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "e6c28b6afb26139cbf06c17e4ec1077fe62943db"
+    },
+    "name": "projects/vigiapp-c7108/locations/us-central1/functions/ping",
+    "satisfiesPzi": true,
+    "serviceConfig": {
+      "allTrafficOnLatestRevision": true,
+      "availableCpu": "1",
+      "availableMemory": "256Mi",
+      "environmentVariables": {
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/vigiapp-c7108/locations/us-central1/services/ping",
+        "FIREBASE_CONFIG": "{\"projectId\":\"vigiapp-c7108\",\"storageBucket\":\"vigiapp-c7108.firebasestorage.app\"}",
+        "FUNCTIONS_MAX_INSTANCES": "10",
+        "FUNCTIONS_REGION": "southamerica-east1",
+        "FUNCTION_TARGET": "ping",
+        "GCLOUD_PROJECT": "vigiapp-c7108",
+        "GOOGLE_MAPS_API_KEY": "AIzaSyASbum_pXW-fbkmvrZcN7Gh2PU__fc6vNw",
+        "LOCATIONIQ_KEY": "pk.1232cf03955ddc8cd35123ce53430a1c",
+        "LOG_EXECUTION_ID": "true",
+        "OPENCAGE_API_KEY": "9b589a29e8484f8bbfaf86683690535f",
+        "PUBLIC_ALERT_API_KEY": "zq5kd8tTLnD13RFujYherOUpMv79VcWGPlHgZmQBNC2E6awSfiA0osXKyJI4xb"
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "maxInstanceCount": 20,
+      "maxInstanceRequestConcurrency": 80,
+      "revision": "ping-00009-nac",
+      "service": "projects/vigiapp-c7108/locations/us-central1/services/ping",
+      "serviceAccountEmail": "322173277588-compute@developer.gserviceaccount.com",
+      "timeoutSeconds": 60,
+      "uri": "https://ping-pfdobxp2na-uc.a.run.app"
+    },
+    "state": "ACTIVE",
+    "updateTime": "2025-09-26T03:54:29.586763339Z",
+    "url": "https://us-central1-vigiapp-c7108.cloudfunctions.net/ping"
+  },
+  {
+    "automaticUpdatePolicy": {},
+    "availableMemoryMb": 256,
+    "buildEnvironmentVariables": {
+      "GOOGLE_NODE_RUN_SCRIPTS": ""
+    },
+    "buildId": "91b5e117-4c10-4172-8e12-3e7a22d0a1e8",
+    "buildName": "projects/322173277588/locations/us-central1/builds/91b5e117-4c10-4172-8e12-3e7a22d0a1e8",
+    "buildServiceAccount": "projects/vigiapp-c7108/serviceAccounts/322173277588-compute@developer.gserviceaccount.com",
+    "dockerRegistry": "ARTIFACT_REGISTRY",
+    "entryPoint": "purgeAndArchiveOldRequests",
+    "environmentVariables": {
+      "EVENTARC_CLOUD_EVENT_SOURCE": "projects/vigiapp-c7108/locations/us-central1/functions/purgeAndArchiveOldRequests",
+      "FIREBASE_CONFIG": "{\"projectId\":\"vigiapp-c7108\",\"storageBucket\":\"vigiapp-c7108.firebasestorage.app\"}",
+      "GCLOUD_PROJECT": "vigiapp-c7108"
+    },
+    "eventTrigger": {
+      "eventType": "google.pubsub.topic.publish",
+      "failurePolicy": {},
+      "resource": "projects/vigiapp-c7108/topics/firebase-schedule-purgeAndArchiveOldRequests-us-central1",
+      "service": "pubsub.googleapis.com"
+    },
+    "ingressSettings": "ALLOW_ALL",
+    "labels": {
+      "deployment-scheduled": "true",
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "fbe73a25736dfd87c461c882d3ec494dd4953a18"
+    },
+    "maxInstances": 3000,
+    "name": "projects/vigiapp-c7108/locations/us-central1/functions/purgeAndArchiveOldRequests",
+    "runtime": "nodejs18",
+    "satisfiesPzi": true,
+    "serviceAccountEmail": "vigiapp-c7108@appspot.gserviceaccount.com",
+    "sourceUploadUrl": "https://storage.googleapis.com/uploads-1014167859307.us-central1.cloudfunctions.appspot.com/8aa72a62-2c01-471c-a66d-6d76c632947c.zip",
+    "status": "ACTIVE",
+    "timeout": "60s",
+    "updateTime": "2025-07-30T02:01:53.366771232Z",
+    "versionId": "1"
+  },
+  {
+    "automaticUpdatePolicy": {},
+    "availableMemoryMb": 256,
+    "buildEnvironmentVariables": {
+      "GOOGLE_NODE_RUN_SCRIPTS": ""
+    },
+    "buildId": "576bffc5-e999-434a-ba24-a5e20b2ba002",
+    "buildName": "projects/322173277588/locations/us-central1/builds/576bffc5-e999-434a-ba24-a5e20b2ba002",
+    "buildServiceAccount": "projects/vigiapp-c7108/serviceAccounts/322173277588-compute@developer.gserviceaccount.com",
+    "dockerRegistry": "ARTIFACT_REGISTRY",
+    "entryPoint": "purgeAndArchiveOldRequestsAndChats",
+    "environmentVariables": {
+      "EVENTARC_CLOUD_EVENT_SOURCE": "projects/vigiapp-c7108/locations/us-central1/functions/purgeAndArchiveOldRequestsAndChats",
+      "FIREBASE_CONFIG": "{\"projectId\":\"vigiapp-c7108\",\"storageBucket\":\"vigiapp-c7108.firebasestorage.app\"}",
+      "GCLOUD_PROJECT": "vigiapp-c7108"
+    },
+    "eventTrigger": {
+      "eventType": "google.pubsub.topic.publish",
+      "failurePolicy": {},
+      "resource": "projects/vigiapp-c7108/topics/firebase-schedule-purgeAndArchiveOldRequestsAndChats-us-central1",
+      "service": "pubsub.googleapis.com"
+    },
+    "ingressSettings": "ALLOW_ALL",
+    "labels": {
+      "deployment-scheduled": "true",
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "ebf6da74874d425ac1bd7c48b9b8a3770eb52d46"
+    },
+    "maxInstances": 3000,
+    "name": "projects/vigiapp-c7108/locations/us-central1/functions/purgeAndArchiveOldRequestsAndChats",
+    "runtime": "nodejs18",
+    "satisfiesPzi": true,
+    "serviceAccountEmail": "vigiapp-c7108@appspot.gserviceaccount.com",
+    "sourceUploadUrl": "https://storage.googleapis.com/uploads-1014167859307.us-central1.cloudfunctions.appspot.com/a67166dc-518b-439a-9811-e8a155310103.zip",
+    "status": "OFFLINE",
+    "timeout": "60s",
+    "updateTime": "2025-09-01T03:47:15.552955405Z",
+    "versionId": "3"
+  },
+  {
+    "automaticUpdatePolicy": {},
+    "availableMemoryMb": 256,
+    "buildEnvironmentVariables": {
+      "GOOGLE_NODE_RUN_SCRIPTS": ""
+    },
+    "buildId": "91b5e117-4c10-4172-8e12-3e7a22d0a1e8",
+    "buildName": "projects/322173277588/locations/us-central1/builds/91b5e117-4c10-4172-8e12-3e7a22d0a1e8",
+    "buildServiceAccount": "projects/vigiapp-c7108/serviceAccounts/322173277588-compute@developer.gserviceaccount.com",
+    "dockerRegistry": "ARTIFACT_REGISTRY",
+    "entryPoint": "dailyHelpRequestStats",
+    "environmentVariables": {
+      "EVENTARC_CLOUD_EVENT_SOURCE": "projects/vigiapp-c7108/locations/us-central1/functions/dailyHelpRequestStats",
+      "FIREBASE_CONFIG": "{\"projectId\":\"vigiapp-c7108\",\"storageBucket\":\"vigiapp-c7108.firebasestorage.app\"}",
+      "GCLOUD_PROJECT": "vigiapp-c7108"
+    },
+    "eventTrigger": {
+      "eventType": "google.pubsub.topic.publish",
+      "failurePolicy": {},
+      "resource": "projects/vigiapp-c7108/topics/firebase-schedule-dailyHelpRequestStats-us-central1",
+      "service": "pubsub.googleapis.com"
+    },
+    "ingressSettings": "ALLOW_ALL",
+    "labels": {
+      "deployment-scheduled": "true",
+      "deployment-tool": "cli-firebase",
+      "firebase-functions-hash": "fbe73a25736dfd87c461c882d3ec494dd4953a18"
+    },
+    "maxInstances": 3000,
+    "name": "projects/vigiapp-c7108/locations/us-central1/functions/dailyHelpRequestStats",
+    "runtime": "nodejs18",
+    "satisfiesPzi": true,
+    "serviceAccountEmail": "vigiapp-c7108@appspot.gserviceaccount.com",
+    "sourceUploadUrl": "https://storage.googleapis.com/uploads-1014167859307.us-central1.cloudfunctions.appspot.com/8aa72a62-2c01-471c-a66d-6d76c632947c.zip",
+    "status": "ACTIVE",
+    "timeout": "60s",
+    "updateTime": "2025-07-30T02:01:51.093383504Z",
+    "versionId": "1"
+  }
+]

@@ -12,13 +12,16 @@ import { onlyDigits } from './helpers';
 
 // ---------------------------------------------------------------------------
 // CONFIG — ajoute ici toutes tes bases (si tu as plusieurs régions/projets)
-const CF_UPLOAD_BASES = [ 'https://api-pfdobxp2na-rj.a.run.app', 'https://southamerica-east1-vigiapp-c7108.cloudfunctions.net' ];
+const CF_UPLOAD_BASES = [
+  'https://southamerica-east1-vigiapp-c7108.cloudfunctions.net',
+  // 'https://us-central1-<autre-projet>.cloudfunctions.net',
+];
 
 // Pour chaque kind, on définit plusieurs chemins de CF (ordre = priorité)
 const CF_UPLOAD_PATHS = {
-  id: ['upload/id'],
-  photo: ['upload/photo'],
-  linkDoc: ['upload/link'],
+  photo: ['mcUpload', 'uploadChildPhoto', 'uploadPhoto'],
+  id: ['mcUpload', 'uploadIdDocument', 'uploadId'],
+  linkDoc: ['mcUpload', 'uploadLinkDocument', 'uploadLink'],
 };
 
 // Taille max (15MB)
@@ -201,5 +204,3 @@ export async function uploadDocMultipart(options = {}) {
 export const uploadIdDocument = (p) => uploadDocMultipart({ ...p, kind: 'id' });
 export const uploadLinkDocument = (p) => uploadDocMultipart({ ...p, kind: 'linkDoc' });
 export const uploadChildPhoto = (p) => uploadDocMultipart({ ...p, kind: 'photo' });
-
-
