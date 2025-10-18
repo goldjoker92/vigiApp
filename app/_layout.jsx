@@ -37,7 +37,7 @@ const logAds = (...a) => console.log('[ADS]', ...a);
 
 // Flag global RC
 const RC_FLAG = '__VIGIAPP_RC_CONFIGURED__';
-if (globalThis[RC_FLAG] === undefined) {globalThis[RC_FLAG] = false;}
+if (globalThis[RC_FLAG] === undefined) { globalThis[RC_FLAG] = false; }
 
 class RootErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { error: null }; }
@@ -65,6 +65,45 @@ class RootErrorBoundary extends React.Component {
 }
 
 function RCReadyHook() { logRC('RCReadyHook attached'); return null; }
+
+// --- helpers deep link → route
+function routeFromUrlLike(rawUrl) {
+  // supporte: vigiapp://public-alerts/ID, vigiapp://missing-public-alerts/ID
+  //           /public-alerts/ID, /missing-public-alerts/ID
+  try {
+    const s = String(rawUrl).trim();
+
+    // Tente extraction générique d’un path
+    let path = s;
+    if (s.startsWith('vigiapp://')) {
+      const u = new URL(s);
+      path = u.pathname || '';
+    }
+
+    // Matche les deux familles de routes
+    const m1 = path.match(/\/?public-alerts\/([^/?#]+)/i);
+    if (m1?.[1]) {
+      return { pathname: '/public-alerts/[id]', params: { id: m1[1] } };
+    }
+    const m2 = path.match(/\/?missing-public-alerts\/([^/?#]+)/i);
+    if (m2?.[1]) {
+      return { pathname: '/missing-public-alerts/[id]', params: { id: m2[1] } };
+    }
+
+    // Fallback legacy param style ?alertId=...
+    const q = s.match(/[?&](?:alertId|id)=([^&#]+)/i);
+    if (q?.[1]) {
+      // Par défaut vers public-alerts si pas de hint — mais on garde aussi missing si l’URL le dit
+      if (/missing/i.test(s)) {
+        return { pathname: '/missing-public-alerts/[id]', params: { id: q[1] } };
+      }
+      return { pathname: '/public-alerts/[id]', params: { id: q[1] } };
+    }
+  } catch (e) {
+    warnN('routeFromUrlLike error:', e?.message || e);
+  }
+  return null;
+}
 
 // --- InnerLayout : consomme les insets SOUS le Provider ---
 function InnerLayout() {
@@ -96,19 +135,20 @@ function InnerLayout() {
     (async () => {
       try { wireAuthGateForNotifications(); } catch (e) { warnN('auth-gate:', e?.message || e); }
       try { await initNotifications(); } catch (e) { warnN('init:', e?.message || e); }
+
       try {
         detachNotif = attachNotificationListeners({
           onReceive: (n) => logN('onReceive(FG):', n?.request?.content?.data),
           onResponse: (r) => {
             const data = r?.notification?.request?.content?.data || {};
             const rawUrl = data.url || data.deepLink || data.link || data.open;
-            if (!rawUrl) {return;}
-            try {
-              const m = String(rawUrl).trim().match(/(?:^vigiapp:\/\/|^\/?)(public-alerts)\/([^/?#]+)/i);
-              const id = m?.[2];
-              if (id) {setTimeout(() => router.push({ pathname: '/public-alerts/[id]', params: { id } }), 50);}
-              else {Linking.openURL(rawUrl).catch(() => {});}
-            } catch {}
+            if (!rawUrl) { return; }
+            const route = routeFromUrlLike(rawUrl);
+            if (route) {
+              setTimeout(() => router.push(route), 50);
+            } else {
+              Linking.openURL(String(rawUrl)).catch(() => {});
+            }
           },
         });
       } catch (e) { warnN('listeners:', e?.message || e); }
@@ -118,16 +158,18 @@ function InnerLayout() {
         const data = initial?.notification?.request?.content?.data || {};
         const rawUrl = data.url || data.deepLink || data.link || data.open;
         if (rawUrl) {
-          const m = String(rawUrl).trim().match(/(?:^vigiapp:\/\/|^\/?)(public-alerts)\/([^/?#]+)/i);
-          const id = m?.[2];
-          if (id) {setTimeout(() => router.push({ pathname: '/public-alerts/[id]', params: { id } }), 50);}
-          else {Linking.openURL(rawUrl).catch(() => {});}
+          const route = routeFromUrlLike(rawUrl);
+          if (route) {
+            setTimeout(() => router.push(route), 50);
+          } else {
+            Linking.openURL(String(rawUrl)).catch(() => {});
+          }
         }
       } catch (e) { warnN('initialNotif:', e?.message || e); }
 
       try {
         const token = await getFcmDeviceTokenAsync();
-        if (token) {logN('FCM token ✅', token);} else {warnN('FCM token indisponible');}
+        if (token) { logN('FCM token ✅', token); } else { warnN('FCM token indisponible'); }
       } catch (e) { warnN('fcm token:', e?.message || e); }
 
       log('[Device] userId =', userId || '(anon)');

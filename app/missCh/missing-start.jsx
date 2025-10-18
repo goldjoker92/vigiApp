@@ -1,19 +1,30 @@
+// app/missing-start.jsx
 // ============================================================================
-// VigiApp — Flux unifié "Missing" (child/animal/object)
-// SANS DRAFT — écriture directe dans /missingCases, validation heuristique locale,
-// puis notification publique automatique (5 km enfant, 2 km animal/objet).
+// VigiApp — Flux "Missing" (child/animal/object)
+// Version épurée + UX responsive + docs séparés (Responsável / Criança)
+// Ajouts:
+//  - Type de doc adulte: RG (F+V), Passaporte (1), RNE (F+V) [étrangers]
+//  - Type de doc enfant: Certidão (1), RG criança (F+V), Passaporte criança (1), RNE criança (F+V)
+//  - Consent box: checkbox verte + contour + glow à l’activation
+//  - Placeholders plus légers, espacements aérés, scroll/keyboard agréables
+//  - Conservation de la logique (uploads id_front/id_back & link_front/link_back)
 // ============================================================================
 
-import React, { useEffect, useMemo, useRef, useReducer, useState, useCallback } from 'react';
+import React, {
+  useEffect, useMemo, useRef, useReducer, useState, useCallback,
+} from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity,
   Alert, Platform, KeyboardAvoidingView, Share, Linking,
 } from 'react-native';
 import * as Location from 'expo-location';
+import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { db, auth } from '../../firebase';
 import { doc, setDoc, Timestamp } from 'firebase/firestore';
-import { TriangleAlert, User, FileCheck2, ImageIcon, ChevronLeft, Share2 } from 'lucide-react-native';
+import {
+  TriangleAlert, User, FileCheck2, ImageIcon, ChevronLeft, Share2, Check
+} from 'lucide-react-native';
 
 // Flux
 import { FLOW_RULES, getFlow } from '../../src/miss/lib/flowRules';
@@ -33,15 +44,17 @@ import { validateClient } from '../../src/miss/lib/validations';
 // ---------------------------------------------------------------------------
 // Logger / Tracer
 // ---------------------------------------------------------------------------
-const NS = '[MISSING/UNIFIED]';
+const NS = '[MISSING/START]';
 const nowTs = () => new Date().toISOString();
-const newTraceId = (p = 'trace') => `${p}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+const newTraceId = (p = 'trace') =>
+  `${p}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 const msSince = (t0) => `${Math.max(0, Date.now() - t0)}ms`;
 const Log = {
   info: (...a) => console.log(NS, ...a),
   warn: (...a) => console.warn(NS, '⚠️', ...a),
   error: (...a) => console.error(NS, '❌', ...a),
-  step: (traceId, step, extra = {}) => console.log(NS, 'STEP', step, { traceId, at: nowTs(), ...extra }),
+  step: (traceId, step, extra = {}) =>
+    console.log(NS, 'STEP', step, { traceId, at: nowTs(), ...extra }),
 };
 
 // ---------------------------------------------------------------------------
@@ -51,7 +64,7 @@ function useLiteToast() {
   const [msg, setMsg] = useState(null);
   const timer = useRef(null);
   const show = (text) => {
-    if (timer.current) { clearTimeout(timer.current); } // reset timer
+    if (timer.current) { clearTimeout(timer.current); }
     const s = String(text);
     Log.info('TOAST', s);
     setMsg(s);
@@ -117,7 +130,7 @@ async function cfFetch(url, opts = {}, { attempts = 2, baseDelay = 400 } = {}) {
     try {
       const resp = await fetch(url, opts);
       const json = await resp.json().catch(() => null);
-      if (!resp.ok) { throw new Error(`HTTP_${resp.status}`); } // normalize errors
+      if (!resp.ok) { throw new Error(`HTTP_${resp.status}`); }
       Log.info('CF/OK', { status: resp.status });
       return { ok: true, json, status: resp.status };
     } catch (e) {
@@ -162,6 +175,19 @@ const isoToday = todayISO();
 const [Y, M, D] = isoToday.split('-');
 const initialDateBR = `${D}/${M}/${Y}`;
 
+// Types de documents (UX)
+const ADULT_ID_TYPES = [
+  { key: 'rg', label: 'RG (frente + verso)' },
+  { key: 'passport', label: 'Passaporte' },
+  { key: 'rne', label: 'RNE (frente + verso)' }, // 💡 Étrangers au Brésil
+];
+const CHILD_DOC_TYPES = [
+  { key: 'certidao', label: 'Certidão de nascimento' },
+  { key: 'rg_child', label: 'RG criança (frente + verso)' },
+  { key: 'passport_child', label: 'Passaporte criança' },
+  { key: 'rne_child', label: 'RNE criança (frente + verso)' }, // 💡 Étrangers
+];
+
 const initialForm = {
   // meta
   caseId: '',
@@ -170,10 +196,20 @@ const initialForm = {
   // guardian / legal (child only)
   guardianName: '',
   cpfRaw: '',
-  hasIdDoc: false,
-  hasLinkDoc: false,
-  idDocPath: '',
-  linkDocPath: '',
+  adultIdType: 'rg',       // 'rg' | 'passport' | 'rne'
+  childDocType: 'certidao', // 'certidao' | 'rg_child' | 'passport_child' | 'rne_child'
+
+  // flags
+  hasIdDocFront: false,
+  hasIdDocBack: false,
+  hasLinkDocFront: false,
+  hasLinkDocBack: false,
+
+  // paths
+  idDocFrontPath: '',
+  idDocBackPath: '',
+  linkDocFrontPath: '',
+  linkDocBackPath: '',
 
   // entity (name differs by type)
   primaryName: '',
@@ -222,7 +258,7 @@ function makeCaseId() {
   return `mc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 function ensureCaseId(currentId, dispatchRef) {
-  if (currentId && String(currentId).trim()) { return String(currentId); } // keep provided id
+  if (currentId && String(currentId).trim()) { return String(currentId); }
   const newId = makeCaseId();
   try { dispatchRef({ type: 'SET', key: 'caseId', value: newId }); } catch {}
   Log.info('CASE_ID/GENERATED', { newId });
@@ -232,7 +268,8 @@ function ensureCaseId(currentId, dispatchRef) {
 // ---------------------------------------------------------------------------
 // Validation heuristique + helpers
 // ---------------------------------------------------------------------------
-// NOTE: screenTraceIdRef est utilisé ci-dessous ; défini plus bas puis injecté.
+let screenTraceIdRef;
+
 async function captureGeolocationOnce({ timeoutMs = 6000 } = {}) {
   const traceId = screenTraceIdRef.current;
   Log.step(traceId, 'GEO/BEGIN');
@@ -279,13 +316,38 @@ async function fsUpsertCase(caseId, payload) {
   Log.info('FS/UPSERT_CASE/OK');
 }
 
+// ---------------------------------------------------------------------------
+// UI sous-composants
+// ---------------------------------------------------------------------------
+const Section = ({ title, subtitle, children, style }) => (
+  <View style={[styles.card, style]}>
+    <Text style={styles.cardTitle}>{title}</Text>
+    {subtitle ? <Text style={styles.cardSubtitle}>{subtitle}</Text> : null}
+    <View style={{ marginTop: 8 }}>{children}</View>
+  </View>
+);
+
+const ChipGroup = ({ options, activeKey, onSelect }) => (
+  <View style={styles.chipRow}>
+    {options.map((opt) => {
+      const active = activeKey === opt.key;
+      return (
+        <TouchableOpacity
+          key={opt.key}
+          onPress={() => onSelect(opt.key)}
+          style={[styles.chipBox, active && styles.chipBoxActive]}
+        >
+          <Text style={[styles.chipBoxTxt, active && styles.chipBoxTxtActive]}>{opt.label}</Text>
+        </TouchableOpacity>
+      );
+    })}
+  </View>
+);
+
 // ============================================================================
 // Composant principal
 // ============================================================================
-// NOTE: screenTraceIdRef est utilisé dans captureGeolocationOnce ; on le déclare avant son appel
-let screenTraceIdRef;
-
-export default function MissingUnified() {
+export default function MissingStart() {
   screenTraceIdRef = useRef(newTraceId('missing'));
   const screenMountTsRef = useRef(Date.now());
 
@@ -306,6 +368,18 @@ export default function MissingUnified() {
   const { show, Toast } = useLiteToast();
   const hasWA = useHasWhatsApp();
   const [busy, setBusy] = useState(false);
+
+  // Permissions (Image Picker) — best effort
+  useEffect(() => {
+    (async () => {
+      try {
+        const perm = await ImagePicker.requestMediaLibraryPermissionsAsync?.();
+        Log.info('IMG/perm_boot', perm);
+      } catch (e) {
+        Log.warn('IMG/perm_boot_err', e?.message || String(e));
+      }
+    })();
+  }, []);
 
   // Partage
   const shareMsg = useMemo(() => buildShareMessage({
@@ -340,8 +414,10 @@ export default function MissingUnified() {
       lastUF: String(form.lastUF || '').toUpperCase(),
       contextDesc: form.description,
       extraInfo: form.extraInfo,
-      hasIdDoc: form.hasIdDoc,
-      hasLinkDoc: form.hasLinkDoc,
+      hasIdDoc:
+        form.hasIdDocFront || form.hasIdDocBack || ['passport'].includes(form.adultIdType),
+      hasLinkDoc:
+        form.hasLinkDocFront || form.hasLinkDocBack || ['certidao','passport_child'].includes(form.childDocType),
       photoPath: form.photoPath,
     });
     return v.ok;
@@ -353,24 +429,20 @@ export default function MissingUnified() {
     const traceId = screenTraceIdRef.current;
     Log.step(traceId, 'PICK/BEGIN', { kind });
     try {
-      const ImagePicker = await import('expo-image-picker');
-
-      // 1) Permission
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync?.();
       Log.info('PICK/perm', { status: perm?.status, granted: perm?.granted });
-      if (!perm.granted) {
+      if (perm && !perm.granted) {
         show('Permissão recusada para galeria.');
         Log.warn('PICK/denied');
         return null;
       }
 
-      // 2) Lancement — API non dépréciée
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: [ImagePicker.MediaType.Images],
-        selectionLimit: 1,
+        MediaTypeOptionss: ImagePicker.MediaTypeOptions.Images, // ✅ SDK 51+
         allowsEditing: false,
         quality: 0.9,
         exif: false,
+        allowsMultipleSelection: false,
       });
 
       Log.info('PICK/result', {
@@ -378,15 +450,14 @@ export default function MissingUnified() {
         count: result?.assets?.length || 0,
         ms: msSince(t0),
       });
-      if (result.canceled || !result.assets?.length) { return null; }
+      if (result?.canceled || !result?.assets?.length) { return null; }
 
-      // 3) Normalisation
       const asset = result.assets[0];
       const uri = asset.uri;
       const fileName = asset.fileName || asset.filename || `upload_${Date.now()}.jpg`;
       const lower = (uri || '').toLowerCase();
 
-      let mime = asset.type === 'image' ? 'image/jpeg' : 'application/octet-stream';
+      let mime = asset.mimeType || (asset.type === 'image' ? 'image/jpeg' : 'application/octet-stream');
       if (lower.endsWith('.png')) { mime = 'image/png'; }
       else if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) { mime = 'image/jpeg'; }
       else if (lower.endsWith('.webp')) { mime = 'image/webp'; }
@@ -400,6 +471,7 @@ export default function MissingUnified() {
   }
 
   async function onUpload(kind) {
+    // kind ∈ {'id_front','id_back','link_front','link_back','photo'}
     const traceId = screenTraceIdRef.current;
     Log.step(traceId, 'UPLOAD/BEGIN', { kind, type, caseId });
     const picked = await pickFileFromLibrary(kind);
@@ -416,23 +488,39 @@ export default function MissingUnified() {
         geo: undefined,
       };
       let resp;
-      if (kind === 'id') { resp = await uploadIdDocument(common); }
-      else if (kind === 'link') { resp = await uploadLinkDocument(common); }
-      else if (kind === 'photo') { resp = await uploadChildPhoto(common); }
-      else { Log.warn('UPLOAD/UNKNOWN_KIND', kind); return; }
+      if (kind === 'photo') {
+        resp = await uploadChildPhoto(common);
+      } else if (kind === 'id_front' || kind === 'id_back') {
+        resp = await uploadIdDocument(common);
+      } else if (kind === 'link_front' || kind === 'link_back') {
+        resp = await uploadLinkDocument(common);
+      } else {
+        Log.warn('UPLOAD/UNKNOWN_KIND', kind);
+        return;
+      }
 
       Log.info('UPLOAD/RESP', { kind, ok: !!resp?.ok });
       if (!resp?.ok) { show(resp?.reason || 'Falha no upload.'); Log.warn('UPLOAD/KO', { kind }); return; }
 
-      if (kind === 'id') {
-        dispatch({ type: 'BULK_SET', payload: { hasIdDoc: true, idDocPath: resp.redactedUrl, caseId: ensuredId } });
-        show('Documento de identidade anexado.');
-      } else if (kind === 'link') {
-        dispatch({ type: 'BULK_SET', payload: { hasLinkDoc: true, linkDocPath: resp.redactedUrl, caseId: ensuredId } });
-        show('Documento de vínculo anexado.');
-      } else if (kind === 'photo') {
+      if (kind === 'photo') {
         dispatch({ type: 'BULK_SET', payload: { photoPath: resp.redactedUrl, caseId: ensuredId } });
         show('Foto anexada.');
+      }
+      if (kind === 'id_front') {
+        dispatch({ type: 'BULK_SET', payload: { hasIdDocFront: true, idDocFrontPath: resp.redactedUrl, caseId: ensuredId } });
+        show('Documento (frente) anexado.');
+      }
+      if (kind === 'id_back') {
+        dispatch({ type: 'BULK_SET', payload: { hasIdDocBack: true, idDocBackPath: resp.redactedUrl, caseId: ensuredId } });
+        show('Documento (verso) anexado.');
+      }
+      if (kind === 'link_front') {
+        dispatch({ type: 'BULK_SET', payload: { hasLinkDocFront: true, linkDocFrontPath: resp.redactedUrl, caseId: ensuredId } });
+        show('Vínculo (frente) anexado.');
+      }
+      if (kind === 'link_back') {
+        dispatch({ type: 'BULK_SET', payload: { hasLinkDocBack: true, linkDocBackPath: resp.redactedUrl, caseId: ensuredId } });
+        show('Vínculo (verso) anexado.');
       }
 
       Log.step(traceId, 'UPLOAD/END', { kind });
@@ -450,7 +538,6 @@ export default function MissingUnified() {
     const traceId = screenTraceIdRef.current;
     Log.step(traceId, 'SUBMIT/BEGIN', { type });
 
-    // Validation centralisée
     const v = validateClient({
       type,
       guardianName: form.guardianName,
@@ -462,14 +549,15 @@ export default function MissingUnified() {
       lastUF: String(form.lastUF || '').toUpperCase(),
       contextDesc: form.description,
       extraInfo: form.extraInfo,
-      hasIdDoc: form.hasIdDoc,
-      hasLinkDoc: form.hasLinkDoc,
+      hasIdDoc:
+        form.hasIdDocFront || form.hasIdDocBack || ['passport'].includes(form.adultIdType),
+      hasLinkDoc:
+        form.hasLinkDocFront || form.hasLinkDocBack || ['certidao','passport_child'].includes(form.childDocType),
       photoPath: form.photoPath,
     });
 
     setBusy(true);
     try {
-      // Assurer un caseId
       const ensuredId = ensureCaseId(caseId, dispatch);
 
       // Localisation (best-effort)
@@ -481,7 +569,6 @@ export default function MissingUnified() {
         : null;
 
       if (!v.ok) {
-        // Rejet: persistance + raisons + toast
         await fsUpsertCase(ensuredId, {
           kind: type,
           ownerId: auth.currentUser?.uid || 'anon',
@@ -498,7 +585,14 @@ export default function MissingUnified() {
           guardian: type === 'child' ? {
             fullName: form.guardianName?.trim() || '',
             cpfRaw: onlyDigits(form.cpfRaw),
-            docs: { idDocRedacted: form.idDocPath || '', linkDocRedacted: form.linkDocPath || '' },
+            idType: form.adultIdType,
+            childDocType: form.childDocType,
+            docs: {
+              idDocFrontRedacted: form.idDocFrontPath || '',
+              idDocBackRedacted: form.idDocBackPath || '',
+              linkDocFrontRedacted: form.linkDocFrontPath || '',
+              linkDocBackRedacted: form.linkDocBackPath || '',
+            },
           } : undefined,
           consent: !!form.consent,
           status: 'rejected',
@@ -512,7 +606,7 @@ export default function MissingUnified() {
         return;
       }
 
-      // Validé: on persiste (warnings inclus)
+      // Validé
       const payloadValidated = {
         kind: type,
         ownerId: auth.currentUser?.uid || 'anon',
@@ -529,7 +623,14 @@ export default function MissingUnified() {
         guardian: type === 'child' ? {
           fullName: form.guardianName?.trim() || '',
           cpfRaw: onlyDigits(form.cpfRaw),
-          docs: { idDocRedacted: form.idDocPath || '', linkDocRedacted: form.linkDocPath || '' },
+          idType: form.adultIdType,
+          childDocType: form.childDocType,
+          docs: {
+            idDocFrontRedacted: form.idDocFrontPath || '',
+            idDocBackRedacted: form.idDocBackPath || '',
+            linkDocFrontRedacted: form.linkDocFrontPath || '',
+            linkDocBackRedacted: form.linkDocBackPath || '',
+          },
         } : undefined,
         consent: !!form.consent,
         status: 'validated',
@@ -548,7 +649,14 @@ export default function MissingUnified() {
           guardian: {
             fullName: form.guardianName?.trim() || '',
             cpfRaw: onlyDigits(form.cpfRaw),
-            docProofs: ['ID_FRONT', 'LINK_CHILD_DOC'],
+            idType: form.adultIdType,
+            childDocType: form.childDocType,
+            docProofs: [
+              form.idDocFrontPath && 'ID_FRONT',
+              form.idDocBackPath && 'ID_BACK',
+              form.linkDocFrontPath && 'LINK_CHILD_DOC_FRONT',
+              form.linkDocBackPath && 'LINK_CHILD_DOC_BACK',
+            ].filter(Boolean),
           },
           child: {
             firstName: form.primaryName?.trim() || '',
@@ -570,7 +678,7 @@ export default function MissingUnified() {
           .catch((e) => Log.warn('CF verifyGuardian err', e?.message || String(e)));
       }
 
-      // Publication auto (5 km enfant / 2 km animal/objet)
+      // Publication auto
       const endereco = [
         [form.lastRua, form.lastNumero].filter(Boolean).join(', '),
         [form.lastCidade, String(form.lastUF || '').toUpperCase()].filter(Boolean).join(' / '),
@@ -611,9 +719,17 @@ export default function MissingUnified() {
     }
   }, [type, form, router, caseId, show]);
 
-  // RENDER
+  // RENDER rules (recto/verso)
+  const needsAdultBack = ['rg','rne'].includes(form.adultIdType);
+  const needsChildBack = ['rg_child','rne_child'].includes(form.childDocType);
+  const needsChildFront = ['certidao', 'rg_child', 'passport_child', 'rne_child'].includes(form.childDocType);
+
   return (
-    <KeyboardAvoidingView behavior={Platform.select({ ios: 'padding', android: undefined })} style={{ flex: 1 }}>
+    <KeyboardAvoidingView
+      behavior={Platform.select({ ios: 'padding', android: undefined })}
+      keyboardVerticalOffset={Platform.select({ ios: 60, android: 0 })}
+      style={{ flex: 1 }}
+    >
       <View style={styles.page}>
         {/* Toast overlay */}
         <View style={{ position: 'absolute', top: 0, left: 0, right: 0 }}>{Toast}</View>
@@ -628,19 +744,31 @@ export default function MissingUnified() {
           <View style={{ width: 60 }} />
         </View>
 
-        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-          {/* Bandeau attention */}
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* Bandeau attention minimal */}
           <View style={styles.alertCard}>
-            <TriangleAlert color="#1f2937" size={20} style={{ marginRight: 10 }} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.alertTitle}>Uso responsável</Text>
-              <Text style={styles.alertMsg}>Boa fé e responsabilidade. VigiApp não substitui autoridades.</Text>
-            </View>
+            <TriangleAlert color="#111827" size={18} style={{ marginRight: 8 }} />
+            <Text style={styles.alertMsg}>
+              Uso responsável. Boa fé. VigiApp não substitui autoridades.
+            </Text>
           </View>
 
-          {/* Bloc docs légaux — uniquement child */}
+          {/* DOCUMENTS — Responsável (Adulto) */}
           {type === 'child' && (
-            <>
+            <Section
+              title="Documentos do responsável"
+              subtitle="Escolha o tipo e anexe as imagens. Para RNE e RG, frentes e versos."
+            >
+              <ChipGroup
+                options={ADULT_ID_TYPES}
+                activeKey={form.adultIdType}
+                onSelect={(k) => dispatch({ type: 'SET', key: 'adultIdType', value: k })}
+              />
+
+              {/* Identité du responsable */}
               <View style={styles.row}>
                 <TextInput
                   style={styles.input}
@@ -664,205 +792,282 @@ export default function MissingUnified() {
                 />
               </View>
 
+              {/* Uploads Adulto */}
               <View style={styles.row}>
                 <TouchableOpacity
-                  style={[styles.btnGhost, form.hasIdDoc && styles.btnGhostOk]}
-                  onPress={() => onUpload('id')}
+                  style={[styles.btnGhost, form.hasIdDocFront && styles.btnGhostOk]}
+                  onPress={() => onUpload('id_front')}
                   disabled={busy}
                 >
-                  <FileCheck2 color={form.hasIdDoc ? '#22C55E' : '#7dd3fc'} size={16} />
-                  <Text style={styles.btnGhostTxt}>{form.hasIdDoc ? 'ID anexado ✅' : 'Anexar doc. identidade'}</Text>
+                  <FileCheck2 color={form.hasIdDocFront ? '#22C55E' : '#7dd3fc'} size={16} />
+                  <Text style={styles.btnGhostTxt}>
+                    {form.adultIdType === 'passport'
+                      ? (form.hasIdDocFront ? 'Passaporte ✅' : 'Anexar passaporte')
+                      : (form.hasIdDocFront
+                          ? `${form.adultIdType === 'rne' ? 'RNE' : 'RG'} (frente) ✅`
+                          : `Anexar ${form.adultIdType === 'rne' ? 'RNE' : 'RG'} (frente)`)}
+                  </Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={[styles.btnGhost, form.hasLinkDoc && styles.btnGhostOk]}
-                  onPress={() => onUpload('link')}
-                  disabled={busy}
-                >
-                  <FileCheck2 color={form.hasLinkDoc ? '#22C55E' : '#7dd3fc'} size={16} />
-                  <Text style={styles.btnGhostTxt}>{form.hasLinkDoc ? 'Vínculo anexado ✅' : 'Anexar doc. vínculo'}</Text>
-                </TouchableOpacity>
-              </View>
-            </>
-          )}
-
-          {/* Nom principal */}
-          <View style={styles.row}>
-            <TextInput
-              style={styles.input}
-              placeholder={
-                type === 'animal' ? 'Nome do animal' :
-                type === 'object' ? 'Objeto (ex.: iPhone 13, mochila preta)' :
-                'Primeiro nome da criança'
-              }
-              placeholderTextColor="#9aa0a6"
-              value={form.primaryName}
-              onChangeText={(v) => dispatch({ type: 'SET', key: 'primaryName', value: v })}
-              autoCapitalize="words"
-            />
-          </View>
-
-          {/* Child-only extras */}
-          {type === 'child' && (
-            <>
-              <View style={styles.row}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Data de nascimento (DD/MM/AAAA)"
-                  placeholderTextColor="#9aa0a6"
-                  value={form.childDobBR}
-                  onChangeText={(v) => dispatch({ type: 'SET', key: 'childDobBR', value: v })}
-                  maxLength={10}
-                  keyboardType="number-pad"
-                />
-              </View>
-              <View style={[styles.row, { gap: 10 }]}>
-                {['F', 'M'].map((s) => (
+                {needsAdultBack && (
                   <TouchableOpacity
-                    key={s}
-                    style={sexoChipStyle(form.childSex, s)}
-                    onPress={() => dispatch({ type: 'SET', key: 'childSex', value: s })}
+                    style={[styles.btnGhost, form.hasIdDocBack && styles.btnGhostOk]}
+                    onPress={() => onUpload('id_back')}
+                    disabled={busy}
                   >
-                    <Text style={styles.chipTxtActive}>{s === 'M' ? 'Menino' : 'Menina'}</Text>
+                    <FileCheck2 color={form.hasIdDocBack ? '#22C55E' : '#7dd3fc'} size={16} />
+                    <Text style={styles.btnGhostTxt}>
+                      {form.hasIdDocBack
+                        ? `${form.adultIdType === 'rne' ? 'RNE' : 'RG'} (verso) ✅`
+                        : `Anexar ${form.adultIdType === 'rne' ? 'RNE' : 'RG'} (verso)`}
+                    </Text>
                   </TouchableOpacity>
-                ))}
+                )}
               </View>
-            </>
+            </Section>
           )}
 
-          {/* Date/heure + adresse */}
-          <View style={styles.row}>
-            <TextInput
-              style={styles.input}
-              placeholder="Data (DD/MM/AAAA)"
-              placeholderTextColor="#9aa0a6"
-              value={form.lastSeenDateBR}
-              onChangeText={(v) => dispatch({ type: 'SET', key: 'lastSeenDateBR', value: v })}
-              maxLength={10}
-              keyboardType="number-pad"
-            />
-          </View>
-
-          <View style={styles.row}>
-            <TextInput
-              style={styles.input}
-              placeholder="Hora (HH:mm) — opcional"
-              placeholderTextColor="#9aa0a6"
-              value={form.lastSeenTime}
-              onChangeText={(v) => dispatch({ type: 'SET', key: 'lastSeenTime', value: v })}
-              maxLength={5}
-              keyboardType="number-pad"
-            />
-          </View>
-
-          <View style={styles.row}>
-            <TextInput
-              style={[styles.input, { flex: 1 }]}
-              placeholder="Rua (opcional)"
-              placeholderTextColor="#9aa0a6"
-              value={form.lastRua}
-              onChangeText={(v) => dispatch({ type: 'SET', key: 'lastRua', value: v })}
-            />
-            <TextInput
-              style={[styles.input, { width: 120 }]}
-              placeholder="N° (opcional)"
-              placeholderTextColor="#9aa0a6"
-              value={form.lastNumero}
-              onChangeText={(v) => dispatch({ type: 'SET', key: 'lastNumero', value: v })}
-              keyboardType="number-pad"
-            />
-          </View>
-
-          <View style={styles.row}>
-            <TextInput
-              style={[styles.input, { flex: 1 }]}
-              placeholder="Cidade"
-              placeholderTextColor="#9aa0a6"
-              value={form.lastCidade}
-              onChangeText={(v) => dispatch({ type: 'SET', key: 'lastCidade', value: v })}
-              autoCapitalize="words"
-            />
-            <TextInput
-              style={[styles.input, { width: 100 }]}
-              placeholder="UF"
-              placeholderTextColor="#9aa0a6"
-              value={form.lastUF}
-              onChangeText={(v) => dispatch({ type: 'SET', key: 'lastUF', value: String(v).toUpperCase() })}
-              autoCapitalize="characters"
-              maxLength={2}
-            />
-          </View>
-
-          {/* Photo */}
-          <View style={styles.row}>
-            <TouchableOpacity
-              style={[styles.btnGhost, form.photoPath && styles.btnGhostOk]}
-              onPress={() => onUpload('photo')}
-              disabled={busy}
+          {/* DOCUMENTS — Criança (Vínculo) */}
+          {type === 'child' && (
+            <Section
+              title="Documento da criança (vínculo)"
+              subtitle="Certidão (1), RG/RNE (frente+verso) ou Passaporte (1)."
             >
-              <ImageIcon color={form.photoPath ? '#22C55E' : '#fca5a5'} size={16} />
-              <Text style={styles.btnGhostTxt}>{form.photoPath ? 'Foto anexada ✅' : 'Anexar foto'}</Text>
-            </TouchableOpacity>
-          </View>
+              <ChipGroup
+                options={CHILD_DOC_TYPES}
+                activeKey={form.childDocType}
+                onSelect={(k) => dispatch({ type: 'SET', key: 'childDocType', value: k })}
+              />
 
-          {/* Description + Infos complémentaires */}
-          <View style={styles.row}>
-            <TextInput
-              style={[styles.input, styles.multiline]}
-              placeholder={
-                type === 'animal'
-                  ? 'Descrição (porte, raça, coleira, comportamento, onde foi visto)...'
-                  : type === 'object'
-                    ? 'Descrição (marca, modelo, cor, número de série se houver)...'
-                    : 'Descrição do caso (onde/como, último trajeto, companhia, motivo provável)...'
-              }
-              placeholderTextColor="#9aa0a6"
-              value={form.description}
-              onChangeText={(v) => dispatch({ type: 'SET', key: 'description', value: v })}
-              multiline
-            />
-          </View>
+              {needsChildFront && (
+                <View style={styles.row}>
+                  <TouchableOpacity
+                    style={[styles.btnGhost, form.hasLinkDocFront && styles.btnGhostOk]}
+                    onPress={() => onUpload('link_front')}
+                    disabled={busy}
+                  >
+                    <FileCheck2 color={form.hasLinkDocFront ? '#22C55E' : '#7dd3fc'} size={16} />
+                    <Text style={styles.btnGhostTxt}>
+                      {form.childDocType === 'certidao'
+                        ? (form.hasLinkDocFront ? 'Certidão ✅' : 'Anexar certidão')
+                        : form.childDocType === 'passport_child'
+                          ? (form.hasLinkDocFront ? 'Passaporte (criança) ✅' : 'Anexar passaporte (criança)')
+                          : (form.hasLinkDocFront
+                              ? `${form.childDocType === 'rne_child' ? 'RNE criança' : 'RG criança'} (frente) ✅`
+                              : `Anexar ${form.childDocType === 'rne_child' ? 'RNE criança' : 'RG criança'} (frente)`)
+                      }
+                    </Text>
+                  </TouchableOpacity>
 
-          <View style={styles.row}>
-            <TextInput
-              style={[styles.input, styles.multiline]}
-              placeholder={
-                type === 'animal'
-                  ? 'Informações complementares (sinais, microchip, necessidades especiais)...'
-                  : type === 'object'
-                    ? 'Informações complementares (capa, adesivos, acessórios, IMEI)...'
-                    : 'Informações complementares (roupa, apelidos, sinais visíveis)...'
-              }
-              placeholderTextColor="#9aa0a6"
-              value={form.extraInfo}
-              onChangeText={(v) => dispatch({ type: 'SET', key: 'extraInfo', value: v })}
-              multiline
-            />
-          </View>
+                  {needsChildBack && (
+                    <TouchableOpacity
+                      style={[styles.btnGhost, form.hasLinkDocBack && styles.btnGhostOk]}
+                      onPress={() => onUpload('link_back')}
+                      disabled={busy}
+                    >
+                      <FileCheck2 color={form.hasLinkDocBack ? '#22C55E' : '#7dd3fc'} size={16} />
+                      <Text style={styles.btnGhostTxt}>
+                        {form.hasLinkDocBack
+                          ? `${form.childDocType === 'rne_child' ? 'RNE criança' : 'RG criança'} (verso) ✅`
+                          : `Anexar ${form.childDocType === 'rne_child' ? 'RNE criança' : 'RG criança'} (verso)`}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+            </Section>
+          )}
 
-          {/* Consentement */}
+          {/* IDENTITÉ PRINCIPALE */}
+          <Section
+            title={type === 'animal' ? 'Animal' : type === 'object' ? 'Objeto' : 'Criança'}
+            subtitle={type === 'animal'
+              ? 'Nome e sinais ajudam na identificação.'
+              : type === 'object'
+                ? 'Ex.: iPhone 13, mochila preta…'
+                : 'Primeiro nome ajuda a circulação do alerta.'
+            }
+          >
+            <View style={styles.row}>
+              <TextInput
+                style={styles.input}
+                placeholder={
+                  type === 'animal' ? 'Nome do animal'
+                  : type === 'object' ? 'Objeto'
+                  : 'Primeiro nome da criança'
+                }
+                placeholderTextColor="#9aa0a6"
+                value={form.primaryName}
+                onChangeText={(v) => dispatch({ type: 'SET', key: 'primaryName', value: v })}
+                autoCapitalize="words"
+              />
+            </View>
+
+            {type === 'child' && (
+              <>
+                <View style={styles.row}>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Data de nascimento (DD/MM/AAAA)"
+                    placeholderTextColor="#9aa0a6"
+                    value={form.childDobBR}
+                    onChangeText={(v) => dispatch({ type: 'SET', key: 'childDobBR', value: v })}
+                    maxLength={10}
+                    keyboardType="number-pad"
+                  />
+                </View>
+                <View style={styles.sexoRow}>
+                  {['F', 'M'].map((s) => (
+                    <TouchableOpacity
+                      key={s}
+                      style={sexoChipStyle(form.childSex, s)}
+                      onPress={() => dispatch({ type: 'SET', key: 'childSex', value: s })}
+                    >
+                      <Text style={styles.chipTxtActive}>{s === 'M' ? 'Menino' : 'Menina'}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
+          </Section>
+
+          {/* LIEU / TEMPS */}
+          <Section title="Onde e quando" subtitle="Preencha o que souber.">
+            <View style={styles.row}>
+              <TextInput
+                style={styles.input}
+                placeholder="Data (DD/MM/AAAA)"
+                placeholderTextColor="#9aa0a6"
+                value={form.lastSeenDateBR}
+                onChangeText={(v) => dispatch({ type: 'SET', key: 'lastSeenDateBR', value: v })}
+                maxLength={10}
+                keyboardType="number-pad"
+              />
+              <TextInput
+                style={[styles.input, { width: 120 }]}
+                placeholder="Hora (HH:mm)"
+                placeholderTextColor="#9aa0a6"
+                value={form.lastSeenTime}
+                onChangeText={(v) => dispatch({ type: 'SET', key: 'lastSeenTime', value: v })}
+                maxLength={5}
+                keyboardType="number-pad"
+              />
+            </View>
+
+            <View style={styles.row}>
+              <TextInput
+                style={[styles.input, { flex: 1 }]}
+                placeholder="Rua (opcional)"
+                placeholderTextColor="#9aa0a6"
+                value={form.lastRua}
+                onChangeText={(v) => dispatch({ type: 'SET', key: 'lastRua', value: v })}
+              />
+              <TextInput
+                style={[styles.input, { width: 120 }]}
+                placeholder="N°"
+                placeholderTextColor="#9aa0a6"
+                value={form.lastNumero}
+                onChangeText={(v) => dispatch({ type: 'SET', key: 'lastNumero', value: v })}
+                keyboardType="number-pad"
+              />
+            </View>
+
+            <View style={styles.row}>
+              <TextInput
+                style={[styles.input, { flex: 1 }]}
+                placeholder="Cidade"
+                placeholderTextColor="#9aa0a6"
+                value={form.lastCidade}
+                onChangeText={(v) => dispatch({ type: 'SET', key: 'lastCidade', value: v })}
+                autoCapitalize="words"
+              />
+              <TextInput
+                style={[styles.input, { width: 100 }]}
+                placeholder="UF"
+                placeholderTextColor="#9aa0a6"
+                value={form.lastUF}
+                onChangeText={(v) => dispatch({ type: 'SET', key: 'lastUF', value: String(v).toUpperCase() })}
+                autoCapitalize="characters"
+                maxLength={2}
+              />
+            </View>
+          </Section>
+
+          {/* PHOTO */}
+          <Section title="Foto" subtitle="Melhor uma foto recente e nítida.">
+            <View style={styles.row}>
+              <TouchableOpacity
+                style={[styles.btnGhost, form.photoPath && styles.btnGhostOk]}
+                onPress={() => onUpload('photo')}
+                disabled={busy}
+              >
+                <ImageIcon color={form.photoPath ? '#22C55E' : '#9aa0a6'} size={16} />
+                <Text style={styles.btnGhostTxt}>{form.photoPath ? 'Foto anexada ✅' : 'Anexar foto'}</Text>
+              </TouchableOpacity>
+            </View>
+          </Section>
+
+          {/* DESCRIÇÃO */}
+          <Section title="Detalhes" subtitle="Ajude quem vê o alerta a reconhecer.">
+            <View style={styles.row}>
+              <TextInput
+                style={[styles.input, styles.multiline]}
+                placeholder={
+                  type === 'animal'
+                    ? 'Descrição (porte, raça, coleira, comportamento, onde foi visto)…'
+                    : type === 'object'
+                      ? 'Descrição (marca, modelo, cor, número de série)…'
+                      : 'Descrição do caso (onde/como, último trajeto, companhia)…'
+                }
+                placeholderTextColor="#9aa0a6"
+                value={form.description}
+                onChangeText={(v) => dispatch({ type: 'SET', key: 'description', value: v })}
+                multiline
+              />
+            </View>
+
+            <View style={styles.row}>
+              <TextInput
+                style={[styles.input, styles.multiline]}
+                placeholder={
+                  type === 'animal'
+                    ? 'Informações complementares (sinais, microchip, necessidades)…'
+                    : type === 'object'
+                      ? 'Informações complementares (capa, adesivos, acessórios, IMEI)…'
+                      : 'Informações complementares (roupa, apelidos, sinais visíveis)…'
+                }
+                placeholderTextColor="#9aa0a6"
+                value={form.extraInfo}
+                onChangeText={(v) => dispatch({ type: 'SET', key: 'extraInfo', value: v })}
+                multiline
+              />
+            </View>
+          </Section>
+
+          {/* CONSENTEMENT */}
           <TouchableOpacity
+            activeOpacity={0.9}
             style={[styles.consentBox, form.consent && styles.consentBoxOn]}
             onPress={() => dispatch({ type: 'SET', key: 'consent', value: !form.consent })}
           >
-            <User color={form.consent ? '#22C55E' : '#9aa0a6'} size={16} />
+            <View style={[styles.checkbox, form.consent && styles.checkboxOn]}>
+              {form.consent ? <Check size={16} color="#0f172a" /> : null}
+            </View>
+            <User color={form.consent ? '#16a34a' : '#9aa0a6'} size={16} />
             <Text style={styles.consentTxt}>{flow.consentLabel}</Text>
           </TouchableOpacity>
 
-          {/* Actions */}
-          <View style={{ height: 12 }} />
-
+          {/* ACTIONS */}
           <TouchableOpacity
-            style={[styles.primaryBtn, { backgroundColor: canSubmit ? '#22C55E' : '#475569' }]}
+            style={[styles.primaryBtn, { backgroundColor: canSubmit ? '#22C55E' : '#374151' }]}
             onPress={guard('submit', async () => withBackoff(onSubmit, { attempts: 2, baseDelay: 600 }))}
             disabled={!canSubmit || busy || running('submit')}
           >
-            <Text style={styles.primaryTxt}>{(busy || running('submit')) ? 'Enviando...' : 'Enviar'}</Text>
+            <Text style={styles.primaryTxt}>{(busy || running('submit')) ? 'Enviando…' : 'Enviar'}</Text>
           </TouchableOpacity>
 
           {/* Partilha */}
-          <View style={styles.row}>
-            <View style={{ flex: 1 }} />
+          <View style={styles.shareRow}>
             <TouchableOpacity
               style={styles.shareBtn}
               onPress={async () => { Log.info('SHARE/native/click'); await shareNative(shareMsg); }}
@@ -871,10 +1076,7 @@ export default function MissingUnified() {
               <Share2 color="#0ea5e9" size={16} />
               <Text style={styles.shareTxt}>Compartilhar</Text>
             </TouchableOpacity>
-          </View>
-
-          {hasWA && (
-            <View style={{ marginTop: 10 }}>
+            {hasWA && (
               <TouchableOpacity
                 style={[styles.shareBtn, { borderColor: '#22C55E' }]}
                 onPress={async () => { Log.info('SHARE/whatsapp/click'); await shareWhatsApp(shareMsg); }}
@@ -883,10 +1085,10 @@ export default function MissingUnified() {
                 <Share2 color="#22C55E" size={16} />
                 <Text style={[styles.shareTxt, { color: '#22C55E' }]}>WhatsApp</Text>
               </TouchableOpacity>
-            </View>
-          )}
+            )}
+          </View>
 
-          <View style={{ height: 28 }} />
+          <View style={{ height: 24 }} />
         </ScrollView>
       </View>
     </KeyboardAvoidingView>
@@ -904,58 +1106,87 @@ function sexoChipStyle(current, s) {
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#181A20' },
+  page: { flex: 1, backgroundColor: '#0b0f14' },
+
   topbar: {
     paddingTop: Platform.select({ ios: 14, android: 10, default: 12 }),
     paddingHorizontal: 14,
     paddingBottom: 8,
     flexDirection: 'row',
     alignItems: 'center',
-    borderBottomColor: '#2a2f39',
+    borderBottomColor: '#111827',
     borderBottomWidth: StyleSheet.hairlineWidth,
+    backgroundColor: '#0b0f14',
   },
-  backBtn: { flexDirection: 'row', alignItems: 'center' },
-  backTxt: { color: '#fff', marginLeft: 4, fontSize: 15 },
-  topTitle: { color: '#fff', fontSize: 16, fontWeight: '700', flex: 1, textAlign: 'center' },
-  scroll: { padding: 18, paddingBottom: 40 },
+  backBtn: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingRight: 8 },
+  backTxt: { color: '#e5e7eb', marginLeft: 4, fontSize: 15 },
+  topTitle: { color: '#e5e7eb', fontSize: 16, fontWeight: '700', flex: 1, textAlign: 'center' },
+
+  scroll: { padding: 16, paddingBottom: 40 },
 
   alertCard: {
     flexDirection: 'row',
-    backgroundColor: '#fbbf24',
-    padding: 12,
+    backgroundColor: '#fef3c7',
+    padding: 10,
     borderRadius: 12,
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  alertMsg: { color: '#111827', fontSize: 13 },
+
+  card: {
+    backgroundColor: '#0e141b',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#17202a',
     marginBottom: 12,
   },
-  alertTitle: { color: '#1f2937', fontSize: 14, fontWeight: '800', marginBottom: 2 },
-  alertMsg: { color: '#1f2937', fontSize: 13, opacity: 0.95 },
+  cardTitle: { color: '#f3f4f6', fontSize: 15, fontWeight: '800' },
+  cardSubtitle: { color: '#9aa0a6', fontSize: 12, marginTop: 2 },
 
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10 },
 
   input: {
     flex: 1,
     borderWidth: 1,
-    borderColor: '#353840',
-    backgroundColor: '#222',
-    color: '#fff',
-    padding: 11,
-    borderRadius: 10,
+    borderColor: '#1f2a35',
+    backgroundColor: '#0b1117',
+    color: '#e5e7eb',
+    paddingVertical: 11,
+    paddingHorizontal: 12,
+    borderRadius: 12,
   },
   multiline: { height: 96, textAlignVertical: 'top' },
 
-  chip: { borderRadius: 20, paddingVertical: 8, paddingHorizontal: 12 },
-  chipF: { backgroundColor: '#31232c', borderWidth: 2, borderColor: '#f472b6' },
+  sexoRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
+
+  chip: { borderRadius: 18, paddingVertical: 8, paddingHorizontal: 12 },
+  chipF: { backgroundColor: '#241b24', borderWidth: 2, borderColor: '#f472b6' },
   chipFActive: { backgroundColor: '#f472b6', borderWidth: 2, borderColor: '#f472b6' },
-  chipM: { backgroundColor: '#2f2222', borderWidth: 2, borderColor: '#ef4444' },
+  chipM: { backgroundColor: '#231a1a', borderWidth: 2, borderColor: '#ef4444' },
   chipMActive: { backgroundColor: '#ef4444', borderWidth: 2, borderColor: '#ef4444' },
   chipTxtActive: { color: '#fff', fontWeight: '700' },
 
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
+  chipBox: {
+    backgroundColor: '#0b1117',
+    borderWidth: 1,
+    borderColor: '#1f2a35',
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  },
+  chipBoxActive: { borderColor: '#22C55E' },
+  chipBoxTxt: { color: '#cfd3db', fontWeight: '700' },
+  chipBoxTxtActive: { color: '#22C55E' },
+
   btnGhost: {
     flex: 1,
-    backgroundColor: '#23262F',
-    borderWidth: 2,
-    borderColor: '#23262F',
-    borderRadius: 10,
+    backgroundColor: '#0b1117',
+    borderWidth: 1,
+    borderColor: '#1f2a35',
+    borderRadius: 12,
     paddingVertical: 10,
     paddingHorizontal: 12,
     flexDirection: 'row',
@@ -967,28 +1198,52 @@ const styles = StyleSheet.create({
   btnGhostTxt: { color: '#cfd3db', fontWeight: '600' },
 
   consentBox: {
-    marginTop: 12,
-    backgroundColor: '#23262F',
-    borderColor: '#353840',
+    marginTop: 4,
+    marginBottom: 8,
+    backgroundColor: '#0b1117',
+    borderColor: '#233244',
     borderWidth: 1,
-    borderRadius: 10,
+    borderRadius: 14,
     padding: 12,
     flexDirection: 'row',
-    gap: 8,
+    gap: 10,
     alignItems: 'center',
   },
-  consentBoxOn: { borderColor: '#22C55E' },
-  consentTxt: { color: '#cfd3db', flex: 1 },
+  consentBoxOn: {
+    borderColor: '#22C55E',
+    shadowColor: '#22C55E',
+    shadowOpacity: 0.55,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 6,
+  },
+  checkbox: {
+    width: 20, height: 20, borderRadius: 6,
+    borderWidth: 2, borderColor: '#6b7280',
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+  checkboxOn: {
+    borderColor: '#16a34a',
+    backgroundColor: '#22C55E',
+  },
+  consentTxt: { color: '#cfd3db', flex: 1, fontSize: 13, lineHeight: 18 },
 
-  primaryBtn: { marginTop: 16, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
-  primaryTxt: { color: '#000', fontWeight: '800', fontSize: 16 },
+  primaryBtn: {
+    marginTop: 10,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  primaryTxt: { color: '#0b0f14', fontWeight: '800', fontSize: 16 },
 
+  shareRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
   shareBtn: {
     flex: 1,
-    borderRadius: 10,
+    borderRadius: 12,
     paddingVertical: 12,
     alignItems: 'center',
-    backgroundColor: '#111827',
+    backgroundColor: '#0b1117',
     borderWidth: 1,
     borderColor: '#0ea5e9',
     flexDirection: 'row',
@@ -1002,8 +1257,8 @@ const styles = StyleSheet.create({
     top: Platform.select({ ios: 66, android: 48, default: 56 }),
     left: 10,
     right: 10,
-    backgroundColor: '#2b2e36',
-    borderColor: '#3a3f4b',
+    backgroundColor: '#0e141b',
+    borderColor: '#17202a',
     borderWidth: 1,
     paddingVertical: 10,
     paddingHorizontal: 12,
