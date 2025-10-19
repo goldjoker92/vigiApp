@@ -26,9 +26,9 @@ setGlobalOptions({
 function log(level, msg, extra = {}) {
   const line = { ts: new Date().toISOString(), service: 'api', level, msg, ...extra };
   const text = JSON.stringify(line);
-  if (level === 'error') {console.error(text);}
-  else if (level === 'warn') {console.warn(text);}
-  else {console.log(text);}
+  if (level === 'error') console.error(text);
+  else if (level === 'warn') console.warn(text);
+  else console.log(text);
 }
 log('info', 'Loaded codebase');
 
@@ -81,7 +81,7 @@ function tryRequire(paths, exportName = null) {
 
       const m = require(p);
       const mod = exportName ? m?.[exportName] : m;
-      if (!mod) {throw new Error(`Export "${exportName}" introuvable dans ${p}`);}
+      if (!mod) throw new Error(`Export "${exportName}" introuvable dans ${p}`);
 
       const keys = (mod && typeof mod === 'object') ? Object.keys(mod) : [];
       const defKeys = (mod && mod.default && typeof mod.default === 'object') ? Object.keys(mod.default) : [];
@@ -157,7 +157,7 @@ app.use((req, res, next) => {
   let bytesOut = 0;
   res.end = function (chunk, encoding, cb) {
     try {
-      if (chunk) {bytesOut += Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(String(chunk), encoding || 'utf8');}
+      if (chunk) bytesOut += Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(String(chunk), encoding || 'utf8');
     } catch {}
     return origEnd.call(this, chunk, encoding, cb);
   };
@@ -178,13 +178,13 @@ app.use((req, res, next) => {
 /* Body-parser JSON/URL-encoded seulement si pas multipart */
 app.use((req, res, next) => {
   const ct = String(req.headers['content-type'] || '').toLowerCase();
-  if (ct.startsWith('application/json')) {return express.json({ limit: '10mb' })(req, res, next);}
-  if (ct.startsWith('application/x-www-form-urlencoded')) {return express.urlencoded({ extended: true, limit: '2mb' })(req, res, next);}
+  if (ct.startsWith('application/json')) return express.json({ limit: '10mb' })(req, res, next);
+  if (ct.startsWith('application/x-www-form-urlencoded')) return express.urlencoded({ extended: true, limit: '2mb' })(req, res, next);
   return next();
 });
 
-/* Préflight global */
-app.options('*', (_req, res) => res.status(204).end());
+/* Préflight global — Express 5: pas de '*' (path-to-regexp v6) */
+app.options('(.*)', (_req, res) => res.status(204).end());
 
 /* Santé */
 app.get('/_health', (_req, res) => res.status(200).json({ ok: true, service: 'api', ts: new Date().toISOString() }));
@@ -236,7 +236,7 @@ if (EXPOSE_INTROSPECTION) {
 /* Guard Idempotency */
 const REQUIRE_IDEM = (process.env.REQUIRE_UPLOAD_IDEM || 'true') === 'true';
 function requireIdempotencyKey(req, res, next) {
-  if (req.method !== 'POST' || (req.path !== '/upload/id' && req.path !== '/api/upload/id')) {return next();}
+  if (req.method !== 'POST' || (req.path !== '/upload/id' && req.path !== '/api/upload/id')) return next();
   const key = String(req.get('x-idempotency-key') || '').trim();
   if (REQUIRE_IDEM && !key) {
     log('warn', 'IDEMPOTENCY/MISSING_STRICT', { rid: req._rid, path: req.path, method: req.method });
@@ -256,7 +256,7 @@ function requireIdempotencyKey(req, res, next) {
 /* Loader d’upload tolérant */
 let uploadHandlerFn = null;
 async function getUploadHandler() {
-  if (uploadHandlerFn) {return uploadHandlerFn;}
+  if (uploadHandlerFn) return uploadHandlerFn;
 
   const candidates = pathCandidates();
   log('info', 'UPLOAD_LOADER/CANDIDATES', {
@@ -266,12 +266,12 @@ async function getUploadHandler() {
   const mod = tryRequire(candidates, null);
 
   let picked = null;
-  if (typeof mod === 'function') {picked = { kind: 'cjs_function', fn: mod };}
-  else if (mod?.uploadMissingChildDoc) {picked = { kind: 'cjs_named_uploadMissingChildDoc', fn: mod.uploadMissingChildDoc };}
-  else if (mod?.uploadId) {picked = { kind: 'cjs_named_uploadId', fn: mod.uploadId };}
-  else if (mod?.default && typeof mod.default === 'function') {picked = { kind: 'esm_default_function', fn: mod.default };}
-  else if (mod?.default?.uploadMissingChildDoc) {picked = { kind: 'esm_default_named_uploadMissingChildDoc', fn: mod.default.uploadMissingChildDoc };}
-  else if (mod?.default?.uploadId) {picked = { kind: 'esm_default_named_uploadId', fn: mod.default.uploadId };}
+  if (typeof mod === 'function') picked = { kind: 'cjs_function', fn: mod };
+  else if (mod?.uploadMissingChildDoc) picked = { kind: 'cjs_named_uploadMissingChildDoc', fn: mod.uploadMissingChildDoc };
+  else if (mod?.uploadId) picked = { kind: 'cjs_named_uploadId', fn: mod.uploadId };
+  else if (mod?.default && typeof mod.default === 'function') picked = { kind: 'esm_default_function', fn: mod.default };
+  else if (mod?.default?.uploadMissingChildDoc) picked = { kind: 'esm_default_named_uploadMissingChildDoc', fn: mod.default.uploadMissingChildDoc };
+  else if (mod?.default?.uploadId) picked = { kind: 'esm_default_named_uploadId', fn: mod.default.uploadId };
 
   if (!picked) {
     log('error', 'UPLOAD_LOADER/UNAVAILABLE', {
@@ -302,7 +302,7 @@ app.post('/upload/id', requireIdempotencyKey, async (req, res) => {
     await fn(req, res);
   } catch (err) {
     log('error', 'UPLOAD/THREW (direct)', { rid: req._rid, error: String(err?.message || err) });
-    if (!res.headersSent) {res.status(500).json({ ok: false, error: 'internal_error' });}
+    if (!res.headersSent) res.status(500).json({ ok: false, error: 'internal_error' });
   }
 });
 
