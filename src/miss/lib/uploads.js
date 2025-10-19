@@ -61,9 +61,9 @@ function nowIso() {
 }
 function log(level, msg, extra = {}) {
   const line = { ts: nowIso(), level, msg, ...extra };
-  if (level === 'error') console.error(line);
-  else if (level === 'warn') console.warn(line);
-  else console.log(line);
+  if (level === 'error') {console.error(line);}
+  else if (level === 'warn') {console.warn(line);}
+  else {console.log(line);}
 }
 
 /* =============================================================================
@@ -90,7 +90,7 @@ function joinUrl(base, path) {
 
 /** getImageDimensions — best-effort (évite crash si l’URI n’est pas image locale) */
 async function getImageDimensions(uri) {
-  if (!uri) return null;
+  if (!uri) {return null;}
   return new Promise((resolve) => {
     Image.getSize(uri, (w, h) => resolve({ width: w, height: h }), () => resolve(null));
   });
@@ -100,8 +100,8 @@ async function getImageDimensions(uri) {
 function guessDocKind({ mime = '', name = '', dims = null }) {
   const reasons = [];
   const ext = String(name || '').split('.').pop()?.toLowerCase() || '';
-  if (mime) reasons.push(`mime:${mime}`);
-  if (ext) reasons.push(`ext:${ext}`);
+  if (mime) {reasons.push(`mime:${mime}`);}
+  if (ext) {reasons.push(`ext:${ext}`);}
   if (dims && dims.width && dims.height) {
     const ratio = dims.width / dims.height;
     reasons.push(`ratio:${ratio.toFixed(2)}`);
@@ -175,7 +175,7 @@ function buildUploadCandidates(kind) {
       log('warn', 'CB skip base (cooldown)', { base });
       continue;
     }
-    for (const p of paths) urls.push(joinUrl(base, p));
+    for (const p of paths) {urls.push(joinUrl(base, p));}
   }
   return [...new Set(urls)]; // unique
 }
@@ -278,7 +278,7 @@ export async function uploadDocMultipart(options = {}) {
       const spanId = newSpanId();
 
       const waitMs = withJitter(BACKOFF_MS[attempt]);
-      if (waitMs) await sleep(waitMs);
+      if (waitMs) {await sleep(waitMs);}
 
       try {
         log('info', '[UPLOAD] POST', { traceId, spanId, url, attempt });
@@ -310,7 +310,7 @@ export async function uploadDocMultipart(options = {}) {
           log('warn', '[UPLOAD] http error', { traceId, spanId, status: res.status, url, preview });
 
           if (res.status === 404) { cbReportFailure(base); break; }          // inutile d’insister sur cette base
-          if (res.status === 409) return { ok: false, reason: 'Requisição duplicada (idempotência).', traceId };
+          if (res.status === 409) {return { ok: false, reason: 'Requisição duplicada (idempotência).', traceId };}
           if (res.status >= 400 && res.status < 500) { cbReportFailure(base); break; }
 
           cbReportFailure(base); // 5xx -> on retente attempt suivant
