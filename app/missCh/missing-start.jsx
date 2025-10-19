@@ -8,6 +8,8 @@
 //  - Consent box: checkbox verte + contour + glow à l’activation
 //  - Placeholders plus légers, espacements aérés, scroll/keyboard agréables
 //  - Conservation de la logique (uploads id_front/id_back & link_front/link_back)
+//  - Logs & traces: traceId d’écran, step() pour étapes clés, timings msSince()
+//  - ImagePicker: API non dépréciée (mediaTypes, selectionLimit)
 // ============================================================================
 
 import React, { useEffect, useMemo, useRef, useReducer, useState, useCallback } from 'react';
@@ -54,9 +56,6 @@ import { useSubmitGuard } from '../../src/miss/lib/useSubmitGuard';
 // Validation centralisée (warnings non bloquants pour animal/objet)
 import { validateClient } from '../../src/miss/lib/validations';
 
-
-
-
 // ---------------------------------------------------------------------------
 // Logger / Tracer
 // ---------------------------------------------------------------------------
@@ -73,7 +72,6 @@ const Log = {
     console.log(NS, 'STEP', step, { traceId, at: nowTs(), ...extra }),
 };
 
-
 // ---------------------------------------------------------------------------
 // Toast léger inline
 // ---------------------------------------------------------------------------
@@ -81,22 +79,13 @@ function useLiteToast() {
   const [msg, setMsg] = useState(null);
   const timer = useRef(null);
   const show = (text) => {
-    if (timer.current) {
-      clearTimeout(timer.current);
-    }
+    if (timer.current) {clearTimeout(timer.current);}
     const s = String(text);
     Log.info('TOAST', s);
     setMsg(s);
     timer.current = setTimeout(() => setMsg(null), 3200);
   };
-  useEffect(
-    () => () => {
-      if (timer.current) {
-        clearTimeout(timer.current);
-      }
-    },
-    [],
-  );
+  useEffect(() => () => timer.current && clearTimeout(timer.current), []);
   const Toast = !msg ? null : (
     <View style={styles.toastWrap}>
       <Text style={styles.toastText}>{msg}</Text>
@@ -125,7 +114,7 @@ function useHasWhatsApp() {
 }
 
 // ---------------------------------------------------------------------------
-// Partage
+// Partage (plus bavard dans les logs)
 // ---------------------------------------------------------------------------
 function buildShareMessage({ type, caseId, name, cidade, uf, dateBR, time }) {
   const link = `https://vigi.app/case/${caseId || ''}`;
@@ -175,17 +164,13 @@ async function cfFetch(url, opts = {}, { attempts = 2, baseDelay = 400 } = {}) {
     try {
       const resp = await fetch(url, opts);
       const json = await resp.json().catch(() => null);
-      if (!resp.ok) {
-        throw new Error(`HTTP_${resp.status}`);
-      }
+      if (!resp.ok) {throw new Error(`HTTP_${resp.status}`);}
       Log.info('CF/OK', { status: resp.status });
       return { ok: true, json, status: resp.status };
     } catch (e) {
       lastErr = e;
       Log.warn('CF/RETRY', { i, err: e?.message || String(e) });
-      if (i < attempts) {
-        await sleep(baseDelay * Math.pow(2, i));
-      }
+      if (i < attempts) {await sleep(baseDelay * Math.pow(2, i));}
     }
   }
   Log.error('CF/FAIL', lastErr?.message || String(lastErr));
@@ -247,17 +232,16 @@ const isoToday = todayISO();
 const [Y, M, D] = isoToday.split('-');
 const initialDateBR = `${D}/${M}/${Y}`;
 
-// Types de documents (UX)
 const ADULT_ID_TYPES = [
   { key: 'rg', label: 'RG (frente + verso)' },
   { key: 'passport', label: 'Passaporte' },
-  { key: 'rne', label: 'RNE (frente + verso)' }, // 💡 Étrangers au Brésil
+  { key: 'rne', label: 'RNE (frente + verso)' },
 ];
 const CHILD_DOC_TYPES = [
   { key: 'certidao', label: 'Certidão de nascimento' },
   { key: 'rg_child', label: 'RG criança (frente + verso)' },
   { key: 'passport_child', label: 'Passaporte criança' },
-  { key: 'rne_child', label: 'RNE criança (frente + verso)' }, // 💡 Étrangers
+  { key: 'rne_child', label: 'RNE criança (frente + verso)' },
 ];
 
 const initialForm = {
@@ -330,9 +314,7 @@ function makeCaseId() {
   return `mc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 function ensureCaseId(currentId, dispatchRef) {
-  if (currentId && String(currentId).trim()) {
-    return String(currentId);
-  }
+  if (currentId && String(currentId).trim()) {return String(currentId);}
   const newId = makeCaseId();
   try {
     dispatchRef({ type: 'SET', key: 'caseId', value: newId });
@@ -359,10 +341,7 @@ async function captureGeolocationOnce({ timeoutMs = 6000 } = {}) {
     }
 
     const withTimeout = (p, ms) =>
-      Promise.race([
-        p,
-        new Promise((_, rej) => setTimeout(() => rej(new Error('GEO_TIMEOUT')), ms)),
-      ]);
+      Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('GEO_TIMEOUT')), ms))]);
 
     try {
       const pos = await withTimeout(
@@ -432,12 +411,11 @@ const ChipGroup = ({ options, activeKey, onSelect }) => (
 // Composant principal
 // ============================================================================
 export default function MissingStart() {
+  // TraceId écran + refs d'état/guard propres (ordre nettoyé)
   screenTraceIdRef = useRef(newTraceId('missing'));
-  
-  
   const screenMountTsRef = useRef(Date.now());
-const lastActionRef = useRef('mount');
-const { guard, running, withBackoff } = useSubmitGuard({ cooldownMs: 1200, maxParallel: 1 });
+  const lastActionRef = useRef('mount');
+  const { guard, running, withBackoff } = useSubmitGuard({ cooldownMs: 1200, maxParallel: 1 });
 
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -496,12 +474,9 @@ const { guard, running, withBackoff } = useSubmitGuard({ cooldownMs: 1200, maxPa
     const traceId = screenTraceIdRef.current;
     const mountTs = screenMountTsRef.current;
     Log.info('MOUNT', { traceId, at: nowTs(), type, caseId: initialParamCaseId || '(none)' });
-    
-  // ensure we reference the screen mount timestamp ref
-  // (in case it was removed by a patch)
-  const __ensureMountRef = screenMountTsRef.current;
-  void __ensureMountRef;
-  return () => {
+    const __ensureMountRef = screenMountTsRef.current; // garde la ref vivante
+    void __ensureMountRef;
+    return () => {
       Log.warn('UNMOUNT', { reason: lastActionRef.current, traceId, alive: msSince(mountTs) });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -530,7 +505,9 @@ const { guard, running, withBackoff } = useSubmitGuard({ cooldownMs: 1200, maxPa
     return v.ok;
   }, [type, form]);
 
-  // Uploads
+  // -------------------------------------------------------------------------
+  // Uploads (ImagePicker sans dépréciation)
+  // -------------------------------------------------------------------------
   async function pickFileFromLibrary(kind) {
     const t0 = Date.now();
     const traceId = screenTraceIdRef.current;
@@ -544,12 +521,13 @@ const { guard, running, withBackoff } = useSubmitGuard({ cooldownMs: 1200, maxPa
         return null;
       }
 
+      // ✅ API à jour: mediaTypes + selectionLimit (pas d’options dépréciées)
       const result = await ImagePicker.launchImageLibraryAsync({
-        MediaTypeOptionss: ImagePicker.MediaTypeOptions.Images, // ✅ SDK 51+
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: false,
         quality: 0.9,
         exif: false,
-        allowsMultipleSelection: false,
+        selectionLimit: 1,
       });
 
       Log.info('PICK/result', {
@@ -557,9 +535,7 @@ const { guard, running, withBackoff } = useSubmitGuard({ cooldownMs: 1200, maxPa
         count: result?.assets?.length || 0,
         ms: msSince(t0),
       });
-      if (result?.canceled || !result?.assets?.length) {
-        return null;
-      }
+      if (result?.canceled || !result?.assets?.length) {return null;}
 
       const asset = result.assets[0];
       const uri = asset.uri;
@@ -568,13 +544,9 @@ const { guard, running, withBackoff } = useSubmitGuard({ cooldownMs: 1200, maxPa
 
       let mime =
         asset.mimeType || (asset.type === 'image' ? 'image/jpeg' : 'application/octet-stream');
-      if (lower.endsWith('.png')) {
-        mime = 'image/png';
-      } else if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
-        mime = 'image/jpeg';
-      } else if (lower.endsWith('.webp')) {
-        mime = 'image/webp';
-      }
+      if (lower.endsWith('.png')) {mime = 'image/png';}
+      else if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {mime = 'image/jpeg';}
+      else if (lower.endsWith('.webp')) {mime = 'image/webp';}
 
       return { uri, name: fileName, mime, kind };
     } catch (e) {
@@ -604,8 +576,10 @@ const { guard, running, withBackoff } = useSubmitGuard({ cooldownMs: 1200, maxPa
         caseId: String(ensuredId),
         userId: auth.currentUser?.uid || 'anon',
         cpfRaw: form.cpfRaw,
+        // traceId, // ← décommente si tes libs upload consomment traceId côté serveur
         geo: undefined,
       };
+
       let resp;
       if (kind === 'photo') {
         resp = await uploadChildPhoto(common);
@@ -667,10 +641,12 @@ const { guard, running, withBackoff } = useSubmitGuard({ cooldownMs: 1200, maxPa
     }
   }
 
-  // Submit (sans draft)
+  // -------------------------------------------------------------------------
+  // Submit (sans draft) — guard propre + traces
+  // -------------------------------------------------------------------------
   const onSubmit = useCallback(async () => {
-      lastActionRef.current = 'submit_tapped';
-  const t0 = Date.now();
+    lastActionRef.current = 'submit_tapped';
+    const t0 = Date.now();
     const traceId = screenTraceIdRef.current;
     Log.step(traceId, 'SUBMIT/BEGIN', { type });
 
@@ -846,9 +822,7 @@ const { guard, running, withBackoff } = useSubmitGuard({ cooldownMs: 1200, maxPa
         color,
         traceId,
       });
-      if (!ok) {
-        Log.warn('[PUBLIC_ALERT] dispatch KO — cfSendPublicAlert');
-      }
+      if (!ok) {Log.warn('[PUBLIC_ALERT] dispatch KO — cfSendPublicAlert');}
 
       if (Array.isArray(v.warnings) && v.warnings.length) {
         show(`Validado com avisos (${v.warnings.length}). Você pode detalhar depois.`);
@@ -859,7 +833,8 @@ const { guard, running, withBackoff } = useSubmitGuard({ cooldownMs: 1200, maxPa
       Log.step(traceId, 'SUBMIT/END', { ms: msSince(t0), status: 'validated' });
       setTimeout(() => {
         Log.info('NAVIGATE/home');
-        lastActionRef.current = 'submit_success_navigate'; router.replace({ pathname: '/(tabs)/home' });
+        lastActionRef.current = 'submit_success_navigate';
+        router.replace({ pathname: '/(tabs)/home' });
       }, 700);
     } catch (e) {
       Log.error('SUBMIT/ERROR', e?.message || e);
@@ -891,7 +866,8 @@ const { guard, running, withBackoff } = useSubmitGuard({ cooldownMs: 1200, maxPa
           <TouchableOpacity
             onPress={() => {
               Log.info('NAVIGATE/back');
-              lastActionRef.current = 'back_tapped'; router.back();
+              lastActionRef.current = 'back_tapped';
+              router.back();
             }}
             style={styles.backBtn}
           >
@@ -1279,11 +1255,8 @@ function sexoChipStyle(current, s) {
   const active = current === s;
   const base = [styles.chip];
   let colorStyles = {};
-  if (s === 'F') {
-    colorStyles = active ? styles.chipFActive : styles.chipF;
-  } else if (s === 'M') {
-    colorStyles = active ? styles.chipMActive : styles.chipM;
-  }
+  if (s === 'F') {colorStyles = active ? styles.chipFActive : styles.chipF;}
+  else if (s === 'M') {colorStyles = active ? styles.chipMActive : styles.chipM;}
   return [base, colorStyles];
 }
 

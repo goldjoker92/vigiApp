@@ -1,33 +1,106 @@
-/* ============================================================================
-   src/miss/lib/uploads.js
-   Upload multipart vers Cloud Functions, avec:
-   - Backoff + idempotency
-   - Fallback multi-endpoints (renommage CF, alias, etc.)
-   - Logs détaillés (URL, status, extrait réponse)
-   - Pas de Content-Type forcé (FormData gère le boundary)
-   ============================================================================ */
+/* =============================================================================
+   VigiApp — Uploads client (multipart) — version robuste & lintée
+   - Logs structurés + traçage (traceId/spanId)
+   - Fallback multi-endpoints (CF v2 / Cloud Run) + circuit-breaker léger
+   - Backoff exponentiel avec jitter + limites strictes (taille, mime, ext)
+   - NE JAMAIS fixer Content-Type (laisse RN gérer le boundary)
+   ============================================================================= */
 
 import { Platform, Image } from 'react-native';
-import { onlyDigits } from './helpers';
 
-// ---------------------------------------------------------------------------
-// CONFIG — ajoute ici toutes tes bases (si tu as plusieurs régions/projets)
-const CF_UPLOAD_BASES = [ 'https://api-pfdobxp2na-rj.a.run.app', 'https://southamerica-east1-vigiapp-c7108.cloudfunctions.net' ];
+// =============================================================================
+// CONFIG RÉSEAU
+// =============================================================================
 
-// Pour chaque kind, on définit plusieurs chemins de CF (ordre = priorité)
-const CF_UPLOAD_PATHS = {
+/**
+ * Bases d'upload (ordre = priorité)
+ *  - CF v2 expose Express via exports.api => base inclut "/api"
+ *  - Cloud Run n'ajoute pas de préfixe => base sans "/api"
+ */
+export const UPLOAD_BASES = [
+  // Cloud Functions v2 (Express monté sur exports.api)
+  'https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/api',
+  // Cloud Run (service HTTP direct)
+  'https://api-pfdobxp2na-rj.a.run.app',
+];
+
+/**
+ * Une seule route côté serveur: POST /upload/id (miroir /api/upload/id)
+ * On force donc tout sur 'upload/id' et on laisse "kind" informer le back.
+ */
+export const UPLOAD_PATHS = {
   id: ['upload/id'],
-  photo: ['upload/photo'],
-  linkDoc: ['upload/link'],
+  photo: ['upload/id'],
+  linkDoc: ['upload/id'],
 };
 
-// Taille max (15MB)
-const MAX_FILE_SIZE = 15 * 1024 * 1024;
+// Limites & stratégies
+const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15 MB
+const REQUEST_TIMEOUT_MS = 25_000;
+const MAX_RESPONSE_PREVIEW = 300;
+const MAX_JSON_BYTES = 512 * 1024;
 
-// ---------------------------------------------------------------------------
-// Utils
+// Backoff exponentiel (ms) + jitter
+const BACKOFF_MS = [0, 600, 1400];
+const JITTER_MS = 250;
+
+// Circuit breaker (en mémoire)
+const CB_WINDOW_MS = 60_000;
+const CB_TRIP_THRESHOLD = 3;
+const CB_COOLDOWN_MS = 60_000;
+
+// =============================================================================
+// LOGS / TRACE
+// =============================================================================
+const rand = () => Math.floor(Math.random() * 1e9).toString(16);
+export function newTraceId(prefix = 'upl') {
+  return `${prefix}_${Date.now()}_${rand()}`;
+}
+function newSpanId() {
+  return `${Date.now().toString(36)}_${rand()}`;
+}
+function nowIso() {
+  return new Date().toISOString();
+}
+function log(level, msg, extra = {}) {
+  const line = { ts: nowIso(), level, msg, ...extra };
+  if (level === 'error') {
+     
+    console.error(line);
+  } else if (level === 'warn') {
+     
+    console.warn(line);
+  } else {
+     
+    console.log(line);
+  }
+}
+
+// =============================================================================
+// HELPERS
+// =============================================================================
+function withJitter(ms) {
+  const delta = Math.floor((Math.random() * 2 * JITTER_MS) - JITTER_MS);
+  return Math.max(0, ms + delta);
+}
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+const isMimeAllowed = (m) => Boolean(m) && (m.startsWith('image/') || m === 'application/pdf');
+const isExtAllowed = (n) =>
+  ['jpg', 'jpeg', 'png', 'pdf', 'heic', 'heif', 'webp']
+    .includes(String(n || '').split('.').pop()?.toLowerCase());
+
+function joinUrl(base, path) {
+  const b = String(base || '').replace(/\/+$/,'');
+  const p = String(path || '').replace(/^\/+/,'');
+  return `${b}/${p}`;
+}
+
 async function getImageDimensions(uri) {
-  if (!uri) {return null;}
+  if (!uri) {
+    return null;
+  }
   return new Promise((resolve) => {
     Image.getSize(
       uri,
@@ -39,142 +112,271 @@ async function getImageDimensions(uri) {
 
 function guessDocKind({ mime = '', name = '', dims = null }) {
   const reasons = [];
-  const ext =
-    String(name || '')
-      .split('.')
-      .pop()
-      ?.toLowerCase() || '';
-  if (mime) {reasons.push(`mime:${mime}`);}
-  if (ext) {reasons.push(`ext:${ext}`);}
-
-  if (dims && dims.width && dims.height) {
+  const ext = String(name || '').split('.').pop()?.toLowerCase() || '';
+  if (mime) {
+    reasons.push(`mime:${mime}`);
+  }
+  if (ext) {
+    reasons.push(`ext:${ext}`);
+  }
+  if (dims?.width && dims?.height) {
     const ratio = dims.width / dims.height;
     reasons.push(`ratio:${ratio.toFixed(2)}`);
-    if (ratio >= 1.35 && ratio <= 1.85 && dims.width >= 400)
-      {return { kind: 'id_card_like', confidence: 0.8, reasons };}
-    if (ratio < 0.9) {return { kind: 'portrait_photo', confidence: 0.75, reasons };}
-    if (ratio >= 1.9) {return { kind: 'landscape_scan_or_photo', confidence: 0.6, reasons };}
+    if (ratio >= 1.35 && ratio <= 1.85 && dims.width >= 400) {
+      return { kind: 'id_card_like', confidence: 0.8, reasons };
+    }
+    if (ratio < 0.9) {
+      return { kind: 'portrait_photo', confidence: 0.75, reasons };
+    }
+    if (ratio >= 1.9) {
+      return { kind: 'landscape_scan_or_photo', confidence: 0.6, reasons };
+    }
     return { kind: 'document_like', confidence: 0.55, reasons };
   }
-  if (ext === 'pdf' || mime === 'application/pdf')
-    {return { kind: 'pdf_document', confidence: 0.9, reasons };}
+  if (ext === 'pdf' || mime === 'application/pdf') {
+    return { kind: 'pdf_document', confidence: 0.9, reasons };
+  }
   return { kind: 'unknown', confidence: 0.3, reasons };
 }
 
 export function makeIdempotencyKey({ caseId, userId, name, size }) {
   const base = `${caseId || 'X'}:${userId || 'anon'}:${name || 'file'}:${size || '0'}:${Date.now()}`;
   let h = 0;
-  for (let i = 0; i < base.length; i++) {
+  for (let i = 0; i < base.length; i += 1) {
     h = (h << 5) - h + base.charCodeAt(i);
+     
     h |= 0;
   }
   return `mc_${Math.abs(h)}`;
 }
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const isMimeAllowed = (m) => m?.startsWith('image/') || m === 'application/pdf';
-const isExtAllowed = (n) =>
-  ['jpg', 'jpeg', 'png', 'pdf', 'heic', 'webp'].includes(
-    String(n || '')
-      .split('.')
-      .pop()
-      ?.toLowerCase(),
-  );
 
+function fetchWithTimeout(url, options = {}, timeoutMs = REQUEST_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal })
+    .finally(() => clearTimeout(id));
+}
+
+// Circuit breaker mémoire
+const cbState = new Map(); // base => {fails:[], openUntil:number}
+function cbIsOpen(base) {
+  const s = cbState.get(base);
+  return Boolean(s?.openUntil && s.openUntil > Date.now());
+}
+function cbReportFailure(base) {
+  const now = Date.now();
+  const s = cbState.get(base) || { fails: [], openUntil: 0 };
+  s.fails = s.fails.filter((t) => now - t < CB_WINDOW_MS);
+  s.fails.push(now);
+  if (s.fails.length >= CB_TRIP_THRESHOLD) {
+    s.openUntil = now + CB_COOLDOWN_MS;
+    log('warn', 'CB open (cooldown)', { base, openUntil: new Date(s.openUntil).toISOString() });
+  }
+  cbState.set(base, s);
+}
+function cbReportSuccess(base) {
+  cbState.set(base, { fails: [], openUntil: 0 });
+}
+
+// =============================================================================
+// CANDIDATS D'UPLOAD (bases × paths)
+// =============================================================================
 function buildUploadCandidates(kind) {
-  const paths = CF_UPLOAD_PATHS[kind] || [];
+  const paths = UPLOAD_PATHS[kind] || [];
   const urls = [];
-  for (const base of CF_UPLOAD_BASES) {for (const p of paths) {urls.push(`${base}/${p}`);}}
+  for (const base of UPLOAD_BASES) {
+    if (cbIsOpen(base)) {
+      log('warn', 'CB skip base (cooldown)', { base });
+    } else {
+      for (const p of paths) {
+        urls.push(joinUrl(base, p));
+      }
+    }
+  }
+  // unique
   return [...new Set(urls)];
 }
 
-// ---------------------------------------------------------------------------
-// Upload principal (multipart) avec fallback
+// =============================================================================
+// UPLOAD PRINCIPAL (multipart) AVEC FALLBACK + GARDES
+// =============================================================================
 export async function uploadDocMultipart(options = {}) {
-  const { uri, name, mime, size, caseId, kind, userId, cpfRaw, idempotencyKey, geo } = options;
+  const {
+    uri, name, mime, size, caseId, kind, userId, cpfRaw, idempotencyKey, geo,
+  } = options;
+  const traceId = newTraceId('upl');
 
-  console.log('[MISSING_CHILD][UPLOAD] start', {
-    uri: !!uri,
-    name,
-    mime,
-    size,
-    caseId,
-    kind,
-    userId,
+  log('info', '[UPLOAD] start', {
+    traceId, hasUri: Boolean(uri), name, mime, size, caseId, kind, userId,
   });
-  if (!uri || !caseId || !kind)
-    {return { ok: false, reason: 'Parâmetros insuficientes (uri/caseId/kind).' };}
-  if (size && size > MAX_FILE_SIZE)
-    {return { ok: false, reason: 'Arquivo muito grande (limite ~15MB).' };}
-  if (mime && !isMimeAllowed(mime)) {return { ok: false, reason: 'Formato não suportado (mime).' };}
-  if (name && !isExtAllowed(name))
-    {return { ok: false, reason: 'Extensão de arquivo não suportada.' };}
 
+  // Gardes d'entrée
+  if (!uri || !caseId || !kind) {
+    return { ok: false, reason: 'Parâmetros insuficientes (uri/caseId/kind).', traceId };
+  }
+  if (size && size > MAX_FILE_SIZE) {
+    return { ok: false, reason: 'Arquivo muito grande (limite ~15MB).', traceId };
+  }
+  if (mime && !isMimeAllowed(mime)) {
+    return { ok: false, reason: 'Formato não suportado (mime).', traceId };
+  }
+  if (name && !isExtAllowed(name)) {
+    return { ok: false, reason: 'Extensão de arquivo não suportada.', traceId };
+  }
+
+  // Dims (best effort)
   let dims = null;
   try {
-    if (mime?.startsWith('image/')) {dims = await getImageDimensions(uri);}
-  } catch {}
+    if (mime?.startsWith('image/')) {
+       
+      dims = await getImageDimensions(uri);
+    }
+  } catch (e) {
+    log('warn', '[UPLOAD] dims error', { traceId, error: e?.message || String(e) });
+  }
   const guessed = guessDocKind({ mime, name, dims });
-  const idem = idempotencyKey || makeIdempotencyKey({ caseId, userId, name, size });
+  const idem = idempotencyKey || makeIdempotencyKey({
+    caseId, userId, name, size,
+  });
 
+  // FormData — ne pas fixer Content-Type (RN gère le boundary)
   const form = new FormData();
   form.append('caseId', String(caseId));
   form.append('kind', String(kind)); // "photo" | "id" | "linkDoc"
   form.append('userId', String(userId || ''));
-  form.append('cpfDigits', cpfRaw ? onlyDigits(cpfRaw) : '');
-  form.append(
-    'client',
-    JSON.stringify({ platform: Platform.OS, version: Platform.Version, dims, guessed }),
-  );
-  if (geo && typeof geo.lat === 'number' && typeof geo.lng === 'number')
-    {form.append('geo', JSON.stringify({ lat: geo.lat, lng: geo.lng }));}
+  form.append('cpfDigits', String(cpfRaw || ''));
+  form.append('client', JSON.stringify({
+    platform: Platform.OS, version: Platform.Version, dims, guessed,
+  }));
+  if (geo && typeof geo.lat === 'number' && typeof geo.lng === 'number') {
+    form.append('geo', JSON.stringify({ lat: geo.lat, lng: geo.lng }));
+  }
+  // le serveur attend 'file'
   form.append('file', {
-    uri,
-    name: name || `upload_${Date.now()}`,
-    type: mime || 'application/octet-stream',
+    uri, name: name || `upload_${Date.now()}`, type: mime || 'application/octet-stream',
   });
 
   const candidates = buildUploadCandidates(kind);
-  const backoff = [0, 700, 1600]; // 3 essais/URL
+  if (candidates.length === 0) {
+    log('error', '[UPLOAD] no candidate URL', { traceId });
+    return { ok: false, reason: 'Nenhum endpoint disponível.', traceId };
+  }
 
+  // Boucle sur candidats
   for (const url of candidates) {
-    for (let t = 0; t < backoff.length; t++) {
-      if (backoff[t] > 0) {await sleep(backoff[t]);}
-      try {
-        const res = await fetch(url, {
-          method: 'POST',
-          body: form,
-          headers: { Accept: 'application/json', 'X-Idempotency-Key': idem },
-        });
-        if (!res.ok) {
-          let txt = '';
-          try {
-            txt = (await res.text()).slice(0, 200);
-          } catch {}
-          console.warn('[MISSING_CHILD][UPLOAD] http error', res.status, { url, txt });
+    const base = url.split('/').slice(0, 3).join('/');
 
-          if (res.status === 404) {break;} // passe à l’URL suivante
-          if (res.status === 409)
-            {return { ok: false, reason: 'Requisição duplicada (idempotência).' };}
-          if (res.status >= 400 && res.status < 500) {break;} // autre 4xx -> URL suivante
-          continue; // 5xx -> retry même URL
+    // Tentatives avec backoff
+     
+    for (let attempt = 0; attempt < BACKOFF_MS.length; attempt += 1) {
+      const spanId = newSpanId();
+      const waitMs = withJitter(BACKOFF_MS[attempt]);
+      if (waitMs) {
+         
+        await sleep(waitMs);
+      }
+
+      try {
+        log('info', '[UPLOAD] POST', {
+          traceId, spanId, url, attempt,
+        });
+
+         
+        const res = await fetchWithTimeout(
+          url,
+          {
+            method: 'POST',
+            body: form,
+            headers: {
+              Accept: 'application/json',
+              'X-Idempotency-Key': idem,
+              'X-Trace-Id': traceId,
+              'X-Span-Id': spanId,
+            },
+          },
+          REQUEST_TIMEOUT_MS,
+        );
+
+        if (!res.ok) {
+          let preview = '';
+          try {
+             
+            preview = (await res.text()).slice(0, MAX_RESPONSE_PREVIEW);
+          } catch {
+            preview = '';
+          }
+
+          log('warn', '[UPLOAD] http error', {
+            traceId, spanId, status: res.status, url, preview,
+          });
+
+          if (res.status === 404) {
+            cbReportFailure(base);
+            break; // inutile d’insister sur cette base
+          }
+          if (res.status === 409) {
+            return { ok: false, reason: 'Requisição duplicada (idempotência).', traceId };
+          }
+          if (res.status >= 400 && res.status < 500) {
+            cbReportFailure(base);
+            break;
+          }
+
+          cbReportFailure(base);
+          // on tente une autre boucle attempt
+           
+          continue;
+        }
+
+        // Réponse OK -> lecture bornée
+        let buf;
+        try {
+           
+          buf = await res.arrayBuffer();
+          if (buf.byteLength > MAX_JSON_BYTES) {
+            log('error', '[UPLOAD] json too large', {
+              traceId, spanId, size: buf.byteLength,
+            });
+            cbReportFailure(base);
+             
+            continue;
+          }
+        } catch (e) {
+          log('warn', '[UPLOAD] read error', { traceId, spanId, error: e?.message || String(e) });
+          cbReportFailure(base);
+           
+          continue;
         }
 
         let json = null;
         try {
-          json = await res.json();
-        } catch {}
-        if (!json || !json.ok) {
-          console.warn('[MISSING_CHILD][UPLOAD] bad json', { url, json });
+          const text = new TextDecoder('utf-8').decode(buf);
+          json = JSON.parse(text);
+        } catch (e) {
+          log('warn', '[UPLOAD] bad json', { traceId, spanId, error: e?.message || String(e) });
+          cbReportFailure(base);
+           
           continue;
         }
 
-        console.log('[MISSING_CHILD][UPLOAD] ok', {
-          url,
-          storedAt: json?.storedAt,
-          redactedPath: json?.redactedPath,
+        if (!json || !json.ok) {
+          log('warn', '[UPLOAD] json not ok', {
+            traceId, spanId, url, jsonPreview: JSON.stringify(json || {}).slice(0, MAX_RESPONSE_PREVIEW),
+          });
+          cbReportFailure(base);
+           
+          continue;
+        }
+
+        // Succès
+        cbReportSuccess(base);
+        log('info', '[UPLOAD] ok', {
+          traceId, spanId, url, storedAt: json?.storedAt, redactedPath: json?.redactedPath,
         });
+
         return {
           ok: true,
+          traceId,
           redactedUrl: json.redactedUrl,
           meta: {
             originalPath: json.originalPath,
@@ -186,20 +388,26 @@ export async function uploadDocMultipart(options = {}) {
           },
         };
       } catch (e) {
-        console.warn('[MISSING_CHILD][UPLOAD] exception', e?.message || e, { url });
-        continue; // réseau -> retry même URL
+        const msg = e?.name === 'AbortError' ? 'timeout' : (e?.message || String(e));
+        log('warn', '[UPLOAD] exception', {
+          traceId, spanId, url, attempt, error: msg,
+        });
+        cbReportFailure(base);
+         
+        continue;
       }
     }
-    console.warn('[MISSING_CHILD][UPLOAD] trying next candidate', { next: true });
+
+    log('warn', '[UPLOAD] trying next candidate', { traceId, next: true, url });
   }
 
-  return { ok: false, reason: 'Falha no upload (endpoint indisponível / 404).' };
+  log('error', '[UPLOAD] all candidates failed', { traceId });
+  return { ok: false, reason: 'Falha no upload (endpoint indisponível / 404).', traceId };
 }
 
-// ---------------------------------------------------------------------------
-// Wrappers front
+// =============================================================================
+// WRAPPERS
+// =============================================================================
 export const uploadIdDocument = (p) => uploadDocMultipart({ ...p, kind: 'id' });
 export const uploadLinkDocument = (p) => uploadDocMultipart({ ...p, kind: 'linkDoc' });
 export const uploadChildPhoto = (p) => uploadDocMultipart({ ...p, kind: 'photo' });
-
-

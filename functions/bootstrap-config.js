@@ -1,47 +1,81 @@
-// /functions/bootstrap-config.js
-// ============================================================================
-// Bootstrap config pour Cloud Functions v2
-// ----------------------------------------------------------------------------
-// - Charge .env (local) et merge avec functions.config() (prod / emulateur)
-// - Defaults sûrs + normalisation (bool/int)
-// - Dérivations pour l'upload: UPLOAD_MAX_BYTES, UPLOAD_BUCKET, UPLOAD_IDEM_TTL_MIN
-// - Logging JSON + console.table (sans secrets)
-// - Idempotent: un seul bootstrap par process
-// - Export léger: getConfig() renvoie un objet propre, typé
-// ============================================================================
+/* ============================================================================
+   /functions/bootstrap-config.js
+   Bootstrap config pour Cloud Functions v2
 
- 
+   - Charge .env (local) et merge avec functions.config() (prod / émulateur)
+   - Normalise et dérive les variables (bool/int/bytes)
+   - Paramètres upload: ALLOWED_MIME, MAX_UPLOAD_MB → UPLOAD_MAX_BYTES, UPLOAD_BUCKET, UPLOAD_IDEM_TTL_MIN
+   - Logging JSON + console.table (sans secrets)
+   - Idempotent: un seul bootstrap par process
+   - Export léger: getConfig() renvoie un objet propre, typé
+   ============================================================================ */
+
+'use strict';
 
 (() => {
-  // --------------------------------------------------
+  // ---------------------------------------------------------------------------
   // 0) Idempotence process-wide
-  // --------------------------------------------------
+  // ---------------------------------------------------------------------------
   if (global.__VIGI_BOOTSTRAP_DONE__) {
+     
     console.log('[BOOTSTRAP] SKIP (déjà initialisé)');
-    module.exports = module.exports || { getConfig() { return global.__VIGI_BOOT_CONF__ || {}; } };
+    // Retourne le cache si déjà prêt
+     
+    module.exports = module.exports || {
+      getConfig() {
+        return global.__VIGI_BOOT_CONF__ || {};
+      },
+    };
     return;
   }
 
   const T0 = Date.now();
+   
   console.log('[BOOTSTRAP] START');
 
-  // --------------------------------------------------
+  // ---------------------------------------------------------------------------
   // 1) Utils (log/format/cast)
-  // --------------------------------------------------
+  // ---------------------------------------------------------------------------
+  const nowIso = () => new Date().toISOString();
+  const logJ = (lvl, msg, extra = {}) => {
+     
+    (lvl === 'error'
+      ? console.error
+      : lvl === 'warn'
+        ? console.warn
+        : console.log)(
+      JSON.stringify({ ts: nowIso(), lvl, mod: 'bootstrap', msg, ...extra }),
+    );
+  };
+
   const safeMask = (s) => {
-    if (!s) {return '';}
+    if (!s) {
+      return '';
+    }
     const str = String(s);
-    if (str.length <= 8) {return '********';}
+    if (str.length <= 8) {
+      return '********';
+    }
     return `${str.slice(0, 2)}…${str.slice(-4)}`;
   };
 
   const toBool = (v, def = false) => {
-    if (typeof v === 'boolean') {return v;}
-    if (typeof v === 'number') {return v !== 0;}
-    if (typeof v !== 'string') {return def;}
+    if (typeof v === 'boolean') {
+      return v;
+    }
+    if (typeof v === 'number') {
+      return v !== 0;
+    }
+    if (typeof v !== 'string') {
+      return def;
+    }
     const s = v.trim().toLowerCase();
-    if (['1', 'true', 'yes', 'y', 'on'].includes(s)) {return true;}
-    if (['0', 'false', 'no', 'n', 'off', ''].includes(s)) {return false;}
+    if (['1', 'true', 'yes', 'y', 'on'].includes(s)) {
+      return true;
+    }
+    if (['0', 'false', 'no', 'n', 'off', ''].includes(s)) {
+      return false;
+    }
     return def;
   };
 
@@ -62,44 +96,49 @@
       value: isSecret ? safeMask(v) : String(v),
     }));
     try {
+       
       console.log('\n[BOOTSTRAP][TABLE] ENV RÉSUMÉ');
+       
       console.table(rows);
     } catch {
+       
       console.log('[BOOTSTRAP] ENV:', rows);
     }
   };
 
-  // --------------------------------------------------
+  // ---------------------------------------------------------------------------
   // 2) Charger .env (local/dev)
-  // --------------------------------------------------
+  // ---------------------------------------------------------------------------
   try {
+     
     require('dotenv').config();
-    console.log('[BOOTSTRAP] .env chargé');
+    logJ('info', '.env chargé');
   } catch {
-    console.log('[BOOTSTRAP] .env absent (OK si prod)');
+    logJ('warn', '.env absent (OK si prod)');
   }
 
-  // --------------------------------------------------
+  // ---------------------------------------------------------------------------
   // 3) Charger functions.config() (prod/emulator)
-  //     On merge app + vigi (+ push si présent) dans un flat
-  // --------------------------------------------------
+  //    On merge app + vigi (+ push si présent) dans un flat
+  // ---------------------------------------------------------------------------
   let cfgFn = {};
   try {
+     
     const functions = require('firebase-functions');
-    const appCfg  = (functions.config && functions.config().app)  || {};
+    const appCfg = (functions.config && functions.config().app) || {};
     const vigiCfg = (functions.config && functions.config().vigi) || {};
     cfgFn = { ...appCfg, ...vigiCfg };
     if (cfgFn.push && typeof cfgFn.push === 'object') {
       cfgFn = { ...cfgFn, ...cfgFn.push };
     }
-    console.log('[BOOTSTRAP] functions.config() chargé');
+    logJ('info', 'functions.config() chargé');
   } catch {
-    console.log('[BOOTSTRAP] functions.config() indisponible (local pur ?)');
+    logJ('warn', 'functions.config() indisponible (local pur ?)');
   }
 
-  // --------------------------------------------------
+  // ---------------------------------------------------------------------------
   // 4) Defaults sûrs (alignés avec le code)
-  // --------------------------------------------------
+  // ---------------------------------------------------------------------------
   const defaults = {
     // Region CF
     HTTP_REGION: 'southamerica-east1',
@@ -125,22 +164,21 @@
     BATCH_SIZE: '500',
     DISABLE_FCM_COLOR: 'false',
 
-    // Uploads (CF uploadMissingChildDoc)
+    // Uploads (CF upload)
     ALLOWED_MIME: 'image/jpeg,image/png,image/webp,image/heic,application/pdf',
-    MAX_UPLOAD_MB: '15',            // préférer un param "humain"
+    MAX_UPLOAD_MB: '15',            // humain
     UPLOAD_MAX_BYTES: '',           // dérivé si vide
     STORAGE_BUCKET: '',             // bucket par défaut si vide
     UPLOAD_BUCKET: '',              // alias lisible par le handler
     UPLOAD_IDEM_TTL_MIN: '15',      // idempotency TTL (minutes)
 
     // Project
-    PROJECT_ID: '',                 // pratique pour scripts CI/TTL
+    PROJECT_ID: '',
   };
 
-  // --------------------------------------------------
-  // 5) Mapping functions.config() -> env
-  //     (alias tolérants pour migration en douceur)
-  // --------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // 5) Mapping functions.config() -> env (alias tolérants)
+  // ---------------------------------------------------------------------------
   const mapFromCfg = {
     // Infra
     HTTP_REGION: ['http_region', 'region'],
@@ -176,13 +214,13 @@
     PROJECT_ID: ['project_id', 'project'],
   };
 
-  // --------------------------------------------------
+  // ---------------------------------------------------------------------------
   // 6) Appliquer defaults, puis override par .env, puis functions.config()
-  //    (setIfMissing = n'écrase pas si déjà défini)
-  // --------------------------------------------------
+  // ---------------------------------------------------------------------------
   Object.entries(defaults).forEach(([k, v]) => setIfMissing(k, v));
 
   for (const [envKey, aliases] of Object.entries(mapFromCfg)) {
+     
     for (const alias of aliases) {
       if (cfgFn && cfgFn[alias] !== undefined && cfgFn[alias] !== '') {
         setIfMissing(envKey, cfgFn[alias]);
@@ -191,9 +229,9 @@
     }
   }
 
-  // --------------------------------------------------
+  // ---------------------------------------------------------------------------
   // 7) Normalisation forte (écrit dans process.env)
-  // --------------------------------------------------
+  // ---------------------------------------------------------------------------
   // Logs & infra
   process.env.HTTP_REGION = String(process.env.HTTP_REGION || defaults.HTTP_REGION);
   process.env.LOG_LEVEL = String(process.env.LOG_LEVEL || defaults.LOG_LEVEL);
@@ -229,9 +267,9 @@
       process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || process.env.PROJECT_ID || '';
   }
 
-  // --------------------------------------------------
+  // ---------------------------------------------------------------------------
   // 8) Sanity checks
-  // --------------------------------------------------
+  // ---------------------------------------------------------------------------
   const requiredKeys = [
     'HTTP_REGION',
     'LOG_LEVEL',
@@ -244,12 +282,12 @@
   ];
   const missing = requiredKeys.filter((k) => !process.env[k] || process.env[k] === '');
   if (missing.length) {
-    console.warn('[BOOTSTRAP] ⚠ clés manquantes (defaults couvrent peut-être):', missing.join(', '));
+    logJ('warn', 'clés manquantes (defaults couvrent peut-être)', { missing });
   }
 
-  // --------------------------------------------------
+  // ---------------------------------------------------------------------------
   // 9) Logging de synthèse (sans secrets)
-  // --------------------------------------------------
+  // ---------------------------------------------------------------------------
   printTable([
     // Infra
     ['PROJECT_ID', process.env.PROJECT_ID],
@@ -282,9 +320,9 @@
     ['UPLOAD_IDEM_TTL_MIN', process.env.UPLOAD_IDEM_TTL_MIN],
   ]);
 
-  // --------------------------------------------------
+  // ---------------------------------------------------------------------------
   // 10) Export d’un getter propre et typé
-  // --------------------------------------------------
+  // ---------------------------------------------------------------------------
   const exported = {
     HTTP_REGION: process.env.HTTP_REGION,
     LOG_LEVEL: process.env.LOG_LEVEL,
@@ -320,12 +358,15 @@
 
   global.__VIGI_BOOT_CONF__ = exported;
   global.__VIGI_BOOTSTRAP_DONE__ = true;
+
+   
   console.log('[BOOTSTRAP] END', { ms: Date.now() - T0 });
 
+  // Point d’entrée public
+   
   module.exports = {
     getConfig() {
       return global.__VIGI_BOOT_CONF__;
     },
   };
 })();
-// ============================================================================

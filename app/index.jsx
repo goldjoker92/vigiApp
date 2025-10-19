@@ -17,7 +17,6 @@ import { auth } from '../firebase';
 import { loadUserProfile } from '../utils/loadUserProfile';
 import { DEV_ACCOUNTS, DEV_PASSWORD } from '../src/dev/accounts';
 
-
 const __GMAPS_KEY__ = process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY;
 if (Platform.OS === 'android' && (!__GMAPS_KEY__ || __GMAPS_KEY__.trim() === '')) {
   console.warn('🚨 Clé Google Maps manquante ! Fallback SafeMapView activé.');
@@ -40,8 +39,19 @@ export default function LoginScreen() {
         setLoading(false);
         return;
       }
+
       const cred = await signInWithEmailAndPassword(auth, mail, pass);
       await loadUserProfile(cred.user.uid);
+
+      // 🔥 AJOUT: log de l’ID token Firebase dans la console (terminal Metro/Expo)
+      try {
+        const token = await cred.user.getIdToken(true);
+        console.log('🔥 ID_TOKEN:', token);
+      } catch (e) {
+        // On ne casse pas le flow si l’obtention du token échoue
+        console.warn('⚠️ Impossible de récupérer l’ID_TOKEN pour debug:', e?.message || String(e));
+      }
+
       router.replace('/(tabs)/home');
       console.log('Instance Firebase Auth ID no componente:', auth?.app?.name);
     } catch (error) {
