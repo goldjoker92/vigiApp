@@ -32,9 +32,9 @@ setGlobalOptions({
 function log(level, msg, extra = {}) {
   const line = { ts: new Date().toISOString(), service: 'api', level, msg, ...extra };
   const text = JSON.stringify(line);
-  if (level === 'error') {console.error(text);}
-  else if (level === 'warn') {console.warn(text);}
-  else {console.log(text);}
+  if (level === 'error') console.error(text);
+  else if (level === 'warn') console.warn(text);
+  else console.log(text);
 }
 log('info', 'Loaded codebase');
 
@@ -91,7 +91,7 @@ function tryRequire(paths, exportName = null) {
 
       const m = require(p);
       const mod = exportName ? m?.[exportName] : m;
-      if (!mod) {throw new Error(`Export "${exportName}" introuvable dans ${p}`);}
+      if (!mod) throw new Error(`Export "${exportName}" introuvable dans ${p}`);
 
       const keys = (mod && typeof mod === 'object') ? Object.keys(mod) : [];
       const defKeys = (mod && mod.default && typeof mod.default === 'object') ? Object.keys(mod.default) : [];
@@ -199,8 +199,7 @@ app.use((req, res, next) => {
   return next();
 });
 
-/* Préflight global — Express 5 / path-to-regexp v6: utiliser un param nommé */
-app.options('/:rest(.*)', (_req, res) => res.status(204).end());
+/* ⚠️ SUPPRIMÉ: aucune route OPTIONS personnalisée (path-to-regexp cassait ici) */
 
 /* Santé */
 app.get('/_health', (_req, res) => res.status(200).json({ ok: true, service: 'api', ts: new Date().toISOString() }));
@@ -254,8 +253,8 @@ if (EXPOSE_INTROSPECTION) {
 /* -------------------------------------------------------------------------- */
 const REQUIRE_IDEM = (process.env.REQUIRE_UPLOAD_IDEM || 'true') === 'true';
 function requireIdempotencyKey(req, res, next) {
-  if (req.method !== 'POST') {return next();}
-  if (req.path !== '/upload/id' && req.path !== '/api/upload/id') {return next();}
+  if (req.method !== 'POST') return next();
+  if (req.path !== '/upload/id' && req.path !== '/api/upload/id') return next();
 
   const key = String(req.get('x-idempotency-key') || '').trim();
   if (REQUIRE_IDEM && !key) {
@@ -264,7 +263,6 @@ function requireIdempotencyKey(req, res, next) {
   }
   if (!REQUIRE_IDEM && !key) {
     const gen = `srv_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-    // on injecte côté req/res pour trace
     req.headers['x-idempotency-key'] = gen;
     res.set('X-Idempotency-Key', gen);
     log('warn', 'IDEMPOTENCY/AUTO_GENERATED_DEV', { rid: req._rid, generated: gen, path: req.path });
@@ -279,7 +277,7 @@ function requireIdempotencyKey(req, res, next) {
 /* -------------------------------------------------------------------------- */
 let uploadHandlerFn = null;
 async function getUploadHandler() {
-  if (uploadHandlerFn) {return uploadHandlerFn;}
+  if (uploadHandlerFn) return uploadHandlerFn;
 
   const candidates = pathCandidates();
   log('info', 'UPLOAD_LOADER/CANDIDATES', {
@@ -328,7 +326,7 @@ app.post('/upload/id', requireIdempotencyKey, async (req, res) => {
     await fn(req, res);
   } catch (err) {
     log('error', 'UPLOAD/THREW (direct)', { rid: req._rid, error: String(err?.message || err) });
-    if (!res.headersSent) {res.status(500).json({ ok: false, error: 'internal_error' });}
+    if (!res.headersSent) res.status(500).json({ ok: false, error: 'internal_error' });
   }
 });
 
