@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "@google-cloud/firestore": "^7.11.0",
+    "@google-cloud/functions-framework": "^4.0.0",
     "@google-cloud/storage": "^7.17.2",
     "busboy": "^1.6.0",
     "dotenv": "^17.2.1",
