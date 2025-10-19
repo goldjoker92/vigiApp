@@ -1,8 +1,8 @@
 // =============================================================================
-// VigiApp — Cloud Functions v2 (HTTP) — index.js (ULTRA-LOG VERBOSE)
+// VigiApp — Cloud Functions v2 (HTTP) — index.js (FULL, CLEAN, NO-REGRESSION)
 // =============================================================================
 
-/* Boot tolérant */
+/* Boot tolérant (ne doit jamais casser le démarrage) */
 try { require('module-alias/register'); } catch {}
 try { require('./bootstrap-config'); } catch {}
 
@@ -11,18 +11,24 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { Buffer } = require('buffer');
 const express = require('express');
+
 const { setGlobalOptions } = require('firebase-functions/v2/options');
 const { onRequest } = require('firebase-functions/v2/https');
 
+/* -------------------------------------------------------------------------- */
+/* Cloud Functions v2 — options globales                                      */
+/* -------------------------------------------------------------------------- */
 setGlobalOptions({
   region: process.env.HTTP_REGION || 'southamerica-east1',
-  cors: true,
+  cors: true,               // Géré par le framework; pas besoin d'OPTIONS custom
   timeoutSeconds: 60,
   memory: '256MiB',
   concurrency: 40,
 });
 
-/* Logger JSON */
+/* -------------------------------------------------------------------------- */
+/* Logger JSON compact                                                        */
+/* -------------------------------------------------------------------------- */
 function log(level, msg, extra = {}) {
   const line = { ts: new Date().toISOString(), service: 'api', level, msg, ...extra };
   const text = JSON.stringify(line);
@@ -32,7 +38,9 @@ function log(level, msg, extra = {}) {
 }
 log('info', 'Loaded codebase');
 
-/* Helpers */
+/* -------------------------------------------------------------------------- */
+/* Helpers FS                                                                 */
+/* -------------------------------------------------------------------------- */
 const list = (p) => (fs.existsSync(p) ? fs.readdirSync(p) : []);
 const statInfo = (p) => {
   try {
@@ -43,15 +51,15 @@ const statInfo = (p) => {
   }
 };
 
-/** IMPORTANT: on cherche d’abord dans functions/uploads (prod), puis dans src/uploads (dev) */
+/** IMPORTANT: d’abord functions/uploads (prod), puis src/uploads (dev) */
 const pathCandidates = () => [
-  path.join(__dirname, 'uploads', 'handleUpload'),        // PROD / chemin prioritaire
-  path.join(__dirname, 'src', 'uploads', 'handleUpload'), // DEV / fallback
-  path.join(process.cwd(), 'uploads', 'handleUpload'),     // extra tolérance
+  path.join(__dirname, 'uploads', 'handleUpload'),        // PROD prioritaire
+  path.join(__dirname, 'src', 'uploads', 'handleUpload'), // DEV fallback
+  path.join(process.cwd(), 'uploads', 'handleUpload'),     // tolérance
   path.join(process.cwd(), 'src', 'uploads', 'handleUpload'),
 ];
 
-/* Boot sanity */
+/* Boot sanity (non bloquant) */
 try {
   log('info', 'BOOT/LIST', {
     __dirname,
@@ -70,7 +78,9 @@ try {
   });
 } catch {}
 
-/* Require tolérant */
+/* -------------------------------------------------------------------------- */
+/* tryRequire tolérant                                                        */
+/* -------------------------------------------------------------------------- */
 function tryRequire(paths, exportName = null) {
   let lastErr = null;
   for (const p of paths) {
@@ -97,7 +107,9 @@ function tryRequire(paths, exportName = null) {
   return { __error: lastErr || new Error('Module not found') };
 }
 
-/* Fallback HTTP */
+/* -------------------------------------------------------------------------- */
+/* Fallback HTTP function                                                     */
+/* -------------------------------------------------------------------------- */
 function makeFallbackHttp(name) {
   return onRequest((req, res) => {
     log('error', 'FALLBACK_INVOKED', { fn: name, path: req.path, method: req.method });
@@ -105,7 +117,9 @@ function makeFallbackHttp(name) {
   });
 }
 
-/* Exports directs (v2) */
+/* -------------------------------------------------------------------------- */
+/* Exports directs (autres fonctions HTTP v2)                                 */
+/* -------------------------------------------------------------------------- */
 {
   const mod = tryRequire(['./src/sendPublicAlertByAddress', './sendPublicAlertByAddress'], 'sendPublicAlertByAddress');
   if (mod.__error) {
@@ -127,11 +141,13 @@ function makeFallbackHttp(name) {
   }
 }
 
-/* Express app */
+/* -------------------------------------------------------------------------- */
+/* Express app principal (SANS app.listen)                                    */
+/* -------------------------------------------------------------------------- */
 const app = express();
 app.disable('x-powered-by');
 
-/* --- Middleware ULTRA-VERBOSE: requestId + log entrée + log sortie --- */
+/* --- Middleware ULTRA-VERBOSE: requestId + logs entrée/sortie ------------- */
 app.use((req, res, next) => {
   const rid = `req_${Date.now().toString(36)}_${crypto.randomBytes(3).toString('hex')}`;
   req._rid = rid;
@@ -157,7 +173,7 @@ app.use((req, res, next) => {
   let bytesOut = 0;
   res.end = function (chunk, encoding, cb) {
     try {
-      if (chunk) {bytesOut += Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(String(chunk), encoding || 'utf8');}
+      if (chunk) { bytesOut += Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(String(chunk), encoding || 'utf8'); }
     } catch {}
     return origEnd.call(this, chunk, encoding, cb);
   };
@@ -178,27 +194,27 @@ app.use((req, res, next) => {
 /* Body-parser JSON/URL-encoded seulement si pas multipart */
 app.use((req, res, next) => {
   const ct = String(req.headers['content-type'] || '').toLowerCase();
-  if (ct.startsWith('application/json')) {return express.json({ limit: '10mb' })(req, res, next);}
-  if (ct.startsWith('application/x-www-form-urlencoded')) {return express.urlencoded({ extended: true, limit: '2mb' })(req, res, next);}
+  if (ct.startsWith('application/json')) { return express.json({ limit: '10mb' })(req, res, next); }
+  if (ct.startsWith('application/x-www-form-urlencoded')) { return express.urlencoded({ extended: true, limit: '2mb' })(req, res, next); }
   return next();
 });
 
-/* Préflight global — Express 5: pas de '*' (path-to-regexp v6) */
-app.options('(.*)', (_req, res) => res.status(204).end());
+/* Préflight global — Express 5 / path-to-regexp v6: utiliser un param nommé */
+app.options('/:rest(.*)', (_req, res) => res.status(204).end());
 
 /* Santé */
 app.get('/_health', (_req, res) => res.status(200).json({ ok: true, service: 'api', ts: new Date().toISOString() }));
-app.get('/_ready', (_req, res) => res.status(200).send('ok'));
+app.get('/_ready',  (_req, res) => res.status(200).send('ok'));
 
-/* Introspection */
+/* Introspection (optionnelle) */
 const EXPOSE_INTROSPECTION = (process.env.EXPOSE_INTROSPECTION || 'true') === 'true';
 if (EXPOSE_INTROSPECTION) {
   app.get('/__routes', (_req, res) => {
     // @ts-ignore
     const stack = app._router?.stack || [];
-    const routes = stack.filter((l) => l.route?.path).map((l) => ({
-      method: Object.keys(l.route.methods)[0]?.toUpperCase(), path: l.route.path,
-    }));
+    const routes = stack
+      .filter((l) => l.route?.path)
+      .map((l) => ({ method: Object.keys(l.route.methods)[0]?.toUpperCase(), path: l.route.path }));
     res.json({ routes });
   });
 
@@ -233,10 +249,14 @@ if (EXPOSE_INTROSPECTION) {
   });
 }
 
-/* Guard Idempotency */
+/* -------------------------------------------------------------------------- */
+/* Guard Idempotency pour /upload/id                                          */
+/* -------------------------------------------------------------------------- */
 const REQUIRE_IDEM = (process.env.REQUIRE_UPLOAD_IDEM || 'true') === 'true';
 function requireIdempotencyKey(req, res, next) {
-  if (req.method !== 'POST' || (req.path !== '/upload/id' && req.path !== '/api/upload/id')) {return next();}
+  if (req.method !== 'POST') {return next();}
+  if (req.path !== '/upload/id' && req.path !== '/api/upload/id') {return next();}
+
   const key = String(req.get('x-idempotency-key') || '').trim();
   if (REQUIRE_IDEM && !key) {
     log('warn', 'IDEMPOTENCY/MISSING_STRICT', { rid: req._rid, path: req.path, method: req.method });
@@ -244,6 +264,7 @@ function requireIdempotencyKey(req, res, next) {
   }
   if (!REQUIRE_IDEM && !key) {
     const gen = `srv_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    // on injecte côté req/res pour trace
     req.headers['x-idempotency-key'] = gen;
     res.set('X-Idempotency-Key', gen);
     log('warn', 'IDEMPOTENCY/AUTO_GENERATED_DEV', { rid: req._rid, generated: gen, path: req.path });
@@ -253,7 +274,9 @@ function requireIdempotencyKey(req, res, next) {
   next();
 }
 
-/* Loader d’upload tolérant */
+/* -------------------------------------------------------------------------- */
+/* Loader d’upload tolérant                                                   */
+/* -------------------------------------------------------------------------- */
 let uploadHandlerFn = null;
 async function getUploadHandler() {
   if (uploadHandlerFn) {return uploadHandlerFn;}
@@ -266,12 +289,12 @@ async function getUploadHandler() {
   const mod = tryRequire(candidates, null);
 
   let picked = null;
-  if (typeof mod === 'function') {picked = { kind: 'cjs_function', fn: mod };}
-  else if (mod?.uploadMissingChildDoc) {picked = { kind: 'cjs_named_uploadMissingChildDoc', fn: mod.uploadMissingChildDoc };}
-  else if (mod?.uploadId) {picked = { kind: 'cjs_named_uploadId', fn: mod.uploadId };}
-  else if (mod?.default && typeof mod.default === 'function') {picked = { kind: 'esm_default_function', fn: mod.default };}
-  else if (mod?.default?.uploadMissingChildDoc) {picked = { kind: 'esm_default_named_uploadMissingChildDoc', fn: mod.default.uploadMissingChildDoc };}
-  else if (mod?.default?.uploadId) {picked = { kind: 'esm_default_named_uploadId', fn: mod.default.uploadId };}
+  if (typeof mod === 'function') { picked = { kind: 'cjs_function', fn: mod }; }
+  else if (mod?.uploadMissingChildDoc) { picked = { kind: 'cjs_named_uploadMissingChildDoc', fn: mod.uploadMissingChildDoc }; }
+  else if (mod?.uploadId) { picked = { kind: 'cjs_named_uploadId', fn: mod.uploadId }; }
+  else if (mod?.default && typeof mod.default === 'function') { picked = { kind: 'esm_default_function', fn: mod.default }; }
+  else if (mod?.default?.uploadMissingChildDoc) { picked = { kind: 'esm_default_named_uploadMissingChildDoc', fn: mod.default.uploadMissingChildDoc }; }
+  else if (mod?.default?.uploadId) { picked = { kind: 'esm_default_named_uploadId', fn: mod.default.uploadId }; }
 
   if (!picked) {
     log('error', 'UPLOAD_LOADER/UNAVAILABLE', {
@@ -279,6 +302,7 @@ async function getUploadHandler() {
       expects: 'function OR { uploadMissingChildDoc } OR { uploadId } OR default variants',
       note: 'Chemin attendu: functions/uploads/handleUpload.js (ou src/uploads en fallback)',
     });
+    // Fallback non bloquant (ne casse pas le boot, évite les probes KO)
     uploadHandlerFn = async (_req, res) => res.status(503).json({ ok: false, error: 'upload_handler_missing', hint: 'check uploads/handleUpload.js' });
   } else {
     uploadHandlerFn = picked.fn;
@@ -287,7 +311,9 @@ async function getUploadHandler() {
   return uploadHandlerFn;
 }
 
-/* ROUTE DIRECTE /upload/id — ultra verbose */
+/* -------------------------------------------------------------------------- */
+/* ROUTE DIRECTE /upload/id — ultra verbose                                   */
+/* -------------------------------------------------------------------------- */
 app.post('/upload/id', requireIdempotencyKey, async (req, res) => {
   log('info', 'UPLOAD/ENTRY', {
     rid: req._rid,
@@ -306,7 +332,9 @@ app.post('/upload/id', requireIdempotencyKey, async (req, res) => {
   }
 });
 
-/* Préfixe /api (miroir) — mêmes logs */
+/* -------------------------------------------------------------------------- */
+/* Préfixe /api (miroir) — mêmes logs                                         */
+/* -------------------------------------------------------------------------- */
 if ((process.env.MOUNT_API_PREFIX || 'true') === 'true') {
   const router = express.Router();
 
@@ -319,9 +347,9 @@ if ((process.env.MOUNT_API_PREFIX || 'true') === 'true') {
     router.get('/__routes', (_req, res) => {
       // @ts-ignore
       const stack = app._router?.stack || [];
-      const routes = stack.filter((l) => l.route?.path).map((l) => ({
-        method: Object.keys(l.route.methods)[0]?.toUpperCase(), path: l.route.path,
-      }));
+      const routes = stack
+        .filter((l) => l.route?.path)
+        .map((l) => ({ method: Object.keys(l.route.methods)[0]?.toUpperCase(), path: l.route.path }));
       res.json({ routes, base: '/api' });
     });
 
@@ -380,12 +408,16 @@ if ((process.env.MOUNT_API_PREFIX || 'true') === 'true') {
   log('info', 'API_PREFIX/MOUNTED', { base: '/api', routes: ['GET /_health', 'POST /upload/id'] });
 }
 
-/* 404 */
+/* -------------------------------------------------------------------------- */
+/* 404 finale                                                                 */
+/* -------------------------------------------------------------------------- */
 app.use((req, res) => {
   log('warn', 'ROUTE/NOT_FOUND', { method: req.method, path: req.path });
   res.status(404).json({ ok: false, error: 'not_found', path: req.path });
 });
 
-/* Export principal */
+/* -------------------------------------------------------------------------- */
+/* Export principal — Cloud Functions v2 (PAS de app.listen)                  */
+/* -------------------------------------------------------------------------- */
 exports.api = onRequest(app);
-log('info', 'FUNCTION/EXPORTED', { fn: 'api', routes: ['GET /_health', 'POST /upload/id'] });
+log('info', 'FUNCTION/EXPORTED', { fn: 'api', routes: ['GET /_health', 'POST /upload/id', 'GET /__routes?'] });
