@@ -8,14 +8,14 @@
    - ⚠️ NE JAMAIS fixer 'Content-Type' (laisse RN/Fetch générer le boundary)
    ============================================================================= */
 
-import { Platform, Image } from 'react-native';
+const { Platform, Image } = require('react-native');
 
 /* =============================================================================
    CONFIG
    ============================================================================= */
 
 /** Bases d’upload (ordre = priorité) */
-export const UPLOAD_BASES = [
+const UPLOAD_BASES = [
   // Cloud Functions v2 (Express monté derrière /api)
   'https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/api',
   // Cloud Run (service HTTP direct, pas de /api)
@@ -23,7 +23,7 @@ export const UPLOAD_BASES = [
 ];
 
 /** Routes d’upload par “kind” (miroir server) */
-export const UPLOAD_PATHS = {
+const UPLOAD_PATHS = {
   id: ['upload/id'],
   photo: ['upload/id'],
   linkDoc: ['upload/id'],
@@ -50,7 +50,7 @@ const CB_COOLDOWN_MS = 60_000;      // temps d’ouverture
 
 const rand = () => Math.floor(Math.random() * 1e9).toString(16);
 
-export function newTraceId(prefix = 'upl') {
+function newTraceId(prefix = 'upl') {
   return `${prefix}_${Date.now()}_${rand()}`;
 }
 function newSpanId() {
@@ -123,7 +123,7 @@ function guessDocKind({ mime = '', name = '', dims = null }) {
 }
 
 /** Idempotency key stable (hash simple, suffisant côté client) */
-export function makeIdempotencyKey({ caseId, userId, name, size }) {
+function makeIdempotencyKey({ caseId, userId, name, size }) {
   const base = `${caseId || 'X'}:${userId || 'anon'}:${name || 'file'}:${size || '0'}:${Date.now()}`;
   let h = 0;
   for (let i = 0; i < base.length; i += 1) { h = (h << 5) - h + base.charCodeAt(i); h |= 0; }
@@ -197,7 +197,7 @@ function buildUploadCandidates(kind) {
  * @param {string} [options.idempotencyKey]
  * @param {{lat:number,lng:number}} [options.geo]
  */
-export async function uploadDocMultipart(options = {}) {
+async function uploadDocMultipart(options = {}) {
   const {
     uri, name, mime, size, caseId, kind, userId, cpfRaw, idempotencyKey, geo,
   } = options || {};
@@ -395,6 +395,17 @@ export async function uploadDocMultipart(options = {}) {
    WRAPPERS (ergonomie)
    ============================================================================= */
 
-export const uploadIdDocument   = (p) => uploadDocMultipart({ ...p, kind: 'id' });
-export const uploadLinkDocument = (p) => uploadDocMultipart({ ...p, kind: 'linkDoc' });
-export const uploadChildPhoto   = (p) => uploadDocMultipart({ ...p, kind: 'photo' });
+const uploadIdDocument   = (p) => uploadDocMultipart({ ...p, kind: 'id' });
+const uploadLinkDocument = (p) => uploadDocMultipart({ ...p, kind: 'linkDoc' });
+const uploadChildPhoto   = (p) => uploadDocMultipart({ ...p, kind: 'photo' });
+
+module.exports = {
+  UPLOAD_BASES,
+  UPLOAD_PATHS,
+  newTraceId,
+  makeIdempotencyKey,
+  uploadDocMultipart,
+  uploadIdDocument,
+  uploadLinkDocument,
+  uploadChildPhoto,
+};
