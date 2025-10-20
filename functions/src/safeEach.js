@@ -45,7 +45,7 @@ function safeForEach(snapOrArr, fn) {
           fn(vals[i], i);
         } catch {}
       }
-    } catch {} 
+    } catch {}
   }
 }
 

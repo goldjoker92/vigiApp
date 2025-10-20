@@ -27,8 +27,7 @@ import { db, auth } from '../../../firebase';
 
 export const onlyDigits = (v) => String(v || '').replace(/\D/g, '');
 
-export const capitalize = (s) =>
-  s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : '';
+export const capitalize = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : '');
 
 export const toTitleCase = (s) =>
   String(s || '')
@@ -43,30 +42,42 @@ export const toTitleCase = (s) =>
 export const todayISO = () => new Date().toISOString().slice(0, 10);
 
 export const formatDateISOToBR = (iso) => {
-  if (!iso) {return '';}
+  if (!iso) {
+    return '';
+  }
   const [y, m, d] = String(iso).split('-');
   return `${d}/${m}/${y}`;
 };
 
 export const formatDateBRToISO = (br) => {
-  if (!br) {return '';}
+  if (!br) {
+    return '';
+  }
   const [d, m, y] = String(br).split('/');
   return `${y}-${m}-${d}`;
 };
 
 // Âge (BR DD/MM/YYYY) – tolérance 13 ans jusqu'au 31/12
 export const calcAgeFromDateBR = (dobBR) => {
-  if (!dobBR) {return null;}
+  if (!dobBR) {
+    return null;
+  }
   const [d, m, y] = dobBR.split('/').map((x) => parseInt(x, 10));
-  if (!d || !m || !y) {return null;}
+  if (!d || !m || !y) {
+    return null;
+  }
   const birth = new Date(y, m - 1, d);
   const today = new Date();
   let age = today.getFullYear() - birth.getFullYear();
   const passed =
     today.getMonth() > birth.getMonth() ||
     (today.getMonth() === birth.getMonth() && today.getDate() >= birth.getDate());
-  if (!passed) {age--;}
-  if (age === 13 && today.getFullYear() === birth.getFullYear() + 13) {return 12.9;}
+  if (!passed) {
+    age--;
+  }
+  if (age === 13 && today.getFullYear() === birth.getFullYear() + 13) {
+    return 12.9;
+  }
   return age;
 };
 
@@ -91,28 +102,26 @@ const MIN_SECONDS_BETWEEN_DRAFTS = 45;
 const newTraceId = () =>
   `trace_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
-const tsPlusHours = (h) =>
-  Timestamp.fromDate(new Date(Date.now() + h * 3600 * 1000));
+const tsPlusHours = (h) => Timestamp.fromDate(new Date(Date.now() + h * 3600 * 1000));
 
 /** Recherche un DRAFT réutilisable (encore valide). */
 async function findReusableDraftChild(uid) {
   const col = collection(db, 'missingCases');
-  const q = query(
-    col,
-    where('createdBy', '==', uid),
-    where('status', '==', 'DRAFT'),
-    qLimit(3),
-  );
+  const q = query(col, where('createdBy', '==', uid), where('status', '==', 'DRAFT'), qLimit(3));
   logMC('[REUSE][QUERY]', { uid });
   const snap = await getDocs(q);
-  if (snap.empty) {return null;}
+  if (snap.empty) {
+    return null;
+  }
 
   for (const doc of snap.docs) {
     const data = doc.data();
     const exp = data?.expiresAt;
     const ok = !exp || exp.toMillis() > Date.now();
     logMC('[REUSE][CANDIDATE]', { id: doc.id, ok, status: data?.status });
-    if (ok) {return { caseId: doc.id };}
+    if (ok) {
+      return { caseId: doc.id };
+    }
   }
   return null;
 }
@@ -120,12 +129,7 @@ async function findReusableDraftChild(uid) {
 /** Vérifie quotas/ratelimit avant création d’un DRAFT. */
 async function canCreateDraftChildCase(uid) {
   const col = collection(db, 'missingCases');
-  const q = query(
-    col,
-    where('createdBy', '==', uid),
-    where('status', '==', 'DRAFT'),
-    qLimit(10),
-  );
+  const q = query(col, where('createdBy', '==', uid), where('status', '==', 'DRAFT'), qLimit(10));
   logMC('[GUARDS][QUERY]', { uid });
   const snap = await getDocs(q);
   const docs = snap.docs || [];

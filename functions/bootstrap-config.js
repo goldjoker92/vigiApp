@@ -17,10 +17,9 @@
   // 0) Idempotence process-wide
   // ---------------------------------------------------------------------------
   if (global.__VIGI_BOOTSTRAP_DONE__) {
-     
     console.log('[BOOTSTRAP] SKIP (déjà initialisé)');
     // Retourne le cache si déjà prêt
-     
+
     module.exports = module.exports || {
       getConfig() {
         return global.__VIGI_BOOT_CONF__ || {};
@@ -30,7 +29,7 @@
   }
 
   const T0 = Date.now();
-   
+
   console.log('[BOOTSTRAP] START');
 
   // ---------------------------------------------------------------------------
@@ -38,12 +37,7 @@
   // ---------------------------------------------------------------------------
   const nowIso = () => new Date().toISOString();
   const logJ = (lvl, msg, extra = {}) => {
-     
-    (lvl === 'error'
-      ? console.error
-      : lvl === 'warn'
-        ? console.warn
-        : console.log)(
+    (lvl === 'error' ? console.error : lvl === 'warn' ? console.warn : console.log)(
       JSON.stringify({ ts: nowIso(), lvl, mod: 'bootstrap', msg, ...extra }),
     );
   };
@@ -96,12 +90,10 @@
       value: isSecret ? safeMask(v) : String(v),
     }));
     try {
-       
       console.log('\n[BOOTSTRAP][TABLE] ENV RÉSUMÉ');
-       
+
       console.table(rows);
     } catch {
-       
       console.log('[BOOTSTRAP] ENV:', rows);
     }
   };
@@ -110,7 +102,6 @@
   // 2) Charger .env (local/dev)
   // ---------------------------------------------------------------------------
   try {
-     
     require('dotenv').config();
     logJ('info', '.env chargé');
   } catch {
@@ -123,7 +114,6 @@
   // ---------------------------------------------------------------------------
   let cfgFn = {};
   try {
-     
     const functions = require('firebase-functions');
     const appCfg = (functions.config && functions.config().app) || {};
     const vigiCfg = (functions.config && functions.config().vigi) || {};
@@ -166,11 +156,11 @@
 
     // Uploads (CF upload)
     ALLOWED_MIME: 'image/jpeg,image/png,image/webp,image/heic,application/pdf',
-    MAX_UPLOAD_MB: '15',            // humain
-    UPLOAD_MAX_BYTES: '',           // dérivé si vide
-    STORAGE_BUCKET: '',             // bucket par défaut si vide
-    UPLOAD_BUCKET: '',              // alias lisible par le handler
-    UPLOAD_IDEM_TTL_MIN: '15',      // idempotency TTL (minutes)
+    MAX_UPLOAD_MB: '15', // humain
+    UPLOAD_MAX_BYTES: '', // dérivé si vide
+    STORAGE_BUCKET: '', // bucket par défaut si vide
+    UPLOAD_BUCKET: '', // alias lisible par le handler
+    UPLOAD_IDEM_TTL_MIN: '15', // idempotency TTL (minutes)
 
     // Project
     PROJECT_ID: '',
@@ -220,7 +210,6 @@
   Object.entries(defaults).forEach(([k, v]) => setIfMissing(k, v));
 
   for (const [envKey, aliases] of Object.entries(mapFromCfg)) {
-     
     for (const alias of aliases) {
       if (cfgFn && cfgFn[alias] !== undefined && cfgFn[alias] !== '') {
         setIfMissing(envKey, cfgFn[alias]);
@@ -255,7 +244,10 @@
     process.env.ALLOWED_MIME = defaults.ALLOWED_MIME;
   }
   // UPLOAD_BUCKET: si vide, tomber sur STORAGE_BUCKET (si présent)
-  if ((!process.env.UPLOAD_BUCKET || process.env.UPLOAD_BUCKET.trim() === '') && process.env.STORAGE_BUCKET) {
+  if (
+    (!process.env.UPLOAD_BUCKET || process.env.UPLOAD_BUCKET.trim() === '') &&
+    process.env.STORAGE_BUCKET
+  ) {
     process.env.UPLOAD_BUCKET = process.env.STORAGE_BUCKET;
   }
   // TTL idempotency (min)
@@ -359,11 +351,10 @@
   global.__VIGI_BOOT_CONF__ = exported;
   global.__VIGI_BOOTSTRAP_DONE__ = true;
 
-   
   console.log('[BOOTSTRAP] END', { ms: Date.now() - T0 });
 
   // Point d’entrée public
-   
+
   module.exports = {
     getConfig() {
       return global.__VIGI_BOOT_CONF__;

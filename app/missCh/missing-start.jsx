@@ -10,9 +10,17 @@
 //  - Conservation de la logique (uploads id_front/id_back & link_front/link_back)
 //  - Logs & traces: traceId d’écran, step() pour étapes clés, timings msSince()
 //  - ImagePicker: API non dépréciée (mediaTypes, selectionLimit)
+//  - Uploads: progression %, annulation par fichier (AbortController)
 // ============================================================================
 
-import React, { useEffect, useMemo, useRef, useReducer, useState, useCallback } from 'react';
+import React, {
+  useEffect,
+  useMemo,
+  useRef,
+  useReducer,
+  useState,
+  useCallback,
+} from 'react';
 import {
   View,
   Text,
@@ -39,6 +47,7 @@ import {
   ChevronLeft,
   Share2,
   Check,
+  X,
 } from 'lucide-react-native';
 
 // Flux
@@ -47,8 +56,14 @@ import { FLOW_RULES, getFlow } from '../../src/miss/lib/flowRules';
 // Libs locales
 import { formatDateBRToISO, todayISO, onlyDigits } from '../../src/miss/lib/helpers';
 
-// Uploads
-import { uploadIdDocument, uploadLinkDocument, uploadChildPhoto } from '../../src/miss/lib/uploads';
+// ✅ Nouveaux uploaders unifiés (avec progress + abort)
+import {
+  uploadIdFront,
+  uploadIdBack,
+  uploadLinkFront,
+  uploadLinkBack,
+  uploadChildPhoto as uploadMainPhoto,
+} from '../../src/miss/lib/uploaders';
 
 // Guard
 import { useSubmitGuard } from '../../src/miss/lib/useSubmitGuard';
@@ -114,7 +129,7 @@ function useHasWhatsApp() {
 }
 
 // ---------------------------------------------------------------------------
-// Partage (plus bavard dans les logs)
+// Partage
 // ---------------------------------------------------------------------------
 function buildShareMessage({ type, caseId, name, cidade, uf, dateBR, time }) {
   const link = `https://vigi.app/case/${caseId || ''}`;
@@ -324,10 +339,7 @@ function ensureCaseId(currentId, dispatchRef) {
 }
 
 // ---------------------------------------------------------------------------
-// Validation heuristique + helpers
-// ---------------------------------------------------------------------------
-let screenTraceIdRef;
-
+/** Capture GEO best-effort */
 async function captureGeolocationOnce({ timeoutMs = 6000 } = {}) {
   const traceId = screenTraceIdRef.current;
   Log.step(traceId, 'GEO/BEGIN');
@@ -341,7 +353,10 @@ async function captureGeolocationOnce({ timeoutMs = 6000 } = {}) {
     }
 
     const withTimeout = (p, ms) =>
-      Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('GEO_TIMEOUT')), ms))]);
+      Promise.race([
+        p,
+        new Promise((_, rej) => setTimeout(() => rej(new Error('GEO_TIMEOUT')), ms)),
+      ]);
 
     try {
       const pos = await withTimeout(
@@ -410,8 +425,9 @@ const ChipGroup = ({ options, activeKey, onSelect }) => (
 // ============================================================================
 // Composant principal
 // ============================================================================
+let screenTraceIdRef;
 export default function MissingStart() {
-  // TraceId écran + refs d'état/guard propres (ordre nettoyé)
+  // TraceId écran + refs
   screenTraceIdRef = useRef(newTraceId('missing'));
   const screenMountTsRef = useRef(Date.now());
   const lastActionRef = useRef('mount');
@@ -432,7 +448,45 @@ export default function MissingStart() {
 
   const { show, Toast } = useLiteToast();
   const hasWA = useHasWhatsApp();
-  const [busy, setBusy] = useState(false);
+
+  // Upload state (par "kind")
+  const [uploadPct, setUploadPct] = useState({
+    photo: 0,
+    id_front: 0,
+    id_back: 0,
+    link_front: 0,
+    link_back: 0,
+  });
+  const [uploading, setUploading] = useState({
+    photo: false,
+    id_front: false,
+    id_back: false,
+    link_front: false,
+    link_back: false,
+  });
+  const abortersRef = useRef({
+    photo: null,
+    id_front: null,
+    id_back: null,
+    link_front: null,
+    link_back: null,
+  });
+
+  const setPct = (kind, pct) =>
+    setUploadPct((s) => ({ ...s, [kind]: Math.max(0, Math.min(100, pct || 0)) }));
+  const setIsUploading = (kind, val) =>
+    setUploading((s) => ({ ...s, [kind]: !!val }));
+
+  const cancelUpload = (kind) => {
+    try {
+      abortersRef.current[kind]?.abort();
+      abortersRef.current[kind] = null;
+      setIsUploading(kind, false);
+      setPct(kind, 0);
+      show('Upload cancelado.');
+      Log.warn('UPLOAD/CANCELLED', { kind });
+    } catch {}
+  };
 
   // Permissions (Image Picker) — best effort
   useEffect(() => {
@@ -474,7 +528,7 @@ export default function MissingStart() {
     const traceId = screenTraceIdRef.current;
     const mountTs = screenMountTsRef.current;
     Log.info('MOUNT', { traceId, at: nowTs(), type, caseId: initialParamCaseId || '(none)' });
-    const __ensureMountRef = screenMountTsRef.current; // garde la ref vivante
+    const __ensureMountRef = screenMountTsRef.current;
     void __ensureMountRef;
     return () => {
       Log.warn('UNMOUNT', { reason: lastActionRef.current, traceId, alive: msSince(mountTs) });
@@ -506,7 +560,7 @@ export default function MissingStart() {
   }, [type, form]);
 
   // -------------------------------------------------------------------------
-  // Uploads (ImagePicker sans dépréciation)
+  // Uploads (ImagePicker sans dépréciation) + progress + abort
   // -------------------------------------------------------------------------
   async function pickFileFromLibrary(kind) {
     const t0 = Date.now();
@@ -521,7 +575,6 @@ export default function MissingStart() {
         return null;
       }
 
-      // ✅ API à jour: mediaTypes + selectionLimit (pas d’options dépréciées)
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: false,
@@ -548,7 +601,7 @@ export default function MissingStart() {
       else if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {mime = 'image/jpeg';}
       else if (lower.endsWith('.webp')) {mime = 'image/webp';}
 
-      return { uri, name: fileName, mime, kind };
+      return { uri, fileName, mime, kind };
     } catch (e) {
       Log.error('PICK/ERROR', e?.message || e);
       show('Falha ao acessar a galeria.');
@@ -557,87 +610,108 @@ export default function MissingStart() {
   }
 
   async function onUpload(kind) {
-    // kind ∈ {'id_front','id_back','link_front','link_back','photo'}
+    if (uploading[kind]) {
+      // si on reclique pendant un upload, on propose d’annuler
+      cancelUpload(kind);
+      return;
+    }
+
     const traceId = screenTraceIdRef.current;
     Log.step(traceId, 'UPLOAD/BEGIN', { kind, type, caseId });
+
     const picked = await pickFileFromLibrary(kind);
     if (!picked) {
       Log.warn('UPLOAD/ABORT_NO_PICK', { kind });
       return;
     }
-    const { uri, name, mime } = picked;
-    setBusy(true);
+
+    const { uri, fileName, mime } = picked;
+    const ensuredId = ensureCaseId(caseId, dispatch);
+
+    // Prépare progress + abort
+    const controller = new AbortController();
+    abortersRef.current[kind] = controller;
+    setPct(kind, 0);
+    setIsUploading(kind, true);
+
     try {
-      const ensuredId = ensureCaseId(caseId, dispatch);
       const common = {
         uri,
-        name,
+        fileName,
         mime,
         caseId: String(ensuredId),
-        userId: auth.currentUser?.uid || 'anon',
-        cpfRaw: form.cpfRaw,
-        // traceId, // ← décommente si tes libs upload consomment traceId côté serveur
-        geo: undefined,
+        onProgress: (p) => setPct(kind, p),
+        signal: controller.signal,
       };
 
-      let resp;
-      if (kind === 'photo') {
-        resp = await uploadChildPhoto(common);
-      } else if (kind === 'id_front' || kind === 'id_back') {
-        resp = await uploadIdDocument(common);
-      } else if (kind === 'link_front' || kind === 'link_back') {
-        resp = await uploadLinkDocument(common);
-      } else {
+      let res;
+      if (kind === 'photo') {res = await uploadMainPhoto(common);}
+      else if (kind === 'id_front') {res = await uploadIdFront(common);}
+      else if (kind === 'id_back') {res = await uploadIdBack(common);}
+      else if (kind === 'link_front') {res = await uploadLinkFront(common);}
+      else if (kind === 'link_back') {res = await uploadLinkBack(common);}
+      else {
         Log.warn('UPLOAD/UNKNOWN_KIND', kind);
         return;
       }
 
-      Log.info('UPLOAD/RESP', { kind, ok: !!resp?.ok });
-      if (!resp?.ok) {
-        show(resp?.reason || 'Falha no upload.');
-        Log.warn('UPLOAD/KO', { kind });
+      Log.info('UPLOAD/RESP', { kind, url: res?.url, path: res?.path, bytes: res?.bytes });
+      if (!res?.url) {
+        show('Falha no upload.');
+        Log.warn('UPLOAD/KO', { kind, res });
         return;
       }
 
+      // Applique le résultat dans le state
       if (kind === 'photo') {
-        dispatch({ type: 'BULK_SET', payload: { photoPath: resp.redactedUrl, caseId: ensuredId } });
+        dispatch({ type: 'BULK_SET', payload: { photoPath: res.url, caseId: ensuredId } });
         show('Foto anexada.');
       }
       if (kind === 'id_front') {
         dispatch({
           type: 'BULK_SET',
-          payload: { hasIdDocFront: true, idDocFrontPath: resp.redactedUrl, caseId: ensuredId },
+          payload: { hasIdDocFront: true, idDocFrontPath: res.url, caseId: ensuredId },
         });
         show('Documento (frente) anexado.');
       }
       if (kind === 'id_back') {
         dispatch({
           type: 'BULK_SET',
-          payload: { hasIdDocBack: true, idDocBackPath: resp.redactedUrl, caseId: ensuredId },
+          payload: { hasIdDocBack: true, idDocBackPath: res.url, caseId: ensuredId },
         });
         show('Documento (verso) anexado.');
       }
       if (kind === 'link_front') {
         dispatch({
           type: 'BULK_SET',
-          payload: { hasLinkDocFront: true, linkDocFrontPath: resp.redactedUrl, caseId: ensuredId },
+          payload: { hasLinkDocFront: true, linkDocFrontPath: res.url, caseId: ensuredId },
         });
         show('Vínculo (frente) anexado.');
       }
       if (kind === 'link_back') {
         dispatch({
           type: 'BULK_SET',
-          payload: { hasLinkDocBack: true, linkDocBackPath: resp.redactedUrl, caseId: ensuredId },
+          payload: { hasLinkDocBack: true, linkDocBackPath: res.url, caseId: ensuredId },
         });
         show('Vínculo (verso) anexado.');
       }
 
-      Log.step(traceId, 'UPLOAD/END', { kind });
+      setPct(kind, 100);
+      Log.step(traceId, 'UPLOAD/END', { kind, pct: 100 });
     } catch (e) {
-      Log.error('UPLOAD/ERROR', e?.message || e);
-      show('Erro no upload.');
+      if (e?.name === 'AbortError') {
+        Log.warn('UPLOAD/ABORTED', { kind });
+      } else {
+        Log.error('UPLOAD/ERROR', e?.message || e);
+        show('Erro no upload.');
+      }
     } finally {
-      setBusy(false);
+      setIsUploading(kind, false);
+      abortersRef.current[kind] = null;
+      // on laisse la barre à 100% une seconde si succès visuel
+      setTimeout(() => {
+        if (uploadPct[kind] === 100) {setPct(kind, 0);}
+      }, 900);
     }
   }
 
@@ -669,7 +743,13 @@ export default function MissingStart() {
       photoPath: form.photoPath,
     });
 
-    setBusy(true);
+    // Bloque l’envoi si un upload est en cours (évite les surprises réseau)
+    const anyUploading = Object.values(uploading).some(Boolean);
+    if (anyUploading) {
+      Alert.alert('Aguarde', 'Um upload ainda está em andamento. Tente novamente em instantes.');
+      return;
+    }
+
     try {
       const ensuredId = ensureCaseId(caseId, dispatch);
 
@@ -839,10 +919,8 @@ export default function MissingStart() {
     } catch (e) {
       Log.error('SUBMIT/ERROR', e?.message || e);
       Alert.alert('Erro', 'Falha ao enviar. Tente novamente.');
-    } finally {
-      setBusy(false);
     }
-  }, [type, form, router, caseId, show]);
+  }, [type, form, router, caseId, show, uploading]);
 
   // RENDER rules (recto/verso)
   const needsAdultBack = ['rg', 'rne'].includes(form.adultIdType);
@@ -850,6 +928,24 @@ export default function MissingStart() {
   const needsChildFront = ['certidao', 'rg_child', 'passport_child', 'rne_child'].includes(
     form.childDocType,
   );
+
+  // petit helper UI progression
+  const ProgressInline = ({ kind }) => {
+    const pct = uploadPct[kind] || 0;
+    const isUp = uploading[kind];
+    if (!isUp && pct === 0) {return null;}
+    return (
+      <View style={styles.progressWrap}>
+        <View style={[styles.progressBar, { width: `${pct}%` }]} />
+        <Text style={styles.progressTxt}>{pct}%</Text>
+        {isUp ? (
+          <TouchableOpacity onPress={() => cancelUpload(kind)} style={styles.progressCancel}>
+            <X size={14} color="#e5e7eb" />
+          </TouchableOpacity>
+        ) : null}
+      </View>
+    );
+  };
 
   return (
     <KeyboardAvoidingView
@@ -926,43 +1022,65 @@ export default function MissingStart() {
               </View>
 
               {/* Uploads Adulto */}
-              <View style={styles.row}>
+              <View style={styles.rowCol}>
                 <TouchableOpacity
-                  style={[styles.btnGhost, form.hasIdDocFront && styles.btnGhostOk]}
+                  style={[
+                    styles.btnGhost,
+                    form.hasIdDocFront && styles.btnGhostOk,
+                    uploading.id_front && styles.btnGhostBusy,
+                  ]}
                   onPress={() => onUpload('id_front')}
-                  disabled={busy}
                 >
-                  <FileCheck2 color={form.hasIdDocFront ? '#22C55E' : '#7dd3fc'} size={16} />
+                  <FileCheck2
+                    color={form.hasIdDocFront ? '#22C55E' : '#7dd3fc'}
+                    size={16}
+                  />
                   <Text style={styles.btnGhostTxt}>
                     {form.adultIdType === 'passport'
                       ? form.hasIdDocFront
                         ? 'Passaporte ✅'
-                        : 'Anexar passaporte'
+                        : uploading.id_front
+                          ? 'Enviando…'
+                          : 'Anexar passaporte'
                       : form.hasIdDocFront
                         ? `${form.adultIdType === 'rne' ? 'RNE' : 'RG'} (frente) ✅`
-                        : `Anexar ${form.adultIdType === 'rne' ? 'RNE' : 'RG'} (frente)`}
+                        : uploading.id_front
+                          ? 'Enviando…'
+                          : `Anexar ${form.adultIdType === 'rne' ? 'RNE' : 'RG'} (frente)`}
                   </Text>
                 </TouchableOpacity>
+                <ProgressInline kind="id_front" />
 
                 {needsAdultBack && (
-                  <TouchableOpacity
-                    style={[styles.btnGhost, form.hasIdDocBack && styles.btnGhostOk]}
-                    onPress={() => onUpload('id_back')}
-                    disabled={busy}
-                  >
-                    <FileCheck2 color={form.hasIdDocBack ? '#22C55E' : '#7dd3fc'} size={16} />
-                    <Text style={styles.btnGhostTxt}>
-                      {form.hasIdDocBack
-                        ? `${form.adultIdType === 'rne' ? 'RNE' : 'RG'} (verso) ✅`
-                        : `Anexar ${form.adultIdType === 'rne' ? 'RNE' : 'RG'} (verso)`}
-                    </Text>
-                  </TouchableOpacity>
+                  <>
+                    <TouchableOpacity
+                      style={[
+                        styles.btnGhost,
+                        form.hasIdDocBack && styles.btnGhostOk,
+                        uploading.id_back && styles.btnGhostBusy,
+                      ]}
+                      onPress={() => onUpload('id_back')}
+                    >
+                      <FileCheck2
+                        color={form.hasIdDocBack ? '#22C55E' : '#7dd3fc'}
+                        size={16}
+                      />
+                      <Text style={styles.btnGhostTxt}>
+                        {form.hasIdDocBack
+                          ? `${form.adultIdType === 'rne' ? 'RNE' : 'RG'} (verso) ✅`
+                          : uploading.id_back
+                            ? 'Enviando…'
+                            : `Anexar ${form.adultIdType === 'rne' ? 'RNE' : 'RG'} (verso)`}
+                      </Text>
+                    </TouchableOpacity>
+                    <ProgressInline kind="id_back" />
+                  </>
                 )}
               </View>
             </Section>
           )}
 
-          {/* DOCUMENTS — Criança (Vínculo) */}
+          {/* DOCUMENTOS — Criança (Vínculo) */}
           {type === 'child' && (
             <Section
               title="Documento da criança (vínculo)"
@@ -975,41 +1093,65 @@ export default function MissingStart() {
               />
 
               {needsChildFront && (
-                <View style={styles.row}>
+                <View style={styles.rowCol}>
                   <TouchableOpacity
-                    style={[styles.btnGhost, form.hasLinkDocFront && styles.btnGhostOk]}
+                    style={[
+                      styles.btnGhost,
+                      form.hasLinkDocFront && styles.btnGhostOk,
+                      uploading.link_front && styles.btnGhostBusy,
+                    ]}
                     onPress={() => onUpload('link_front')}
-                    disabled={busy}
                   >
-                    <FileCheck2 color={form.hasLinkDocFront ? '#22C55E' : '#7dd3fc'} size={16} />
+                    <FileCheck2
+                      color={form.hasLinkDocFront ? '#22C55E' : '#7dd3fc'}
+                      size={16}
+                    />
                     <Text style={styles.btnGhostTxt}>
                       {form.childDocType === 'certidao'
                         ? form.hasLinkDocFront
                           ? 'Certidão ✅'
-                          : 'Anexar certidão'
+                          : uploading.link_front
+                            ? 'Enviando…'
+                            : 'Anexar certidão'
                         : form.childDocType === 'passport_child'
                           ? form.hasLinkDocFront
                             ? 'Passaporte (criança) ✅'
-                            : 'Anexar passaporte (criança)'
+                            : uploading.link_front
+                              ? 'Enviando…'
+                              : 'Anexar passaporte (criança)'
                           : form.hasLinkDocFront
                             ? `${form.childDocType === 'rne_child' ? 'RNE criança' : 'RG criança'} (frente) ✅`
-                            : `Anexar ${form.childDocType === 'rne_child' ? 'RNE criança' : 'RG criança'} (frente)`}
+                            : uploading.link_front
+                              ? 'Enviando…'
+                              : `Anexar ${form.childDocType === 'rne_child' ? 'RNE criança' : 'RG criança'} (frente)`}
                     </Text>
                   </TouchableOpacity>
+                  <ProgressInline kind="link_front" />
 
                   {needsChildBack && (
-                    <TouchableOpacity
-                      style={[styles.btnGhost, form.hasLinkDocBack && styles.btnGhostOk]}
-                      onPress={() => onUpload('link_back')}
-                      disabled={busy}
-                    >
-                      <FileCheck2 color={form.hasLinkDocBack ? '#22C55E' : '#7dd3fc'} size={16} />
-                      <Text style={styles.btnGhostTxt}>
-                        {form.hasLinkDocBack
-                          ? `${form.childDocType === 'rne_child' ? 'RNE criança' : 'RG criança'} (verso) ✅`
-                          : `Anexar ${form.childDocType === 'rne_child' ? 'RNE criança' : 'RG criança'} (verso)`}
-                      </Text>
-                    </TouchableOpacity>
+                    <>
+                      <TouchableOpacity
+                        style={[
+                          styles.btnGhost,
+                          form.hasLinkDocBack && styles.btnGhostOk,
+                          uploading.link_back && styles.btnGhostBusy,
+                        ]}
+                        onPress={() => onUpload('link_back')}
+                      >
+                        <FileCheck2
+                          color={form.hasLinkDocBack ? '#22C55E' : '#7dd3fc'}
+                          size={16}
+                        />
+                        <Text style={styles.btnGhostTxt}>
+                          {form.hasLinkDocBack
+                            ? `${form.childDocType === 'rne_child' ? 'RNE criança' : 'RG criança'} (verso) ✅`
+                            : uploading.link_back
+                              ? 'Enviando…'
+                              : `Anexar ${form.childDocType === 'rne_child' ? 'RNE criança' : 'RG criança'} (verso)`}
+                        </Text>
+                      </TouchableOpacity>
+                      <ProgressInline kind="link_back" />
+                    </>
                   )}
                 </View>
               )}
@@ -1138,17 +1280,25 @@ export default function MissingStart() {
 
           {/* PHOTO */}
           <Section title="Foto" subtitle="Melhor uma foto recente e nítida.">
-            <View style={styles.row}>
+            <View style={styles.rowCol}>
               <TouchableOpacity
-                style={[styles.btnGhost, form.photoPath && styles.btnGhostOk]}
+                style={[
+                  styles.btnGhost,
+                  form.photoPath && styles.btnGhostOk,
+                  uploading.photo && styles.btnGhostBusy,
+                ]}
                 onPress={() => onUpload('photo')}
-                disabled={busy}
               >
                 <ImageIcon color={form.photoPath ? '#22C55E' : '#9aa0a6'} size={16} />
                 <Text style={styles.btnGhostTxt}>
-                  {form.photoPath ? 'Foto anexada ✅' : 'Anexar foto'}
+                  {form.photoPath
+                    ? 'Foto anexada ✅'
+                    : uploading.photo
+                      ? 'Enviando…'
+                      : 'Anexar foto'}
                 </Text>
               </TouchableOpacity>
+              <ProgressInline kind="photo" />
             </View>
           </Section>
 
@@ -1208,10 +1358,10 @@ export default function MissingStart() {
             onPress={guard('submit', async () =>
               withBackoff(onSubmit, { attempts: 2, baseDelay: 600 }),
             )}
-            disabled={!canSubmit || busy || running('submit')}
+            disabled={!canSubmit || running('submit') || Object.values(uploading).some(Boolean)}
           >
             <Text style={styles.primaryTxt}>
-              {busy || running('submit') ? 'Enviando…' : 'Enviar'}
+              {running('submit') ? 'Enviando…' : 'Enviar'}
             </Text>
           </TouchableOpacity>
 
@@ -1223,7 +1373,6 @@ export default function MissingStart() {
                 Log.info('SHARE/native/click');
                 await shareNative(shareMsg);
               }}
-              disabled={busy}
             >
               <Share2 color="#0ea5e9" size={16} />
               <Text style={styles.shareTxt}>Compartilhar</Text>
@@ -1235,7 +1384,6 @@ export default function MissingStart() {
                   Log.info('SHARE/whatsapp/click');
                   await shareWhatsApp(shareMsg);
                 }}
-                disabled={busy}
               >
                 <Share2 color="#22C55E" size={16} />
                 <Text style={[styles.shareTxt, { color: '#22C55E' }]}>WhatsApp</Text>
@@ -1301,6 +1449,7 @@ const styles = StyleSheet.create({
   cardSubtitle: { color: '#9aa0a6', fontSize: 12, marginTop: 2 },
 
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10 },
+  rowCol: { gap: 10, marginTop: 10 },
 
   input: {
     flex: 1,
@@ -1337,7 +1486,6 @@ const styles = StyleSheet.create({
   chipBoxTxtActive: { color: '#22C55E' },
 
   btnGhost: {
-    flex: 1,
     backgroundColor: '#0b1117',
     borderWidth: 1,
     borderColor: '#1f2a35',
@@ -1350,7 +1498,40 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   btnGhostOk: { borderColor: '#22C55E' },
+  btnGhostBusy: { opacity: 0.9, borderColor: '#3b82f6' },
   btnGhostTxt: { color: '#cfd3db', fontWeight: '600' },
+
+  // Progress inline
+  progressWrap: {
+    position: 'relative',
+    marginTop: 6,
+    height: 14,
+    borderRadius: 10,
+    backgroundColor: '#0b1117',
+    borderWidth: 1,
+    borderColor: '#1f2a35',
+    overflow: 'hidden',
+  },
+  progressBar: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: '#22C55E',
+  },
+  progressTxt: {
+    textAlign: 'center',
+    color: '#e5e7eb',
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '700',
+  },
+  progressCancel: {
+    position: 'absolute',
+    right: 6,
+    top: -12,
+    padding: 6,
+  },
 
   consentBox: {
     marginTop: 4,

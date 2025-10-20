@@ -3,5 +3,9 @@
  * Suffit pour éviter de renvoyer 100x le même terme en 1 session.
  */
 const mem = new Set();
-export function bloomSeen(k) { return mem.has(k); }
-export function bloomRemember(k) { mem.add(k); }
+export function bloomSeen(k) {
+  return mem.has(k);
+}
+export function bloomRemember(k) {
+  mem.add(k);
+}

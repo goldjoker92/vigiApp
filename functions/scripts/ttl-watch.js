@@ -30,9 +30,13 @@ const db = admin.firestore();
 
 const argv = process.argv.slice(2);
 const getFlag = (name, def = null) => {
-  const hit = argv.find(a => a === `--${name}` || a.startsWith(`--${name}=`));
-  if (!hit) { return def; }
-  if (hit.includes('=')) { return hit.split('=').slice(1).join('='); }
+  const hit = argv.find((a) => a === `--${name}` || a.startsWith(`--${name}=`));
+  if (!hit) {
+    return def;
+  }
+  if (hit.includes('=')) {
+    return hit.split('=').slice(1).join('=');
+  }
   return true;
 };
 const getInt = (name, def) => {
@@ -48,11 +52,13 @@ const PREFIX = getFlag('prefix', null);
 const LIMIT = getInt('limit', 50);
 const FILEPATH = getFlag('file', null);
 
-const positionalKeys = argv.filter(a => !a.startsWith('--'));
+const positionalKeys = argv.filter((a) => !a.startsWith('--'));
 
-const pad2 = n => String(n).padStart(2, '0');
-const fmtDuration = ms => {
-  if (!Number.isFinite(ms)) {return '-';}
+const pad2 = (n) => String(n).padStart(2, '0');
+const fmtDuration = (ms) => {
+  if (!Number.isFinite(ms)) {
+    return '-';
+  }
   const neg = ms < 0 ? '-' : '';
   const s = Math.floor(Math.abs(ms) / 1000);
   const m = Math.floor(s / 60);
@@ -66,7 +72,7 @@ async function readLines(file) {
   const raw = await fs.promises.readFile(abs, 'utf8');
   return raw
     .split(/\r?\n/)
-    .map(l => l.trim())
+    .map((l) => l.trim())
     .filter(Boolean);
 }
 
@@ -98,18 +104,14 @@ async function keysFromPrefix(prefix, limit) {
     .limit(limit)
     .get();
 
-  const keys = snap.docs.map(d => d.id);
+  const keys = snap.docs.map((d) => d.id);
   console.log(`[TTL WATCH] Keys via prefix "${prefix}" (${keys.length}/${limit})`);
   return keys;
 }
 
 async function keysFromRecent(n) {
-  const snap = await db
-    .collection(COLLECTION)
-    .orderBy('createdAt', 'desc')
-    .limit(n)
-    .get();
-  const keys = snap.docs.map(d => d.id);
+  const snap = await db.collection(COLLECTION).orderBy('createdAt', 'desc').limit(n).get();
+  const keys = snap.docs.map((d) => d.id);
   console.log(`[TTL WATCH] Keys récentes (createdAt desc) : ${keys.length}`);
   return keys;
 }
@@ -121,10 +123,18 @@ function uniq(arr) {
 async function resolveKeys() {
   let keys = [];
 
-  if (FILEPATH) {keys = keys.concat(await keysFromFile(FILEPATH));}
-  if (PREFIX) {keys = keys.concat(await keysFromPrefix(PREFIX, LIMIT));}
-  if (RECENT_N) {keys = keys.concat(await keysFromRecent(RECENT_N));}
-  if (positionalKeys.length) {keys = keys.concat(positionalKeys);}
+  if (FILEPATH) {
+    keys = keys.concat(await keysFromFile(FILEPATH));
+  }
+  if (PREFIX) {
+    keys = keys.concat(await keysFromPrefix(PREFIX, LIMIT));
+  }
+  if (RECENT_N) {
+    keys = keys.concat(await keysFromRecent(RECENT_N));
+  }
+  if (positionalKeys.length) {
+    keys = keys.concat(positionalKeys);
+  }
 
   keys = uniq(keys);
 
@@ -142,7 +152,9 @@ async function resolveKeys() {
 
 function chunk(arr, size) {
   const out = [];
-  for (let i = 0; i < arr.length; i += size) {out.push(arr.slice(i, i + size));}
+  for (let i = 0; i < arr.length; i += size) {
+    out.push(arr.slice(i, i + size));
+  }
   return out;
 }
 
@@ -153,7 +165,7 @@ async function readMany(keys) {
   const results = new Map(); // id -> { exists, expireAt, createdAt }
 
   for (const ch of chunks) {
-    const refs = ch.map(k => db.collection(COLLECTION).doc(k));
+    const refs = ch.map((k) => db.collection(COLLECTION).doc(k));
     const snaps = await db.getAll(...refs);
     for (const s of snaps) {
       const id = s.id;
@@ -163,11 +175,9 @@ async function readMany(keys) {
       }
       const data = s.data() || {};
       const expireAt =
-        data.expireAt?.toDate?.() ||
-        (data.expireAt instanceof Date ? data.expireAt : null);
+        data.expireAt?.toDate?.() || (data.expireAt instanceof Date ? data.expireAt : null);
       const createdAt =
-        data.createdAt?.toDate?.() ||
-        (data.createdAt instanceof Date ? data.createdAt : null);
+        data.createdAt?.toDate?.() || (data.createdAt instanceof Date ? data.createdAt : null);
       results.set(id, { exists: true, expireAt, createdAt });
     }
   }
@@ -180,7 +190,7 @@ async function main() {
   const intervalMs = Math.max(2, INTERVAL_SEC) * 1000;
 
   console.log(
-    `[TTL WATCH] ${nowLocal()} • collection=${COLLECTION} • watch=${keys.length} keys • interval=${intervalMs / 1000}s`
+    `[TTL WATCH] ${nowLocal()} • collection=${COLLECTION} • watch=${keys.length} keys • interval=${intervalMs / 1000}s`,
   );
 
   async function tick() {
@@ -213,7 +223,7 @@ async function main() {
       const expStr = r.expireAt ? r.expireAt.toISOString() : '-';
       const createdStr = r.createdAt ? r.createdAt.toISOString() : '-';
       console.log(
-        `[TTL] ${nowLocal()} • ${id} → existe • expireAt(UTC)=${expStr} • ETA=${fmtDuration(eta)} • createdAt=${createdStr}`
+        `[TTL] ${nowLocal()} • ${id} → existe • expireAt(UTC)=${expStr} • ETA=${fmtDuration(eta)} • createdAt=${createdStr}`,
       );
     }
   }
@@ -228,7 +238,7 @@ async function main() {
   });
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error('[TTL WATCH] Erreur fatale', err);
   process.exit(1);
 });

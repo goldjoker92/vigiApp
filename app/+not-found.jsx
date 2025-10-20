@@ -10,7 +10,12 @@ export default function NotFoundScreen() {
       </Text>
       <Pressable
         onPress={() => router.replace('/')}
-        style={{ paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, backgroundColor: '#222' }}
+        style={{
+          paddingVertical: 12,
+          paddingHorizontal: 16,
+          borderRadius: 10,
+          backgroundColor: '#222',
+        }}
       >
         <Text style={{ color: 'white' }}>Revenir à l’accueil</Text>
       </Pressable>

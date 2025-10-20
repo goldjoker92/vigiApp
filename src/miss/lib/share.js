@@ -34,22 +34,18 @@ export function missingPublicDeepLink(caseId) {
  * buildMissingShareMessage({ type, caseId, name, cidade, uf, dateBR, time })
  * type: 'child' | 'animal' | 'object'
  */
-export function buildMissingShareMessage({
-  type,
-  caseId,
-  name,
-  cidade,
-  uf,
-  dateBR,
-  time,
-}) {
+export function buildMissingShareMessage({ type, caseId, name, cidade, uf, dateBR, time }) {
   const web = missingPublicWebLink(caseId);
 
   let prefix = '🚨 ALERTA - Caso missing';
   const t = String(type || '').toLowerCase();
-  if (t === 'child') {prefix = '🚨 ALERTA - Criança desaparecida';}
-  else if (t === 'animal') {prefix = '🐾 ALERTA - Animal perdido';}
-  else if (t === 'object') {prefix = '🧳 ALERTA - Objeto perdido';}
+  if (t === 'child') {
+    prefix = '🚨 ALERTA - Criança desaparecida';
+  } else if (t === 'animal') {
+    prefix = '🐾 ALERTA - Animal perdido';
+  } else if (t === 'object') {
+    prefix = '🧳 ALERTA - Objeto perdido';
+  }
 
   // Rappel UX: aidez + lien
   return (
@@ -100,7 +96,9 @@ export async function shareSmart(message) {
   try {
     const url = 'whatsapp://send';
     const hasWA = await Linking.canOpenURL(url);
-    if (hasWA) {return shareWhatsApp(message);}
+    if (hasWA) {
+      return shareWhatsApp(message);
+    }
     return shareNative(message);
   } catch {
     return shareNative(message);

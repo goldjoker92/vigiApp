@@ -85,7 +85,9 @@ function metersPerPixelWithDelta(latitudeDelta, latitude /* deg */, viewportHeig
   return (latitudeDelta * metersPerDegreeLat) / Math.max(1, viewportHeightPx);
 }
 function haversineMeters(a, b) {
-  if (!a || !b) {return Infinity;}
+  if (!a || !b) {
+    return Infinity;
+  }
   const R = 6371000;
   const dLat = ((b.latitude - a.latitude) * Math.PI) / 180;
   const dLon = ((b.longitude - a.longitude) * Math.PI) / 180;
@@ -147,8 +149,8 @@ function clusterByTypeNoCount(rows, proximityM = CLUSTER_THRESHOLD_M) {
 function RadarSweepBounded({
   centerPx,
   pxRadius,
-  sweepDeg = 50,           // sonar plus fin
-  duration = 7000,         // sonar plus lent
+  sweepDeg = 50, // sonar plus fin
+  duration = 7000, // sonar plus lent
   colorHex = '#1EA0FF',
   opacity = 0.38,
 }) {
@@ -160,7 +162,9 @@ function RadarSweepBounded({
     loop.start();
     return () => loop.stop();
   }, [rot, duration]);
-  if (!centerPx || !pxRadius || pxRadius < 8) {return null;}
+  if (!centerPx || !pxRadius || pxRadius < 8) {
+    return null;
+  }
 
   const size = Math.max(8, Math.min(Math.floor(pxRadius * 2), Math.max(width, height) * 1.2));
   const half = size / 2;
@@ -169,7 +173,8 @@ function RadarSweepBounded({
       const rad = (ang - 90) * (Math.PI / 180);
       return { x: half + half * Math.cos(rad), y: half + half * Math.sin(rad) };
     };
-    const start = a(0), end = a(sweepDeg);
+    const start = a(0),
+      end = a(sweepDeg);
     const largeArc = sweepDeg > 180 ? 1 : 0;
     return `M ${half} ${half} L ${start.x} ${start.y} A ${half} ${half} 0 ${largeArc} 1 ${end.x} ${end.y} Z`;
   })();
@@ -213,17 +218,28 @@ function PulseCircleOverlay({ centerPx, pxRadius, color = '#1EA0FF' }) {
       Animated.loop(
         Animated.sequence([
           Animated.delay(delay),
-          Animated.timing(val, { toValue: 1, duration: 2800, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+          Animated.timing(val, {
+            toValue: 1,
+            duration: 2800,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: true,
+          }),
           Animated.timing(val, { toValue: 0, duration: 0, useNativeDriver: true }),
         ]),
       );
     const a1 = mk(s1, 0);
     const a2 = mk(s2, 1400);
-    a1.start(); a2.start();
-    return () => { a1.stop(); a2.stop(); };
+    a1.start();
+    a2.start();
+    return () => {
+      a1.stop();
+      a2.stop();
+    };
   }, [s1, s2]);
 
-  if (!centerPx || !pxRadius) {return null;}
+  if (!centerPx || !pxRadius) {
+    return null;
+  }
 
   const base = Math.max(8, pxRadius);
   const ring = (val, k) => {
@@ -245,14 +261,7 @@ function PulseCircleOverlay({ centerPx, pxRadius, color = '#1EA0FF' }) {
         }}
       >
         <Svg width={size} height={size}>
-          <SvgCircle
-            cx={half}
-            cy={half}
-            r={base * k}
-            stroke={color}
-            strokeWidth={2}
-            fill="none"
-          />
+          <SvgCircle cx={half} cy={half} r={base * k} stroke={color} strokeWidth={2} fill="none" />
         </Svg>
       </Animated.View>
     );
@@ -289,7 +298,9 @@ export default function MapaScreen() {
   const animateTo = useCallback(
     (cameraLike) => {
       const m = mapRef.current;
-      if (!m) {return;}
+      if (!m) {
+        return;
+      }
       try {
         // MAP.info('animateCamera →', cameraLike); // PERF: réduire le bruit logs
         m.animateCamera(
@@ -327,7 +338,9 @@ export default function MapaScreen() {
         const { status } = await Location.requestForegroundPermissionsAsync();
         let c = { latitude: -3.7327, longitude: -38.527 }; // Fortaleza fallback
         if (status === 'granted') {
-          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          const loc = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
           c = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
           try {
             const info = await Location.reverseGeocodeAsync(c);
@@ -363,7 +376,9 @@ export default function MapaScreen() {
 
   // Rayon => ajuste zoom
   useEffect(() => {
-    if (!center) {return;}
+    if (!center) {
+      return;
+    }
     const z = zoomForRadiusMeters(radiusM, center.latitude);
     animateTo({ ...center, zoom: z });
   }, [radiusM, center, animateTo]);
@@ -396,7 +411,8 @@ export default function MapaScreen() {
               categoria: d.categoria || d.type || 'Outros',
               type: d.categoria || d.type || 'Outros',
               color: d.color || null,
-              createdAt: d.createdAt instanceof Timestamp ? d.createdAt.toMillis() : d.createdAt || 0,
+              createdAt:
+                d.createdAt instanceof Timestamp ? d.createdAt.toMillis() : d.createdAt || 0,
               count: d.count ?? d.reports ?? 1,
               hasCount,
               title: d.title || null,
@@ -432,40 +448,55 @@ export default function MapaScreen() {
 
   // Filtrage rayon par distance depuis 'center'
   const markers = useMemo(() => {
-    if (!center) {return [];}
+    if (!center) {
+      return [];
+    }
     return clusteredAlerts.filter(
       (c) => haversineMeters(center, { latitude: c.lat, longitude: c.lng }) <= radiusM,
     );
   }, [clusteredAlerts, center, radiusM]);
 
   // PERF: géométrie pixel sans getCamera — utilise latitudeDelta du dernier region
-  const recomputePx = useCallback((reg) => {
-    if (!center || !reg) {return;}
-    const now = Date.now();
-    if (now - lastGeomTs.current < 120) {return;} // throttle ~8fps
-    lastGeomTs.current = now;
+  const recomputePx = useCallback(
+    (reg) => {
+      if (!center || !reg) {
+        return;
+      }
+      const now = Date.now();
+      if (now - lastGeomTs.current < 120) {
+        return;
+      } // throttle ~8fps
+      lastGeomTs.current = now;
 
-    // approx mpp via latitudeDelta
-    const mpp = metersPerPixelWithDelta(reg.latitudeDelta, center.latitude, height);
-    const rpx = Math.max(8, Math.min(radiusM / Math.max(0.00001, mpp), Math.max(width, height) * 1.2));
-    setPxRadius(rpx);
+      // approx mpp via latitudeDelta
+      const mpp = metersPerPixelWithDelta(reg.latitudeDelta, center.latitude, height);
+      const rpx = Math.max(
+        8,
+        Math.min(radiusM / Math.max(0.00001, mpp), Math.max(width, height) * 1.2),
+      );
+      setPxRadius(rpx);
 
-    // centre px (bridge) — mais uniquement quand nécessaire
-    requestAnimationFrame(async () => {
-      try {
-        const m = mapRef.current;
-        if (m) {
-          const pt = await m.pointForCoordinate(center);
-          setCenterPx(pt);
-        }
-      } catch {}
-    });
-  }, [center, radiusM]);
+      // centre px (bridge) — mais uniquement quand nécessaire
+      requestAnimationFrame(async () => {
+        try {
+          const m = mapRef.current;
+          if (m) {
+            const pt = await m.pointForCoordinate(center);
+            setCenterPx(pt);
+          }
+        } catch {}
+      });
+    },
+    [center, radiusM],
+  );
 
-  const onRegionChangeComplete = useCallback((reg) => {
-    regionRef.current = reg;
-    recomputePx(reg);
-  }, [recomputePx]);
+  const onRegionChangeComplete = useCallback(
+    (reg) => {
+      regionRef.current = reg;
+      recomputePx(reg);
+    },
+    [recomputePx],
+  );
 
   const onLayout = useCallback(async () => {
     // recalcule le centre px au layout
@@ -480,12 +511,22 @@ export default function MapaScreen() {
 
   const onPressPreset = useCallback(
     (p) => {
-      if (!center) {return;}
-      if (p.kind === 'brasil') { animateTo({ ...center, zoom: 4.2 }); return; }
-      if (p.kind === 'estado') { animateTo({ ...center, zoom: 6.2 }); return; }
+      if (!center) {
+        return;
+      }
+      if (p.kind === 'brasil') {
+        animateTo({ ...center, zoom: 4.2 });
+        return;
+      }
+      if (p.kind === 'estado') {
+        animateTo({ ...center, zoom: 6.2 });
+        return;
+      }
       setRadiusM(p.meters);
       // déclenche un recompute via effet/zoom
-      if (regionRef.current) {recomputePx(regionRef.current);}
+      if (regionRef.current) {
+        recomputePx(regionRef.current);
+      }
     },
     [center, animateTo, recomputePx],
   );
@@ -508,7 +549,7 @@ export default function MapaScreen() {
         showsCompass={false}
         toolbarEnabled={false}
         rotateEnabled={false}
-        zoomTapEnabled={false}    // PERF: Android smoother
+        zoomTapEnabled={false} // PERF: Android smoother
         moveOnMarkerPress={false}
       >
         {/* User marker + callout */}
@@ -579,7 +620,10 @@ export default function MapaScreen() {
       ) : null}
 
       {/* Barre RAIO (verticale, pliable) */}
-      <View pointerEvents="box-none" style={[styles.radiusWrap, { top: insets.top + headerHeight }]}>
+      <View
+        pointerEvents="box-none"
+        style={[styles.radiusWrap, { top: insets.top + headerHeight }]}
+      >
         <View style={styles.radiusCard}>
           <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
           <Pressable style={styles.radiusHeader} onPress={() => setBarOpen((v) => !v)}>
@@ -595,7 +639,11 @@ export default function MapaScreen() {
             >
               {PRESETS.map((p) => {
                 const isActive = typeof p.meters === 'number' ? radiusM === p.meters : false;
-                const label = p.kind ? (p.kind === 'estado' ? (stateName || 'Estado') : p.label) : p.label;
+                const label = p.kind
+                  ? p.kind === 'estado'
+                    ? stateName || 'Estado'
+                    : p.label
+                  : p.label;
                 return (
                   <Pressable
                     key={p.key}
@@ -634,7 +682,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: CARD_BORDER,
     ...Platform.select({
-      ios: { shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 12, shadowOffset: { width: 0, height: 8 } },
+      ios: {
+        shadowColor: '#000',
+        shadowOpacity: 0.25,
+        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 8 },
+      },
       android: { elevation: 8 },
     }),
   },
@@ -655,7 +708,13 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   chevron: { color: '#BFEAFF', fontSize: 16, fontWeight: '800' },
-  scrollHint: { color: '#9fd9ff', fontSize: 11, opacity: 0.8, paddingHorizontal: 12, paddingBottom: 4 },
+  scrollHint: {
+    color: '#9fd9ff',
+    fontSize: 11,
+    opacity: 0.8,
+    paddingHorizontal: 12,
+    paddingBottom: 4,
+  },
   radiusList: { paddingHorizontal: 10, paddingBottom: 10, gap: 8 },
   pillSmall: {
     backgroundColor: PILL_IDLE_BG,

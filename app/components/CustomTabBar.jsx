@@ -22,10 +22,14 @@ function CustomTabBarImpl({ state, descriptors, navigation }) {
 
   // ✅ Garde-fou DEV : prévient les doublons de noms
   if (__DEV__) {
-    const names = state.routes.map(r => r.name);
+    const names = state.routes.map((r) => r.name);
     const dups = names.filter((n, i) => names.indexOf(n) !== i);
     if (dups.length) {
-      console.warn('[TabBar] Noms d’onglets en double:', dups, '— vérifie tes <Tabs.Screen name="...">');
+      console.warn(
+        '[TabBar] Noms d’onglets en double:',
+        dups,
+        '— vérifie tes <Tabs.Screen name="...">',
+      );
     }
   }
 
@@ -43,7 +47,7 @@ function CustomTabBarImpl({ state, descriptors, navigation }) {
         navigation.navigate(route.name);
       }
     },
-    [navigation]
+    [navigation],
   );
 
   const tabs = useMemo(() => {

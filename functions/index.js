@@ -1,497 +1,333 @@
 // =============================================================================
-// VigiApp — Cloud Functions v2 (HTTP) — index.js (FULL, CLEAN, MULTIPART‑SAFE)
+// VigiApp — Upload handler (multipart) — functions/src/uploads/handleUpload.js
+// - Mémoire idempotence (Firestore) + TTL
+// - GCS Storage (bucket par défaut ou UPLOAD_BUCKET)
+// - Garde-fous MIME / taille (env > valeurs par défaut)
+// - Essaie d'utiliser ./redact et ./storage si présents (fallback sinon)
+// - Répond au format attendu par le client uploadDocMultipart()
 // =============================================================================
 
-/* Boot tolérant (ne doit jamais casser le démarrage) */
-try { require('module-alias/register'); } catch {}
-try { require('./bootstrap-config'); } catch {}
-
 const path = require('path');
-const fs = require('fs');
 const crypto = require('crypto');
 const { Buffer } = require('buffer');
-const express = require('express');
-const multer = require('multer');
 
-const { setGlobalOptions } = require('firebase-functions/v2/options');
-const { onRequest } = require('firebase-functions/v2/https');
+const admin = require('firebase-admin');
 
-/* -------------------------------------------------------------------------- */
-/* Cloud Functions v2 — options globales                                      */
-/* -------------------------------------------------------------------------- */
-setGlobalOptions({
-  region: process.env.HTTP_REGION || 'southamerica-east1',
-  cors: true,               // Géré par la plateforme
-  timeoutSeconds: 60,
-  memory: '256MiB',
-  concurrency: 40,
-});
-
-/* -------------------------------------------------------------------------- */
-/* Logger JSON compact                                                        */
-/* -------------------------------------------------------------------------- */
-function log(level, msg, extra = {}) {
-  const line = { ts: new Date().toISOString(), service: 'api', level, msg, ...extra };
-  const text = JSON.stringify(line);
-  if (level === 'error') {console.error(text);}
-  else if (level === 'warn') {console.warn(text);}
-  else {console.log(text);}
-}
-log('info', 'Loaded codebase');
-
-/* -------------------------------------------------------------------------- */
-/* Helpers FS & résolution                                                    */
-/* -------------------------------------------------------------------------- */
-const list = (p) => (fs.existsSync(p) ? fs.readdirSync(p) : []);
-const statInfo = (p) => {
-  try {
-    const st = fs.statSync(p);
-    return { path: p, exists: true, isFile: st.isFile(), isDir: st.isDirectory(), size: st.size };
-  } catch {
-    return { path: p, exists: false };
-  }
-};
-/** IMPORTANT: d’abord functions/uploads (prod), puis src/uploads (dev) */
-const pathCandidates = () => [
-  path.join(__dirname, 'uploads', 'handleUpload'),        // PROD prioritaire
-  path.join(__dirname, 'src', 'uploads', 'handleUpload'), // DEV fallback
-  path.join(process.cwd(), 'uploads', 'handleUpload'),     // tolérance CI
-  path.join(process.cwd(), 'src', 'uploads', 'handleUpload'),
-];
-
-/* Boot sanity (non bloquant) */
+// Init admin (tolérant si déjà fait)
 try {
-  log('info', 'BOOT/LIST', {
-    __dirname,
-    cwd: process.cwd(),
-    node: process.version,
-    rootFiles: list(__dirname),
-    uploadsRootFiles: list(path.join(__dirname, 'uploads')),
-    srcRootFiles: list(path.join(__dirname, 'src')),
-    uploadsFiles_src: list(path.join(__dirname, 'src', 'uploads')),
-    uploadsFiles_prod: list(path.join(__dirname, 'uploads')),
-  });
-  log('info', 'SANITY', {
-    exists_prod: fs.existsSync(path.join(__dirname, 'uploads', 'handleUpload.js')),
-    exists_src: fs.existsSync(path.join(__dirname, 'src', 'uploads', 'handleUpload.js')),
-    candidates: pathCandidates().map((c) => statInfo(c + '.js')),
-  });
+  if (!admin.apps.length) {
+    admin.initializeApp();
+  }
 } catch {}
 
-/* -------------------------------------------------------------------------- */
-/* tryRequire tolérant                                                        */
-/* -------------------------------------------------------------------------- */
-function tryRequire(paths, exportName = null) {
-  let lastErr = null;
-  for (const p of paths) {
-    try {
-      let resolved = null;
-      try { resolved = require.resolve(p); } catch {}
-      log('info', 'MODULE/RESOLVE_ATTEMPT', { candidate: p, resolved });
+const db = admin.firestore();
+const storage = admin.storage();
 
-      const m = require(p);
-      const mod = exportName ? m?.[exportName] : m;
-      if (!mod) {throw new Error(`Export "${exportName}" introuvable dans ${p}`);}
+// --------- Helpers log JSON compacts ----------------------------------------
+function log(level, msg, extra = {}) {
+  const line = { ts: new Date().toISOString(), service: 'upload', level, msg, ...extra };
+  const txt = JSON.stringify(line);
+  if (level === 'error') {
+    console.error(txt);
+  } else if (level === 'warn') {
+    console.warn(txt);
+  } else {
+    console.log(txt);
+  }
+}
 
-      const keys = (mod && typeof mod === 'object') ? Object.keys(mod) : [];
-      const defKeys = (mod && mod.default && typeof mod.default === 'object') ? Object.keys(mod.default) : [];
-      log('info', 'MODULE/LOADED', { path: p, typeofMod: typeof mod, keys, defKeys, exportName: exportName || '(module)' });
-      return mod;
-    } catch (e) {
-      lastErr = e;
-      log('warn', 'MODULE/LOAD_FAILED_NEXT', {
-        pathTried: p, error: String(e?.message || e), fileStat: statInfo(p + '.js'),
-      });
+// --------- Env / limites ----------------------------------------------------
+const PROJECT_ID = process.env.PROJECT_ID || process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
+
+const BUCKET_NAME = process.env.UPLOAD_BUCKET || (PROJECT_ID ? `${PROJECT_ID}.appspot.com` : null);
+
+const UPLOAD_MAX_BYTES = Number(process.env.UPLOAD_MAX_BYTES || 10 * 1024 * 1024); // 10MB par défaut
+const ALLOWED_MIME = String(
+  process.env.ALLOWED_MIME || 'image/jpeg,image/png,image/webp,image/heic,application/pdf',
+)
+  .split(',')
+  .map((s) => s.trim().toLowerCase())
+  .filter(Boolean);
+
+const REQUIRE_UPLOAD_AUTH = (process.env.REQUIRE_UPLOAD_AUTH || 'false') === 'true';
+const REQUIRE_UPLOAD_IDEM = (process.env.REQUIRE_UPLOAD_IDEM || 'true') === 'true';
+const IDEM_TTL_MIN = Number(process.env.UPLOAD_IDEM_TTL_MIN || 15);
+
+const IDEM_COLL = 'uploads_idem';
+const IDEM_SECRET = process.env.UPLOAD_IDEM_SECRET || ''; // optionnel (HMAC)
+
+// --------- Optional modules (best-effort) -----------------------------------
+function tryRequire(p) {
+  try {
+    return require(p);
+  } catch {
+    return null;
+  }
+}
+const redactMod = tryRequire('./redact');
+const storageMod = tryRequire('./storage'); // si tu as des wrappers utilitaires
+
+// --------- Utils ------------------------------------------------------------
+const extFromNameOrMime = (name = '', mime = '') => {
+  const m = String(name)
+    .toLowerCase()
+    .match(/\.([a-z0-9]+)$/);
+  if (m) {
+    return m[1];
+  }
+  if (/jpeg/.test(mime)) {
+    return 'jpg';
+  }
+  if (/png/.test(mime)) {
+    return 'png';
+  }
+  if (/webp/.test(mime)) {
+    return 'webp';
+  }
+  if (/heic/.test(mime)) {
+    return 'heic';
+  }
+  if (/pdf/.test(mime)) {
+    return 'pdf';
+  }
+  return 'bin';
+};
+const safeJoin = (...parts) =>
+  parts.map((s) => String(s || '').replace(/^\/+|\/+$/g, '')).join('/');
+
+function hmacIfAny(s) {
+  if (!IDEM_SECRET) {
+    return s;
+  }
+  return crypto.createHmac('sha256', IDEM_SECRET).update(String(s)).digest('hex').slice(0, 40);
+}
+
+async function getBucket() {
+  if (!BUCKET_NAME) {
+    throw new Error('bucket_not_configured');
+  }
+  return storage.bucket(BUCKET_NAME);
+}
+
+async function putFile({ bucket, buffer, destPath, contentType }) {
+  const file = bucket.file(destPath);
+  await file.save(buffer, {
+    contentType,
+    resumable: false,
+    metadata: { cacheControl: 'private, max-age=0, no-transform' },
+  });
+  return file;
+}
+
+async function makeSignedReadUrl(
+  file,
+  ttlSeconds = Number(process.env.SIGNED_URL_TTL_SECONDS || 3600),
+) {
+  try {
+    if (storageMod?.getSignedUrl) {
+      return await storageMod.getSignedUrl(file, { expiresIn: ttlSeconds });
+    }
+  } catch (e) {
+    log('warn', 'SIGNED_URL/HELPER_FAIL', { err: e?.message || String(e) });
+  }
+  const [url] = await file.getSignedUrl({
+    version: 'v4',
+    action: 'read',
+    expires: Date.now() + ttlSeconds * 1000,
+  });
+  return url;
+}
+
+async function maybeRedactImage(buffer, mime) {
+  if (!redactMod?.redactImageBuffer) {
+    return { buffer, mime };
+  }
+  try {
+    const { buffer: outBuf, mime: outMime } = await redactMod.redactImageBuffer(buffer, mime);
+    return { buffer: outBuf || buffer, mime: outMime || mime };
+  } catch (e) {
+    log('warn', 'REDACT/FAIL', { err: e?.message || String(e) });
+    return { buffer, mime };
+  }
+}
+
+// --------- Idempotence doc --------------------------------------------------
+async function loadIdem(key) {
+  if (!key) {
+    return null;
+  }
+  const snap = await db.collection(IDEM_COLL).doc(String(key)).get();
+  return snap.exists ? { id: snap.id, ...snap.data() } : null;
+}
+async function saveIdem(key, payload) {
+  if (!key) {
+    return;
+  }
+  const expireAt = new Date(Date.now() + IDEM_TTL_MIN * 60 * 1000);
+  await db
+    .collection(IDEM_COLL)
+    .doc(String(key))
+    .set(
+      { ...payload, expireAt, updatedAt: admin.firestore.FieldValue.serverTimestamp() },
+      { merge: true },
+    );
+}
+
+// --------- Validation entrée -------------------------------------------------
+function fail(res, code, http = 400, extra = {}) {
+  log('warn', 'UPLOAD/REJECT', { code, ...extra });
+  return res.status(http).json({ ok: false, error: code });
+}
+
+// =============================================================================
+// MAIN handler (signature: (req, res) => Promise<void>)
+// =============================================================================
+module.exports = async function handleUpload(req, res) {
+  const rid = req._rid || `upl_${Date.now().toString(36)}`;
+  const idemHeader = String(req.get('x-idempotency-key') || '').trim();
+
+  // 1) Pré-checks: méthode, auth éventuelle, file présent
+  if (req.method !== 'POST') {
+    return fail(res, 'method_not_allowed', 405, { rid, method: req.method });
+  }
+  if (REQUIRE_UPLOAD_AUTH) {
+    // Tu peux brancher ici une vérif de token si nécessaire
+    // Exemple: const authz = req.get('authorization') || '';
+    // if (!authz) return fail(res, 'unauthorized', 401, { rid });
+  }
+  if (!req.file || !req.file.buffer || !req.file.mimetype) {
+    return fail(res, 'file_missing', 400, { rid, hasFile: !!req.file });
+  }
+
+  // 2) Idempotence (clé obligatoire seulement si REQUIRE_UPLOAD_IDEM=true)
+  if (REQUIRE_UPLOAD_IDEM && !idemHeader) {
+    return fail(res, 'missing_idempotency_key', 400, { rid });
+  }
+  const idemKey = idemHeader ? `idem_${hmacIfAny(idemHeader)}` : '';
+
+  // 3) Si doc idem existe et status=done → renvoyer direct
+  if (idemKey) {
+    const existing = await loadIdem(idemKey);
+    if (existing?.status === 'done' && existing.result) {
+      log('info', 'IDEM/HIT_RETURNING', { rid, idemKey });
+      return res.status(200).json({ ok: true, ...existing.result });
     }
   }
-  return { __error: lastErr || new Error('Module not found') };
-}
 
-/* -------------------------------------------------------------------------- */
-/* Fallback HTTP function                                                     */
-/* -------------------------------------------------------------------------- */
-function makeFallbackHttp(name) {
-  return onRequest((req, res) => {
-    log('error', 'FALLBACK_INVOKED', { fn: name, path: req.path, method: req.method });
-    res.status(503).json({ ok: false, error: 'module_unavailable', function: name, hint: 'module missing or bad export' });
-  });
-}
-
-/* -------------------------------------------------------------------------- */
-/* Exports directs (autres fonctions HTTP v2)                                 */
-/* -------------------------------------------------------------------------- */
-{
-  const mod = tryRequire(['./src/sendPublicAlertByAddress', './sendPublicAlertByAddress'], 'sendPublicAlertByAddress');
-  if (mod.__error) {
-    log('warn', 'EXPORT_FALLBACK_ENABLED', { fn: 'sendPublicAlertByAddress', err: String(mod.__error?.message || mod.__error) });
-    exports.sendPublicAlertByAddress = makeFallbackHttp('sendPublicAlertByAddress');
-  } else {
-    exports.sendPublicAlertByAddress = mod;
-    log('info', 'EXPORT_OK', { fn: 'sendPublicAlertByAddress' });
+  // 4) Garde-fous MIME/TAILLE
+  const mime = String(req.file.mimetype || '').toLowerCase();
+  const size = Number(req.file.size || 0);
+  if (size > UPLOAD_MAX_BYTES) {
+    return fail(res, 'file_too_large', 413, { rid, size, limit: UPLOAD_MAX_BYTES });
   }
-}
-{
-  const mod = tryRequire(['./src/ackPublicAlert', './ackPublicAlert'], 'ackPublicAlertReceipt');
-  if (mod.__error) {
-    log('warn', 'EXPORT_FALLBACK_ENABLED', { fn: 'ackPublicAlertReceipt', err: String(mod.__error?.message || mod.__error) });
-    exports.ackPublicAlertReceipt = makeFallbackHttp('ackPublicAlertReceipt');
-  } else {
-    exports.ackPublicAlertReceipt = mod;
-    log('info', 'EXPORT_OK', { fn: 'ackPublicAlertReceipt' });
+  if (!ALLOWED_MIME.includes(mime)) {
+    return fail(res, 'unsupported_mime', 415, { rid, mime, allowed: ALLOWED_MIME });
   }
-}
 
-/* -------------------------------------------------------------------------- */
-/* Express app principal (SANS app.listen)                                    */
-/* -------------------------------------------------------------------------- */
-const app = express();
-app.disable('x-powered-by');
+  // 5) Champs utiles
+  const caseId = String(req.body.caseId || '').trim();
+  const kind = String(req.body.kind || '').trim(); // 'photo' | 'id' | 'linkDoc'
+  const userId = String(req.body.userId || '').trim() || 'anon';
 
-/* --- Middleware ULTRA-VERBOSE: requestId + logs entrée/sortie ------------- */
-app.use((req, res, next) => {
-  const rid = `req_${Date.now().toString(36)}_${crypto.randomBytes(3).toString('hex')}`;
-  req._rid = rid;
-  req._t0 = process.hrtime.bigint();
+  if (!caseId || !kind) {
+    return fail(res, 'missing_fields', 400, { rid, caseId, kind });
+  }
 
-  log('info', 'REQ/IN', {
-    rid,
-    method: req.method,
-    path: req.originalUrl || req.url,
-    httpVersion: req.httpVersion,
-    ip: req.ip,
-    ips: req.ips,
-    remoteAddress: req.socket?.remoteAddress,
-    length: req.headers['content-length'],
-    headers: req.headers,
-    userAgent: req.headers['user-agent'],
-    idempotency: req.headers['x-idempotency-key'],
-    contentType: req.headers['content-type'],
-    query: req.query,
-  });
-
-  // log si le client coupe la connexion en plein upload
-  req.on('aborted', () => log('warn', 'REQ/ABORTED_BY_CLIENT', { rid: req._rid }));
-
-  const origEnd = res.end;
-  let bytesOut = 0;
-  res.end = function (chunk, encoding, cb) {
+  const cpfDigits = String(req.body.cpfDigits || '').replace(/\D/g, '');
+  const clientMeta = (() => {
     try {
-      if (chunk) {bytesOut += Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(String(chunk), encoding || 'utf8');}
-    } catch {}
-    return origEnd.call(this, chunk, encoding, cb);
-  };
-  res.on('finish', () => {
-    const t1 = process.hrtime.bigint();
-    const ms = Number(t1 - req._t0) / 1e6;
-    log('info', 'RES/OUT', { rid, status: res.statusCode, bytes: bytesOut, duration_ms: Math.round(ms) });
-  });
+      return req.body.client ? JSON.parse(req.body.client) : null;
+    } catch {
+      return null;
+    }
+  })();
 
-  next();
-});
+  // 6) Construction des chemins
+  const ext = extFromNameOrMime(req.file.originalname || '', mime);
+  const now = new Date();
+  const y = now.getUTCFullYear();
+  const m = String(now.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(now.getUTCDate()).padStart(2, '0');
+  const ts = now.toISOString().replace(/[:.]/g, '-');
 
-/* Body-parser JSON/URL-encoded seulement si pas multipart */
-app.use((req, res, next) => {
-  const ct = String(req.headers['content-type'] || '').toLowerCase();
-  if (ct.startsWith('application/json')) {return express.json({ limit: '10mb' })(req, res, next);}
-  if (ct.startsWith('application/x-www-form-urlencoded')) {return express.urlencoded({ extended: true, limit: '2mb' })(req, res, next);}
-  return next();
-});
+  const base = safeJoin('missing', String(caseId), kind);
+  const originalPath = safeJoin(base, `orig_${ts}.${ext}`);
+  const redactedPath = safeJoin(base, `redacted_${ts}.${ext}`);
 
-/* Santé + Ping (simples) */
-app.get('/_health', (_req, res) => res.status(200).json({ ok: true, service: 'api', ts: new Date().toISOString() }));
-app.get('/_ready',  (_req, res) => res.status(200).send('ok'));
-app.get('/ping', (req, res) => {
-  res.status(200).json({ ok: true, pong: true, ts: new Date().toISOString(), rid: req._rid, echo: { query: req.query } });
-});
+  try {
+    const bucket = await getBucket();
 
-/* Introspection (optionnelle) */
-function listRoutesFromStack(stack) {
-  return (stack || [])
-    .filter((l) => l.route?.path)
-    .map((l) => {
-      const methods = l.route && l.route.methods ? Object.keys(l.route.methods) : [];
-      return { method: (methods[0] || 'GET').toUpperCase(), path: l.route.path };
+    // 7) Upload original
+    await putFile({
+      bucket,
+      buffer: req.file.buffer,
+      destPath: originalPath,
+      contentType: mime,
     });
-}
 
-const EXPOSE_INTROSPECTION = (process.env.EXPOSE_INTROSPECTION || 'true') === 'true';
-if (EXPOSE_INTROSPECTION) {
-  app.get('/__routes', (_req, res) => {
-    // routes racine
-    const appRoutes = listRoutesFromStack(app._router?.stack);
-    // tente d’attraper le sous-router monté sur /api
-    const apiLayer = (app._router?.stack || []).find(l => l.name === 'router' && l.regexp?.toString().includes('^\\/api\\/?'));
-    const apiRoutes = listRoutesFromStack(apiLayer?.handle?._router?.stack);
-    res.json({ routes: [...appRoutes, ...apiRoutes] });
-  });
-
-  app.get('/__diag', (_req, res) => {
-    const candidates = pathCandidates();
-    const files = [
-      statInfo(path.join(__dirname, 'uploads')),
-      statInfo(path.join(__dirname, 'uploads', 'handleUpload.js')),
-      statInfo(path.join(__dirname, 'src')),
-      statInfo(path.join(__dirname, 'src', 'uploads')),
-      statInfo(path.join(__dirname, 'src', 'uploads', 'handleUpload.js')),
-    ];
-    const resolves = candidates.map((c) => {
-      try { return { candidate: c, resolved: require.resolve(c) }; }
-      catch (e) { return { candidate: c, resolved: null, err: String(e?.message || e) }; }
+    // 8) Redaction (optionnelle). Si pas d’outil, on duplique l’original.
+    let redBuf = req.file.buffer;
+    let redMime = mime;
+    if (mime.startsWith('image/') && redactMod) {
+      const r = await maybeRedactImage(req.file.buffer, mime);
+      redBuf = r.buffer || req.file.buffer;
+      redMime = r.mime || mime;
+    }
+    await putFile({
+      bucket,
+      buffer: redBuf,
+      destPath: redactedPath,
+      contentType: redMime,
     });
-    res.json({
+
+    // 9) Signed URL (lecture redacted)
+    const redFile = bucket.file(redactedPath);
+    const redactedUrl = await makeSignedReadUrl(redFile);
+
+    const result = {
       ok: true,
-      env: {
-        cwd: process.cwd(),
-        __dirname,
-        HTTP_REGION: process.env.HTTP_REGION || 'southamerica-east1',
-        REQUIRE_UPLOAD_IDEM: process.env.REQUIRE_UPLOAD_IDEM || 'true',
-        REQUIRE_UPLOAD_AUTH: process.env.REQUIRE_UPLOAD_AUTH || 'false',
-      },
-      files, resolves,
-      sanity: {
-        exists_prod: fs.existsSync(path.join(__dirname, 'uploads', 'handleUpload.js')),
-        exists_src: fs.existsSync(path.join(__dirname, 'src', 'uploads', 'handleUpload.js')),
-      },
-    });
-  });
-}
+      redactedUrl,
+      originalPath: `gs://${BUCKET_NAME}/${originalPath}`,
+      redactedPath: `gs://${BUCKET_NAME}/${redactedPath}`,
+      mime,
+      ext,
+      storedAt: now.toISOString(),
+    };
 
-/* -------------------------------------------------------------------------- */
-/* Guard Idempotency pour /upload/id                                          */
-/* -------------------------------------------------------------------------- */
-const REQUIRE_IDEM = (process.env.REQUIRE_UPLOAD_IDEM || 'true') === 'true';
-function requireIdempotencyKey(req, res, next) {
-  if (req.method !== 'POST') {return next();}
-  if (req.path !== '/upload/id' && req.path !== '/api/upload/id') {return next();}
-
-  const key = String(req.get('x-idempotency-key') || '').trim();
-  if (REQUIRE_IDEM && !key) {
-    log('warn', 'IDEMPOTENCY/MISSING_STRICT', { rid: req._rid, path: req.path, method: req.method });
-    return res.status(400).json({ ok: false, error: 'missing_idempotency_key', msg: 'Header X-Idempotency-Key is required for /upload/id' });
-  }
-  if (!REQUIRE_IDEM && !key) {
-    const gen = `srv_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-    req.headers['x-idempotency-key'] = gen;
-    res.set('X-Idempotency-Key', gen);
-    log('warn', 'IDEMPOTENCY/AUTO_GENERATED_DEV', { rid: req._rid, generated: gen, path: req.path });
-  } else {
-    log('info', 'IDEMPOTENCY/OK', { rid: req._rid, key });
-  }
-  next();
-}
-
-/* -------------------------------------------------------------------------- */
-/* Loader d’upload tolérant                                                   */
-/* -------------------------------------------------------------------------- */
-let uploadHandlerFn = null;
-async function getUploadHandler() {
-  if (uploadHandlerFn) {return uploadHandlerFn;}
-
-  const candidates = pathCandidates();
-  log('info', 'UPLOAD_LOADER/CANDIDATES', { candidates, exists: candidates.map((c) => statInfo(c + '.js')) });
-
-  const mod = tryRequire(candidates, null);
-
-  let picked = null;
-  if (typeof mod === 'function') {picked = { kind: 'cjs_function', fn: mod };}
-  else if (mod?.uploadMissingChildDoc) {picked = { kind: 'cjs_named_uploadMissingChildDoc', fn: mod.uploadMissingChildDoc };}
-  else if (mod?.uploadId) {picked = { kind: 'cjs_named_uploadId', fn: mod.uploadId };}
-  else if (mod?.default && typeof mod.default === 'function') {picked = { kind: 'esm_default_function', fn: mod.default };}
-  else if (mod?.default?.uploadMissingChildDoc) {picked = { kind: 'esm_default_named_uploadMissingChildDoc', fn: mod.default.uploadMissingChildDoc };}
-  else if (mod?.default?.uploadId) {picked = { kind: 'esm_default_named_uploadId', fn: mod.default.uploadId };}
-
-  if (!picked) {
-    log('error', 'UPLOAD_LOADER/UNAVAILABLE', {
-      err: String(mod.__error?.message || mod.__error || 'bad export'),
-      expects: 'function OR { uploadMissingChildDoc } OR { uploadId } OR default variants',
-      note: 'Chemin attendu: functions/uploads/handleUpload.js (ou src/uploads en fallback)'
-    });
-    // Fallback non bloquant (évite les probes KO)
-    uploadHandlerFn = async (_req, res) => res.status(503).json({ ok: false, error: 'upload_handler_missing', hint: 'check uploads/handleUpload.js' });
-  } else {
-    uploadHandlerFn = picked.fn;
-    log('info', 'UPLOAD_LOADER/READY', { picked: picked.kind, name: picked.fn.name || '(anonymous)' });
-  }
-  return uploadHandlerFn;
-}
-
-/* -------------------------------------------------------------------------- */
-/* Multer config — DOIT précéder l’appel au handler pour /upload/id           */
-/* -------------------------------------------------------------------------- */
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 20 * 1024 * 1024, // 20 MB
-    files: 1,
-    fields: 50,
-    parts: 100,
-  },
-});
-
-function enforceMultipart(req, res, next) {
-  const ct = String(req.headers['content-type'] || '').toLowerCase();
-  if (!ct.startsWith('multipart/form-data')) {
-    return res.status(415).json({ ok: false, error: 'unsupported_content_type', want: 'multipart/form-data' });
-  }
-  return next();
-}
-
-function parseSingleFile(field = 'file') {
-  return (req, res, next) => upload.single(field)(req, res, (err) => {
-    if (err) {
-      const code = err?.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
-      return res.status(code).json({ ok: false, error: 'multipart_parse_error', detail: err.message });
-    }
-    return next();
-  });
-}
-
-/* -------------------------------------------------------------------------- */
-/* ROUTE DIRECTE /upload/id — ultra verbose                                   */
-/* -------------------------------------------------------------------------- */
-app.post(
-  '/upload/id',
-  requireIdempotencyKey,
-  enforceMultipart,
-  parseSingleFile('file'),
-  async (req, res) => {
-    log('info', 'UPLOAD/ENTRY', {
-      rid: req._rid,
-      path: req.path,
-      method: req.method,
-      idem: req.get('x-idempotency-key'),
-      ctype: req.headers['content-type'],
-      length: req.headers['content-length'],
-      hasFile: !!req.file,
-      fileMeta: req.file ? { fieldname: req.file.fieldname, originalname: req.file.originalname, mimetype: req.file.mimetype, size: req.file.size } : null,
-      fields: req.body ? Object.keys(req.body) : [],
-    });
-    try {
-      const fn = await getUploadHandler();
-      await fn(req, res);
-    } catch (err) {
-      log('error', 'UPLOAD/THREW (direct)', { rid: req._rid, error: String(err?.message || err) });
-      if (!res.headersSent) {res.status(500).json({ ok: false, error: 'internal_error' });}
-    }
-  }
-);
-
-/* -------------------------------------------------------------------------- */
-/* Endpoint test multipart (echo brut)                                        */
-/* -------------------------------------------------------------------------- */
-app.post(
-  '/multipart/echo',
-  enforceMultipart,
-  (req, res, next) => upload.any()(req, res, (err) => {
-    if (err) {
-      const code = err?.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
-      return res.status(code).json({ ok:false, error:'multipart_parse_error', detail: err.message });
-    }
-    next();
-  }),
-  (req, res) => {
-    res.json({
-      ok: true,
-      files: (req.files || []).map(f => ({ field: f.fieldname, name: f.originalname, type: f.mimetype, size: f.size })),
-      fields: req.body,
-    });
-  }
-);
-
-/* -------------------------------------------------------------------------- */
-/* Préfixe /api (miroir) — mêmes logs                                         */
-/* -------------------------------------------------------------------------- */
-if ((process.env.MOUNT_API_PREFIX || 'true') === 'true') {
-  const router = express.Router();
-
-  router.get('/_health', (_req, res) =>
-    res.status(200).json({ ok: true, service: 'api', base: '/api', ts: new Date().toISOString() }),
-  );
-  router.get('/_ready',  (_req, res) => res.status(200).send('ok'));
-  router.get('/ping', (req, res) => {
-    res.status(200).json({ ok: true, pong: true, base: '/api', ts: new Date().toISOString(), rid: req._rid, echo: { query: req.query } });
-  });
-
-  if (EXPOSE_INTROSPECTION) {
-    router.get('/__routes', (_req, res) => {
-      const appRoutes = listRoutesFromStack(app._router?.stack);
-      // @ts-ignore: router.stack pour certaines versions d'Express
-      const apiRoutes = listRoutesFromStack(router._router?.stack || router.stack);
-      res.json({ routes: [...appRoutes, ...apiRoutes], base: '/api' });
-    });
-
-    router.get('/__diag', (_req, res) => {
-      const candidates = pathCandidates();
-      const files = [
-        statInfo(path.join(__dirname, 'uploads')),
-        statInfo(path.join(__dirname, 'uploads', 'handleUpload.js')),
-        statInfo(path.join(__dirname, 'src')),
-        statInfo(path.join(__dirname, 'src', 'uploads')),
-        statInfo(path.join(__dirname, 'src', 'uploads', 'handleUpload.js')),
-      ];
-      const resolves = candidates.map((c) => {
-        try { return { candidate: c, resolved: require.resolve(c) }; }
-        catch (e) { return { candidate: c, resolved: null, err: String(e?.message || e) }; }
+    // 10) Idem save (status=done)
+    if (idemKey) {
+      await saveIdem(idemKey, {
+        status: 'done',
+        caseId,
+        kind,
+        userId,
+        cpfDigits,
+        clientMeta,
+        result,
       });
-      res.json({
-        ok: true,
-        env: {
-          cwd: process.cwd(),
-          __dirname,
-          HTTP_REGION: process.env.HTTP_REGION || 'southamerica-east1',
-          REQUIRE_UPLOAD_IDEM: process.env.REQUIRE_UPLOAD_IDEM || 'true',
-          REQUIRE_UPLOAD_AUTH: process.env.REQUIRE_UPLOAD_AUTH || 'false',
-        },
-        files, resolves,
-        sanity: {
-          exists_prod: fs.existsSync(path.join(__dirname, 'uploads', 'handleUpload.js')),
-          exists_src: fs.existsSync(path.join(__dirname, 'src', 'uploads', 'handleUpload.js')),
-        },
-      });
-    });
-  }
-
-  router.post(
-    '/upload/id',
-    requireIdempotencyKey,
-    enforceMultipart,
-    parseSingleFile('file'),
-    async (req, res, next) => {
-      log('info', 'UPLOAD/ENTRY (api)', {
-        rid: req._rid,
-        path: req.path,
-        method: req.method,
-        idem: req.get('x-idempotency-key'),
-        ctype: req.headers['content-type'],
-        length: req.headers['content-length'],
-        hasFile: !!req.file,
-        fileMeta: req.file ? { fieldname: req.file.fieldname, originalname: req.file.originalname, mimetype: req.file.mimetype, size: req.file.size } : null,
-        fields: req.body ? Object.keys(req.body) : [],
-      });
-      try {
-        const fn = await getUploadHandler();
-        await fn(req, res);
-      } catch (e) {
-        log('error', 'UPLOAD/THREW (api)', { rid: req._rid, error: String(e?.message || e) });
-        next(e);
-      }
     }
-  );
 
-  app.use('/api', router);
-  log('info', 'API_PREFIX/MOUNTED', { base: '/api', routes: ['GET /_health', 'GET /ping', 'POST /upload/id', 'GET /__routes?'] });
-}
-
-/* -------------------------------------------------------------------------- */
-/* 404 finale                                                                 */
-/* -------------------------------------------------------------------------- */
-app.use((req, res) => {
-  log('warn', 'ROUTE/NOT_FOUND', { method: req.method, path: req.path });
-  res.status(404).json({ ok: false, error: 'not_found', path: req.path });
-});
-
-/* -------------------------------------------------------------------------- */
-/* Export principal — Cloud Functions v2 (PAS de app.listen)                  */
-/* -------------------------------------------------------------------------- */
-exports.api = onRequest(app);
-log('info', 'FUNCTION/EXPORTED', { fn: 'api', routes: ['GET /_health', 'GET /ping', 'POST /upload/id', 'POST /multipart/echo', 'GET /__routes?'] });
+    log('info', 'UPLOAD/DONE', {
+      rid,
+      caseId,
+      kind,
+      bytes: size,
+      mime,
+      originalPath,
+      redactedPath,
+    });
+    return res.status(200).json(result);
+  } catch (e) {
+    log('error', 'UPLOAD/ERROR', { rid, error: e?.message || String(e) });
+    if (idemKey) {
+      await saveIdem(idemKey, {
+        status: 'error',
+        error: String(e?.message || e),
+        caseId,
+        kind,
+        userId,
+      });
+    }
+    return res.status(500).json({ ok: false, error: 'internal_error' });
+  }
+};

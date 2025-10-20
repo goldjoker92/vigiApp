@@ -15,7 +15,7 @@ const { Storage } = require('@google-cloud/storage');
 
 const argv = process.argv.slice(2);
 const getFlag = (name, def = null) => {
-  const hit = argv.find(a => a === `--${name}` || a.startsWith(`--${name}=`));
+  const hit = argv.find((a) => a === `--${name}` || a.startsWith(`--${name}=`));
   if (!hit) {
     return def;
   }
@@ -27,10 +27,12 @@ const getFlag = (name, def = null) => {
 
 (async () => {
   const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || process.env.PROJECT_ID;
-  const bucketName =
-    getFlag('bucket', process.env.UPLOAD_BUCKET || (projectId ? `${projectId}.appspot.com` : null));
-  const days = 30;                 // ✅ rétention fixée à 30 jours
-  const prefix = 'missing/';       // ✅ ne touche que les objets sous this prefix
+  const bucketName = getFlag(
+    'bucket',
+    process.env.UPLOAD_BUCKET || (projectId ? `${projectId}.appspot.com` : null),
+  );
+  const days = 30; // ✅ rétention fixée à 30 jours
+  const prefix = 'missing/'; // ✅ ne touche que les objets sous this prefix
 
   if (!bucketName) {
     console.error('[LIFECYCLE][ERR] Missing bucket (set --bucket or UPLOAD_BUCKET or PROJECT_ID)');
@@ -58,7 +60,7 @@ const getFlag = (name, def = null) => {
   const afterRules = metaAfter?.lifecycle?.rule || [];
   console.log('[LIFECYCLE] New rules:', JSON.stringify(afterRules, null, 2));
   console.log('[LIFECYCLE] ✅ Applied.');
-})().catch(err => {
+})().catch((err) => {
   console.error('[LIFECYCLE][ERR]', err?.stack || err?.message || err);
   process.exit(1);
 });

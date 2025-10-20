@@ -28,18 +28,14 @@ export default ({ config }) => ({
     [
       'react-native-google-mobile-ads',
       {
-        androidAppId:
-          process.env.ADMOB_ANDROID_APP_ID ||
-          'ca-app-pub-3940256099942544~3347511713',
+        androidAppId: process.env.ADMOB_ANDROID_APP_ID || 'ca-app-pub-3940256099942544~3347511713',
         iosAppId: 'ca-app-pub-3940256099942544~1458002511',
       },
     ],
   ],
 
   updates: {
-    url:
-      process.env.EAS_UPDATE_URL ||
-      'https://u.expo.dev/38fd672e-850f-436f-84f6-8a1626ed338a',
+    url: process.env.EAS_UPDATE_URL || 'https://u.expo.dev/38fd672e-850f-436f-84f6-8a1626ed338a',
   },
 
   android: {
@@ -47,7 +43,7 @@ export default ({ config }) => ({
     package: 'com.guigui92.vigiapp',
     runtimeVersion: '1.0.0',
     googleServicesFile: './credentials/google-services.json',
-    edgeToEdgeEnabled: true, 
+    edgeToEdgeEnabled: true,
     // Injected: Google Maps API key for Android
     config: {
       googleMaps: {
@@ -120,10 +116,7 @@ export default ({ config }) => ({
     EXPO_PUBLIC_MAPBOX_TOKEN: process.env.EXPO_PUBLIC_MAPBOX_TOKEN,
 
     eas: {
-      projectId:
-        process.env.EAS_PROJECT_ID ||
-        '38fd672e-850f-436f-84f6-8a1626ed338a',
+      projectId: process.env.EAS_PROJECT_ID || '38fd672e-850f-436f-84f6-8a1626ed338a',
     },
   },
 });
-
