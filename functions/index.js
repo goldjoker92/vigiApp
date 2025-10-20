@@ -1,5 +1,5 @@
 // =============================================================================
-// VigiApp — Cloud Functions v2 (HTTP) — index.js (FULL, CLEAN, MULTIPART-SAFE)
+// VigiApp — Cloud Functions v2 (HTTP) — index.js (FULL, CLEAN, MULTIPART‑SAFE)
 // =============================================================================
 
 /* Boot tolérant (ne doit jamais casser le démarrage) */
@@ -169,6 +169,9 @@ app.use((req, res, next) => {
     query: req.query,
   });
 
+  // log si le client coupe la connexion en plein upload
+  req.on('aborted', () => log('warn', 'REQ/ABORTED_BY_CLIENT', { rid: req._rid }));
+
   const origEnd = res.end;
   let bytesOut = 0;
   res.end = function (chunk, encoding, cb) {
@@ -198,25 +201,28 @@ app.use((req, res, next) => {
 app.get('/_health', (_req, res) => res.status(200).json({ ok: true, service: 'api', ts: new Date().toISOString() }));
 app.get('/_ready',  (_req, res) => res.status(200).send('ok'));
 app.get('/ping', (req, res) => {
-  res.status(200).json({
-    ok: true,
-    pong: true,
-    ts: new Date().toISOString(),
-    rid: req._rid,
-    echo: { query: req.query }
-  });
+  res.status(200).json({ ok: true, pong: true, ts: new Date().toISOString(), rid: req._rid, echo: { query: req.query } });
 });
 
 /* Introspection (optionnelle) */
+function listRoutesFromStack(stack) {
+  return (stack || [])
+    .filter((l) => l.route?.path)
+    .map((l) => {
+      const methods = l.route && l.route.methods ? Object.keys(l.route.methods) : [];
+      return { method: (methods[0] || 'GET').toUpperCase(), path: l.route.path };
+    });
+}
+
 const EXPOSE_INTROSPECTION = (process.env.EXPOSE_INTROSPECTION || 'true') === 'true';
 if (EXPOSE_INTROSPECTION) {
   app.get('/__routes', (_req, res) => {
-    // @ts-ignore
-    const stack = app._router?.stack || [];
-    const routes = stack
-      .filter((l) => l.route?.path)
-      .map((l) => ({ method: Object.keys(l.route.methods)[0]?.toUpperCase(), path: l.route.path }));
-    res.json({ routes });
+    // routes racine
+    const appRoutes = listRoutesFromStack(app._router?.stack);
+    // tente d’attraper le sous-router monté sur /api
+    const apiLayer = (app._router?.stack || []).find(l => l.name === 'router' && l.regexp?.toString().includes('^\\/api\\/?'));
+    const apiRoutes = listRoutesFromStack(apiLayer?.handle?._router?.stack);
+    res.json({ routes: [...appRoutes, ...apiRoutes] });
   });
 
   app.get('/__diag', (_req, res) => {
@@ -315,10 +321,10 @@ async function getUploadHandler() {
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10 MB
+    fileSize: 20 * 1024 * 1024, // 20 MB
     files: 1,
-    fields: 20,
-    parts: 30,
+    fields: 50,
+    parts: 100,
   },
 });
 
@@ -371,6 +377,28 @@ app.post(
 );
 
 /* -------------------------------------------------------------------------- */
+/* Endpoint test multipart (echo brut)                                        */
+/* -------------------------------------------------------------------------- */
+app.post(
+  '/multipart/echo',
+  enforceMultipart,
+  (req, res, next) => upload.any()(req, res, (err) => {
+    if (err) {
+      const code = err?.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+      return res.status(code).json({ ok:false, error:'multipart_parse_error', detail: err.message });
+    }
+    next();
+  }),
+  (req, res) => {
+    res.json({
+      ok: true,
+      files: (req.files || []).map(f => ({ field: f.fieldname, name: f.originalname, type: f.mimetype, size: f.size })),
+      fields: req.body,
+    });
+  }
+);
+
+/* -------------------------------------------------------------------------- */
 /* Préfixe /api (miroir) — mêmes logs                                         */
 /* -------------------------------------------------------------------------- */
 if ((process.env.MOUNT_API_PREFIX || 'true') === 'true') {
@@ -381,24 +409,15 @@ if ((process.env.MOUNT_API_PREFIX || 'true') === 'true') {
   );
   router.get('/_ready',  (_req, res) => res.status(200).send('ok'));
   router.get('/ping', (req, res) => {
-    res.status(200).json({
-      ok: true,
-      pong: true,
-      base: '/api',
-      ts: new Date().toISOString(),
-      rid: req._rid,
-      echo: { query: req.query }
-    });
+    res.status(200).json({ ok: true, pong: true, base: '/api', ts: new Date().toISOString(), rid: req._rid, echo: { query: req.query } });
   });
 
   if (EXPOSE_INTROSPECTION) {
     router.get('/__routes', (_req, res) => {
-      // @ts-ignore
-      const stack = app._router?.stack || [];
-      const routes = stack
-        .filter((l) => l.route?.path)
-        .map((l) => ({ method: Object.keys(l.route.methods)[0]?.toUpperCase(), path: l.route.path }));
-      res.json({ routes, base: '/api' });
+      const appRoutes = listRoutesFromStack(app._router?.stack);
+      // @ts-ignore: router.stack pour certaines versions d'Express
+      const apiRoutes = listRoutesFromStack(router._router?.stack || router.stack);
+      res.json({ routes: [...appRoutes, ...apiRoutes], base: '/api' });
     });
 
     router.get('/__diag', (_req, res) => {
@@ -460,7 +479,7 @@ if ((process.env.MOUNT_API_PREFIX || 'true') === 'true') {
   );
 
   app.use('/api', router);
-  log('info', 'API_PREFIX/MOUNTED', { base: '/api', routes: ['GET /_health', 'GET /ping', 'POST /upload/id'] });
+  log('info', 'API_PREFIX/MOUNTED', { base: '/api', routes: ['GET /_health', 'GET /ping', 'POST /upload/id', 'GET /__routes?'] });
 }
 
 /* -------------------------------------------------------------------------- */
@@ -475,4 +494,4 @@ app.use((req, res) => {
 /* Export principal — Cloud Functions v2 (PAS de app.listen)                  */
 /* -------------------------------------------------------------------------- */
 exports.api = onRequest(app);
-log('info', 'FUNCTION/EXPORTED', { fn: 'api', routes: ['GET /_health', 'GET /ping', 'POST /upload/id', 'GET /__routes?'] });
+log('info', 'FUNCTION/EXPORTED', { fn: 'api', routes: ['GET /_health', 'GET /ping', 'POST /upload/id', 'POST /multipart/echo', 'GET /__routes?'] });
