@@ -1,72 +1,115 @@
-import { getStorage, ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+// uploadCore.js — Upload natif Firebase Storage (RNFirebase)
+// Dépendances: @react-native-firebase/app, @react-native-firebase/storage, @react-native-firebase/auth
+// Notes:
+//  - Active "Anonyme" dans Firebase Auth si tu veux utiliser signInAnonymously().
+//  - Sinon, connecte un user avant d'appeler uploadToStorage (email/password, custom token, etc.).
 
-const UPLOAD_CORE = '[UPLOAD_CORE]';
+import storage from '@react-native-firebase/storage';
+import auth from '@react-native-firebase/auth';
 
-export async function uriToBlob(uri) {
-  console.log(UPLOAD_CORE, 'uriToBlob/start', uri);
-  const res = await fetch(uri);
-  if (!res.ok) {
-    console.error(UPLOAD_CORE, 'uriToBlob/fail', res.status);
-    throw new Error(`URI_FETCH_FAIL_${res.status}`);
-  }
-  console.log(UPLOAD_CORE, 'uriToBlob/ok');
-  return await res.blob();
+const NS = '[UPLOAD_CORE]';
+
+function normMime(mime) {
+  if (!mime) {return 'image/jpeg';}
+  const m = String(mime).toLowerCase();
+  if (m.includes('png')) {return 'image/png';}
+  if (m.includes('webp')) {return 'image/webp';}
+  if (m.includes('jpg') || m.includes('jpeg')) {return 'image/jpeg';}
+  if (m.includes('heic')) {return 'image/heic';}
+  if (m.includes('mp4') || m.includes('video')) {return 'video/mp4';}
+  return 'application/octet-stream';
 }
 
-export async function uploadToStorage({ path, uri, mime, onProgress, signal }) {
-  console.log(UPLOAD_CORE, 'uploadToStorage/begin', { path, mime });
-
-  if (!path || !uri) {
-    console.error(UPLOAD_CORE, 'uploadToStorage/args_missing');
-    throw new Error('UPLOAD_ARGS_MISSING');
+/**
+ * Tente une auth anonyme pour satisfaire les règles `request.auth != null`.
+ * - Si le provider "Anonyme" est OFF, Firebase renvoie `auth/admin-restricted-operation`.
+ *   On loggue et on continue (au cas où un user est déjà connecté autrement).
+ */
+async function ensureAuth() {
+  const cur = auth().currentUser;
+  if (cur) {
+    // déjà connecté (email/pass, custom token, etc.)
+    return cur;
   }
-
-  const storage = getStorage();
-  const blob = await uriToBlob(uri);
-
-  const metadata = {
-    contentType: mime || 'image/jpeg',
-    cacheControl: 'public,max-age=31536000,immutable',
-  };
-
-  const task = uploadBytesResumable(ref(storage, path), blob, metadata);
-
-  if (signal) {
-    if (signal.aborted) {
-      console.warn(UPLOAD_CORE, 'uploadToStorage/signal_already_aborted');
-      try { task.cancel(); } catch { /* noop */ }
-    } else {
-      signal.addEventListener('abort', () => {
-        console.warn(UPLOAD_CORE, 'uploadToStorage/abort_triggered');
-        try { task.cancel(); } catch { /* noop */ }
-      });
+  try {
+    const cred = await auth().signInAnonymously();
+    console.log(NS, 'auth anon OK', cred?.user?.uid);
+    return cred.user;
+  } catch (e) {
+    // Cas classique si l’anonyme est désactivé dans la console Firebase
+    if (String(e?.code || '').includes('auth/admin-restricted-operation')) {
+      console.warn(NS, 'auth anon désactivée (console Firebase) → ignorer si user déjà loggé');
+      return auth().currentUser || null;
     }
+    console.warn(NS, 'auth anon fail', e?.code || '', e?.message || String(e));
+    return auth().currentUser || null;
+  }
+}
+
+/**
+ * Upload natif (putFile) avec progress + annulation.
+ * @param {Object} p
+ * @param {string} p.path   ex: 'missing/<caseId>/id_front.jpg'
+ * @param {string} p.uri    ex: 'file:///...' ou 'content://...'
+ * @param {string} [p.mime] ex: 'image/jpeg'
+ * @param {(pct:number)=>void} [p.onProgress]
+ * @param {AbortSignal} [p.signal]  // optionnel: annulation
+ */
+export async function uploadToStorage({ path, uri, mime, onProgress, signal }) {
+  console.log(NS, 'begin', { path, mime, uri });
+
+  if (!path || !uri) {throw new Error('UPLOAD_ARGS_MISSING');}
+
+  // 1) S’assurer qu’on a un user (anonyme ou réel)
+  await ensureAuth();
+
+  // 2) Préparer la ref et l’upload natif
+  const contentType = normMime(mime);
+  const ref = storage().ref(path);
+
+  const task = ref.putFile(uri, {
+    contentType,
+    cacheControl: 'public,max-age=31536000,immutable',
+  });
+
+  // 3) Annulation (AbortController -> cancel())
+  let aborted = false;
+  const abort = () => {
+    if (!aborted) {
+      aborted = true;
+      try { task.cancel(); } catch {}
+      console.warn(NS, 'upload cancelled');
+    }
+  };
+  if (signal) {
+    if (signal.aborted) {abort();}
+    else {signal.addEventListener('abort', abort, { once: true });}
   }
 
+  // 4) Promesse d’upload avec progression
   return new Promise((resolve, reject) => {
-    task.on(
+    const unsub = task.on(
       'state_changed',
       (snap) => {
-        const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
-        if (onProgress) { onProgress(pct); } // ← braces ajoutées
-        console.log(UPLOAD_CORE, 'upload/progress', pct + '%');
+        const pct = snap.totalBytes
+          ? Math.round((snap.bytesTransferred / snap.totalBytes) * 100)
+          : 0;
+        onProgress && onProgress(pct);
+        // console.log(NS, 'progress', pct + '%');
       },
       (err) => {
-        console.error(UPLOAD_CORE, 'upload/error', err?.message || err);
+        unsub();
+        console.error(NS, 'error', { code: err?.code, msg: err?.message || String(err) });
         reject(err);
       },
       async () => {
         try {
-          const url = await getDownloadURL(task.snapshot.ref);
-          console.log(UPLOAD_CORE, 'upload/success', url);
-          resolve({
-            url,
-            path,
-            bytes: task.snapshot.totalBytes || 0,
-            contentType: metadata.contentType,
-          });
+          unsub();
+          const url = await ref.getDownloadURL();
+          console.log(NS, 'success', url);
+          resolve({ url, path, contentType });
         } catch (e) {
-          console.error(UPLOAD_CORE, 'downloadURL/error', e?.message || e);
+          console.error(NS, 'getDownloadURL/error', e?.message || String(e));
           reject(e);
         }
       }
