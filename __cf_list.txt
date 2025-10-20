@@ -1,0 +1,30 @@
+
+name                               env   url
+----                               ---   ---
+ackPublicAlertReceipt              GEN_2 https://ackpublicalertreceipt-pfdobxp2na-rj.a.run.app
+ackPublicAlertReceipt              GEN_2 https://ackpublicalertreceipt-pfdobxp2na-rj.a.run.app
+api                                GEN_2 https://api-pfdobxp2na-rj.a.run.app
+api                                GEN_2 https://api-pfdobxp2na-rj.a.run.app
+dailyHelpRequestStats                    
+fanoutPublicAlert                  GEN_2 https://fanoutpublicalert-pfdobxp2na-rj.a.run.app
+fanoutPublicAlert                  GEN_2 https://fanoutpublicalert-pfdobxp2na-rj.a.run.app
+getAlertFootprints                 GEN_2 https://getalertfootprints-pfdobxp2na-rj.a.run.app
+getAlertFootprints                 GEN_2 https://getalertfootprints-pfdobxp2na-rj.a.run.app
+helloWorld                         GEN_2 https://helloworld-pfdobxp2na-rj.a.run.app
+helloWorld                         GEN_2 https://helloworld-pfdobxp2na-rj.a.run.app
+ping                               GEN_2 https://ping-pfdobxp2na-uc.a.run.app
+purgeAndArchiveOldRequests               
+purgeAndArchiveOldRequestsAndChats GEN_2 https://purgeandarchiveoldrequestsandchats-pfdobxp2na-rj.a.run.app
+purgeAndArchiveOldRequestsAndChats       
+purgeAndArchiveOldRequestsAndChats GEN_2 https://purgeandarchiveoldrequestsandchats-pfdobxp2na-rj.a.run.app
+sendPrivateAlertByGroup            GEN_2 https://sendprivatealertbygroup-pfdobxp2na-rj.a.run.app
+sendPrivateAlertByGroup            GEN_2 https://sendprivatealertbygroup-pfdobxp2na-rj.a.run.app
+sendPublicAlertByAddress           GEN_2 https://sendpublicalertbyaddress-pfdobxp2na-rj.a.run.app
+sendPublicAlertByAddress           GEN_2 https://sendpublicalertbyaddress-pfdobxp2na-rj.a.run.app
+sendPublicAlertByCenterUser        GEN_2 https://sendpublicalertbycenteruser-pfdobxp2na-rj.a.run.app
+sendPublicAlertByCenterUser        GEN_2 https://sendpublicalertbycenteruser-pfdobxp2na-rj.a.run.app
+sendPublicAlertByCEP               GEN_2 https://sendpublicalertbycep-pfdobxp2na-rj.a.run.app
+sendPublicAlertByCEP               GEN_2 https://sendpublicalertbycep-pfdobxp2na-rj.a.run.app
+testFCM                            GEN_2 https://testfcm-pfdobxp2na-rj.a.run.app
+testFCM                            GEN_2 https://testfcm-pfdobxp2na-rj.a.run.app
+

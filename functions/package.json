@@ -1,29 +1,28 @@
 {
   "name": "vigiapp-functions-default",
+  "version": "1.0.0",
   "private": true,
+  "license": "UNLICENSED",
   "type": "commonjs",
   "main": "index.js",
   "engines": {
     "node": "20"
-  },
-  "dependencies": {
-    "dotenv": "^17.2.1",
-    "firebase-admin": "^13.5.0",
-    "firebase-functions": "^6.4.0",
-    "geofire-common": "^6.0.0",
-    "module-alias": "^2.2.2",
-    "node-fetch": "^2.7.0",
-    "multer": "^1.4.5-lts.2",
-    "sharp": "^0.33.4",
-    "mime-types": "^2.1.35",
-    "uuid": "^9.0.1"
   },
   "_moduleAliases": {
     "@": "./src"
   },
   "scripts": {
     "serve": "firebase emulators:start --only functions",
-    "deploy": "firebase deploy --only functions",
-    "logs": "firebase functions:log"
+    "logs": "firebase functions:log",
+    "predeploy": "npm prune --production && npm dedupe || true",
+    "deploy": "npm run predeploy && firebase deploy --only functions:api"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "firebase-admin": "^13.5.0",
+    "firebase-functions": "^6.5.0",
+    "multer": "1.4.5-lts.2",
+    "module-alias": "^2.2.2",
+    "dotenv": "^17.2.1"
   }
 }

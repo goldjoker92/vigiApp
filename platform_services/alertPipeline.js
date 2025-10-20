@@ -18,13 +18,7 @@
 // -------------------------------------------------------------
 
 import { db } from '../firebase';
-import {
-  doc,
-  getDoc,
-  setDoc,
-  serverTimestamp,
-  increment,
-} from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp, increment } from 'firebase/firestore';
 
 // ⚙️ Back existant (fourni par toi)
 import { upsertPublicAlert } from './incidents';
@@ -43,9 +37,13 @@ import { upsertPublicAlert } from './incidents';
  */
 function computeUsernameFallback({ username, apelido }) {
   // priorité : si username fourni, on garde
-  if (username && String(username).trim()) {return String(username).trim();}
+  if (username && String(username).trim()) {
+    return String(username).trim();
+  }
   // sinon si apelido existe on l’utilise
-  if (apelido && String(apelido).trim()) {return String(apelido).trim();}
+  if (apelido && String(apelido).trim()) {
+    return String(apelido).trim();
+  }
 
   // Sinon on invente un alias stable et anodin (pas basé sur uid)
   const rnd = Math.random().toString(36).slice(2, 6);
@@ -117,10 +115,10 @@ function shapePublicPayload(raw) {
  */
 function toDocId(s) {
   return String(s || 'NA')
-    .normalize('NFKD')                  // enlève accents
+    .normalize('NFKD') // enlève accents
     .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[\/#?%\[\]\.]/g, '-')     // interdit Firestore: / # ? % [ ] .
-    .replace(/\s+/g, '_')               // espaces -> underscore
+    .replace(/[\/#?%\[\]\.]/g, '-') // interdit Firestore: / # ? % [ ] .
+    .replace(/\s+/g, '_') // espaces -> underscore
     .toLowerCase()
     .slice(0, 200);
 }
@@ -243,12 +241,7 @@ async function bumpMetrics(payload) {
 
     // (optionnel) résumé quotidien par catégorie
     await setDoc(
-      doc(
-        db,
-        'metrics', 'publicAlerts',
-        'byCategory', categoriaDoc,
-        'summary', yyyymmdd,
-      ),
+      doc(db, 'metrics', 'publicAlerts', 'byCategory', categoriaDoc, 'summary', yyyymmdd),
       { count: increment(1), updatedAt: serverTimestamp() },
       { merge: true },
     );
@@ -268,8 +261,12 @@ async function bumpMetrics(payload) {
  */
 export async function processReportAndPersist({ user, coords, payload, ttlDays = 90 }) {
   console.log('[PIPE][process] START');
-  if (!user?.uid) {throw new Error('AUTH_REQUIRED');}
-  if (!coords?.latitude || !coords?.longitude) {throw new Error('COORDS_REQUIRED');}
+  if (!user?.uid) {
+    throw new Error('AUTH_REQUIRED');
+  }
+  if (!coords?.latitude || !coords?.longitude) {
+    throw new Error('COORDS_REQUIRED');
+  }
 
   // Harmonisation du username côté front (fallback si absent)
   const finalUsername = computeUsernameFallback({

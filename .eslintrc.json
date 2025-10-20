@@ -1,0 +1,3 @@
+{
+  "ignorePatterns": ["lint appmissChmissing-start.jsx", "**/lint appmissChmissing-start.jsx"]
+}

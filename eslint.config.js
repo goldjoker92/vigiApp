@@ -16,6 +16,8 @@ module.exports = [
   // Ignorés globaux
   {
     ignores: [
+      'lint appmissChmissing-start.jsx',
+      '**/lint appmissChmissing-start.jsx',
       '**/node_modules/**',
       '**/dist/**',
       '**/build/**',

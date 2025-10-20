@@ -1,0 +1,40 @@
+{
+  "name": "vigiapp-functions-default",
+  "version": "1.0.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "commonjs",
+  "main": "index.js",
+  "engines": {
+    "node": "20"
+  },
+  "_moduleAliases": {
+    "@": "./src"
+  },
+  "scripts": {
+    "serve": "firebase emulators:start --only functions",
+    "logs": "firebase functions:log",
+    "ensure:ttl": "node -r dotenv/config scripts/firestore-ttl.js",
+    "ensure:lifecycle": "node -r dotenv/config scripts/gcs-lifecycle.js",
+    "predeploy": "npm prune --production && npm dedupe || true",
+    "deploy": "npm run ensure:ttl && npm run ensure:lifecycle && npm run predeploy && firebase deploy --only functions",
+    "size": "du -sh node_modules | cat"
+  },
+  "dependencies": {
+    "@google-cloud/firestore": "^7.11.0",
+    "@google-cloud/storage": "^7.17.2",
+    "busboy": "^1.6.0",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "firebase-admin": "^13.5.0",
+    "firebase-functions": "^6.5.0",
+    "geofire-common": "^6.0.0",
+    "google-auth-library": "^9.15.1",
+    "mime-types": "^2.1.35",
+    "module-alias": "^2.2.2",
+    "multer": "^2.0.2",
+    "node-fetch": "^2.7.0",
+    "sharp": "^0.34.4",
+    "uuid": "^9.0.1"
+  }
+}

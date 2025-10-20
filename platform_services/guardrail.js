@@ -1,5 +1,5 @@
-import { forbiddenTermSignals, anonymize, maskKnownPlacesForForbidden } from "./incidents_features";
-import { getRuntimeConfig } from "./runtime_config";
+import { forbiddenTermSignals, anonymize, maskKnownPlacesForForbidden } from './incidents_features';
+import { getRuntimeConfig } from './runtime_config';
 
 export async function validateDescriptionGuard(text) {
   const cfg = await getRuntimeConfig();
@@ -8,7 +8,7 @@ export async function validateDescriptionGuard(text) {
   if (forb.hasForbidden) {
     return {
       ok: false,
-      code: "PRIVACY_BLOCKED",
+      code: 'PRIVACY_BLOCKED',
       suggestedDescription: anonymize(text),
     };
   }

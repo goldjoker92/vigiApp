@@ -14,9 +14,9 @@ const Log = {
 };
 
 export function useSubmitGuard({ cooldownMs = 1000, maxParallel = 1 } = {}) {
-  const runningCountsRef = useRef(new Map());   // actionName -> count
-  const lastRunRef = useRef(new Map());         // actionName -> timestamp
-  const [, force] = useState(0);                // pour forcer un rerender léger
+  const runningCountsRef = useRef(new Map()); // actionName -> count
+  const lastRunRef = useRef(new Map()); // actionName -> timestamp
+  const [, force] = useState(0); // pour forcer un rerender léger
 
   const running = useCallback((name) => {
     return (runningCountsRef.current.get(name) || 0) > 0;
@@ -38,39 +38,42 @@ export function useSubmitGuard({ cooldownMs = 1000, maxParallel = 1 } = {}) {
     force((x) => x + 1);
   };
 
-  const guard = useCallback((name, fn) => {
-    return async (...args) => {
-      const now = Date.now();
-      const last = lastRunRef.current.get(name) || 0;
-      const since = now - last;
+  const guard = useCallback(
+    (name, fn) => {
+      return async (...args) => {
+        const now = Date.now();
+        const last = lastRunRef.current.get(name) || 0;
+        const since = now - last;
 
-      // Cooldown
-      if (since < cooldownMs) {
-        Log.warn('COOLDOWN', { name, since, cooldownMs });
-        return;
-      }
+        // Cooldown
+        if (since < cooldownMs) {
+          Log.warn('COOLDOWN', { name, since, cooldownMs });
+          return;
+        }
 
-      // Concurrence
-      const cur = runningCountsRef.current.get(name) || 0;
-      if (cur >= maxParallel) {
-        Log.warn('PARALLEL_LIMIT', { name, cur, maxParallel });
-        return;
-      }
+        // Concurrence
+        const cur = runningCountsRef.current.get(name) || 0;
+        if (cur >= maxParallel) {
+          Log.warn('PARALLEL_LIMIT', { name, cur, maxParallel });
+          return;
+        }
 
-      lastRunRef.current.set(name, now);
-      inc(name);
-      try {
-        Log.info('ENTER', { name });
-        return await fn(...args);
-      } catch (e) {
-        Log.error('FN_ERROR', { name, err: e?.message || String(e) });
-        throw e;
-      } finally {
-        dec(name);
-        Log.info('LEAVE', { name });
-      }
-    };
-  }, [cooldownMs, maxParallel]);
+        lastRunRef.current.set(name, now);
+        inc(name);
+        try {
+          Log.info('ENTER', { name });
+          return await fn(...args);
+        } catch (e) {
+          Log.error('FN_ERROR', { name, err: e?.message || String(e) });
+          throw e;
+        } finally {
+          dec(name);
+          Log.info('LEAVE', { name });
+        }
+      };
+    },
+    [cooldownMs, maxParallel],
+  );
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 

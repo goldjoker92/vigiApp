@@ -40,7 +40,7 @@ const BLOCK_MS = 6 * 3600 * 1000; // 6h
 const STRIKE_THRESHOLD = 3;
 const STALE_TTL_MS = 24 * 3600 * 1000; // 24h sans activité -> purge
 
-const userStrikes = new Map();   // userId -> { count, last, blockedUntil }
+const userStrikes = new Map(); // userId -> { count, last, blockedUntil }
 const userDirectory = new Map(); // userId -> { name?: string, apelido?: string }
 
 let DEBUG = false;
@@ -51,7 +51,9 @@ let GC_TIMER = null;
 // Utils
 // ---------------------------------------------------------------------------
 function safeUID(u) {
-  if (u === null) {return 'null';}
+  if (u === null) {
+    return 'null';
+  }
   try {
     const s = String(u);
     return s.length > 64 ? s.slice(0, 6) + '…' + s.slice(-4) : s;
@@ -61,34 +63,51 @@ function safeUID(u) {
 }
 
 function log(...args) {
-  if (!DEBUG) {return;}
-  if (TRACE_ID) {console.log('[ABUSE][STRIKES]', `{trace:${TRACE_ID}}`, ...args);}
-  else {console.log('[ABUSE][STRIKES]', ...args);}
+  if (!DEBUG) {
+    return;
+  }
+  if (TRACE_ID) {
+    console.log('[ABUSE][STRIKES]', `{trace:${TRACE_ID}}`, ...args);
+  } else {
+    console.log('[ABUSE][STRIKES]', ...args);
+  }
 }
 
 function fmtMs(ms) {
-  if (ms <= 0) {return '0s';}
+  if (ms <= 0) {
+    return '0s';
+  }
   const s = Math.floor(ms / 1000);
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
   const sec = s % 60;
   const parts = [];
-  if (h) {parts.push(`${h}h`);}
-  if (m) {parts.push(`${m}m`);}
-  if (sec || parts.length === 0) {parts.push(`${sec}s`);}
+  if (h) {
+    parts.push(`${h}h`);
+  }
+  if (m) {
+    parts.push(`${m}m`);
+  }
+  if (sec || parts.length === 0) {
+    parts.push(`${sec}s`);
+  }
   return parts.join(' ');
 }
 
 function snapshot(userId) {
   const rec = userStrikes.get(userId);
-  if (!rec) {return { count: 0, last: 0, blockedUntil: 0 };}
+  if (!rec) {
+    return { count: 0, last: 0, blockedUntil: 0 };
+  }
   return { count: rec.count, last: rec.last, blockedUntil: rec.blockedUntil };
 }
 
 function timeLeftMs(userId) {
   const now = Date.now();
   const rec = userStrikes.get(userId);
-  if (!rec) {return 0;}
+  if (!rec) {
+    return 0;
+  }
   return Math.max(0, (rec.blockedUntil || 0) - now);
 }
 
@@ -109,11 +128,17 @@ function compareLocale(a, b, order = 'asc') {
 // Métadonnées optionnelles (name, apelido) pour snapshots enrichis
 // ---------------------------------------------------------------------------
 export function registerUserMeta(userId, meta = {}) {
-  if (!userId) {return;}
+  if (!userId) {
+    return;
+  }
   const cur = userDirectory.get(userId) || {};
   const next = { ...cur };
-  if (typeof meta.name === 'string') {next.name = meta.name;}
-  if (typeof meta.apelido === 'string') {next.apelido = meta.apelido;}
+  if (typeof meta.name === 'string') {
+    next.name = meta.name;
+  }
+  if (typeof meta.apelido === 'string') {
+    next.apelido = meta.apelido;
+  }
   userDirectory.set(userId, next);
   log('registerUserMeta', { userId: safeUID(userId), meta: next });
 }
@@ -121,7 +146,9 @@ export function registerUserMeta(userId, meta = {}) {
 export function bulkRegisterUserMeta(list = []) {
   let added = 0;
   for (const it of list) {
-    if (!it || !it.userId) {continue;}
+    if (!it || !it.userId) {
+      continue;
+    }
     registerUserMeta(it.userId, { name: it.name, apelido: it.apelido });
     added++;
   }
@@ -224,7 +251,9 @@ export function getBlockedUsersCount() {
   const now = Date.now();
   let n = 0;
   for (const [, rec] of userStrikes) {
-    if (now < (rec.blockedUntil || 0)) {n++;}
+    if (now < (rec.blockedUntil || 0)) {
+      n++;
+    }
   }
   log('getBlockedUsersCount', { count: n });
   return n;
@@ -280,10 +309,14 @@ export function getBlockedUsersSnapshotByName(order = 'asc') {
     const bName = normStr(b.name) || normStr(b.apelido) || String(b.userId);
     // tri principal: nom
     const cmp = compareLocale(aName, bName, order);
-    if (cmp !== 0) {return cmp;}
+    if (cmp !== 0) {
+      return cmp;
+    }
     // tie-breaker: blockedUntil (plus proche d'abord si ASC, inverse si DESC)
     const blockedCmp = compareOrder(a.blockedUntil, b.blockedUntil, order);
-    if (blockedCmp !== 0) {return blockedCmp;}
+    if (blockedCmp !== 0) {
+      return blockedCmp;
+    }
     // dernier tie-breaker: userId pour stabilité
     return compareLocale(String(a.userId), String(b.userId), 'asc');
   });
