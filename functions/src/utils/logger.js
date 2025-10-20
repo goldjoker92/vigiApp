@@ -28,7 +28,13 @@ function out(level, mod, msg, extra = {}) {
     }
   } catch {
     // Fallback minimal si JSON.stringify casse sur un objet circulaire
-    const safe = `[${nowIso()}][${mod || 'app'}][${level.toUpperCase()}] ${String(msg)} ${safeKVs(extra)}`;
+    let safeExtra;
+    try {
+      safeExtra = safeKVs(extra);
+    } catch {
+      safeExtra = '';
+    }
+    const safe = `[${nowIso()}][${mod || 'app'}][${level.toUpperCase()}] ${String(msg)} ${safeExtra}`;
     if (level === 'error') {
       console.error(safe);
     } else if (level === 'warn') {
