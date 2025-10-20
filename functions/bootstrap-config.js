@@ -37,7 +37,13 @@
   // ---------------------------------------------------------------------------
   const nowIso = () => new Date().toISOString();
   const logJ = (lvl, msg, extra = {}) => {
-    (lvl === 'error' ? console.error : lvl === 'warn' ? console.warn : console.log)(
+    const logMethods = {
+      error: console.error,
+      warn: console.warn,
+      info: console.info,
+      log: console.log,
+    };
+    (logMethods[lvl] || console.log)(
       JSON.stringify({ ts: nowIso(), lvl, mod: 'bootstrap', msg, ...extra }),
     );
   };
