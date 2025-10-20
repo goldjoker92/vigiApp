@@ -1,54 +1,19 @@
-// app/missing-start.jsx
 // ============================================================================
-// VigiApp — Flux "Missing" (child/animal/object)
-// Version épurée + UX responsive + docs séparés (Responsável / Criança)
-// Ajouts:
-//  - Type de doc adulte: RG (F+V), Passaporte (1), RNE (F+V) [étrangers]
-//  - Type de doc enfant: Certidão (1), RG criança (F+V), Passaporte criança (1), RNE criança (F+V)
-//  - Consent box: checkbox verte + contour + glow à l’activation
-//  - Placeholders plus légers, espacements aérés, scroll/keyboard agréables
-//  - Conservation de la logique (uploads id_front/id_back & link_front/link_back)
-//  - Logs & traces: traceId d’écran, step() pour étapes clés, timings msSince()
-//  - ImagePicker: API non dépréciée (mediaTypes, selectionLimit)
-//  - Uploads: progression %, annulation par fichier (AbortController)
+// VigiApp — Flux unifié "Missing" (child/animal/object)
+// SANS DRAFT — écriture directe dans /missingCases, validation heuristique locale,
+// puis notification publique automatique (5 km enfant, 2 km animal/objet).
 // ============================================================================
 
-import React, {
-  useEffect,
-  useMemo,
-  useRef,
-  useReducer,
-  useState,
-  useCallback,
-} from 'react';
+import React, { useEffect, useMemo, useRef, useReducer, useState, useCallback } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TextInput,
-  TouchableOpacity,
-  Alert,
-  Platform,
-  KeyboardAvoidingView,
-  Share,
-  Linking,
+  View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity,
+  Alert, Platform, KeyboardAvoidingView, Share, Linking,
 } from 'react-native';
 import * as Location from 'expo-location';
-import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { db, auth } from '../../firebase';
 import { doc, setDoc, Timestamp } from 'firebase/firestore';
-import {
-  TriangleAlert,
-  User,
-  FileCheck2,
-  ImageIcon,
-  ChevronLeft,
-  Share2,
-  Check,
-  X,
-} from 'lucide-react-native';
+import { TriangleAlert, User, FileCheck2, ImageIcon, ChevronLeft, Share2 } from 'lucide-react-native';
 
 // Flux
 import { FLOW_RULES, getFlow } from '../../src/miss/lib/flowRules';
@@ -56,14 +21,8 @@ import { FLOW_RULES, getFlow } from '../../src/miss/lib/flowRules';
 // Libs locales
 import { formatDateBRToISO, todayISO, onlyDigits } from '../../src/miss/lib/helpers';
 
-// ✅ Nouveaux uploaders unifiés (avec progress + abort)
-import {
-  uploadIdFront,
-  uploadIdBack,
-  uploadLinkFront,
-  uploadLinkBack,
-  uploadChildPhoto as uploadMainPhoto,
-} from '../../src/miss/lib/uploaders';
+// Uploads
+import { uploadIdDocument, uploadLinkDocument, uploadChildPhoto } from '../../src/miss/lib/uploads';
 
 // Guard
 import { useSubmitGuard } from '../../src/miss/lib/useSubmitGuard';
@@ -74,17 +33,15 @@ import { validateClient } from '../../src/miss/lib/validations';
 // ---------------------------------------------------------------------------
 // Logger / Tracer
 // ---------------------------------------------------------------------------
-const NS = '[MISSING/START]';
+const NS = '[MISSING/UNIFIED]';
 const nowTs = () => new Date().toISOString();
-const newTraceId = (p = 'trace') =>
-  `${p}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+const newTraceId = (p = 'trace') => `${p}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 const msSince = (t0) => `${Math.max(0, Date.now() - t0)}ms`;
 const Log = {
   info: (...a) => console.log(NS, ...a),
   warn: (...a) => console.warn(NS, '⚠️', ...a),
   error: (...a) => console.error(NS, '❌', ...a),
-  step: (traceId, step, extra = {}) =>
-    console.log(NS, 'STEP', step, { traceId, at: nowTs(), ...extra }),
+  step: (traceId, step, extra = {}) => console.log(NS, 'STEP', step, { traceId, at: nowTs(), ...extra }),
 };
 
 // ---------------------------------------------------------------------------
@@ -94,17 +51,15 @@ function useLiteToast() {
   const [msg, setMsg] = useState(null);
   const timer = useRef(null);
   const show = (text) => {
-    if (timer.current) {clearTimeout(timer.current);}
+    if (timer.current) { clearTimeout(timer.current); } // reset timer
     const s = String(text);
     Log.info('TOAST', s);
     setMsg(s);
     timer.current = setTimeout(() => setMsg(null), 3200);
   };
-  useEffect(() => () => timer.current && clearTimeout(timer.current), []);
+  useEffect(() => () => { if (timer.current) { clearTimeout(timer.current); } }, []);
   const Toast = !msg ? null : (
-    <View style={styles.toastWrap}>
-      <Text style={styles.toastText}>{msg}</Text>
-    </View>
+    <View style={styles.toastWrap}><Text style={styles.toastText}>{msg}</Text></View>
   );
   return { show, Toast };
 }
@@ -116,14 +71,8 @@ function useHasWhatsApp() {
   const [hasWA, setHasWA] = useState(false);
   useEffect(() => {
     Linking.canOpenURL('whatsapp://send')
-      .then((ok) => {
-        Log.info('WHATSAPP/canOpenURL', ok);
-        setHasWA(!!ok);
-      })
-      .catch((e) => {
-        Log.warn('WHATSAPP/error', e?.message || String(e));
-        setHasWA(false);
-      });
+      .then((ok) => { Log.info('WHATSAPP/canOpenURL', ok); setHasWA(!!ok); })
+      .catch((e) => { Log.warn('WHATSAPP/error', e?.message || String(e)); setHasWA(false); });
   }, []);
   return hasWA;
 }
@@ -134,11 +83,9 @@ function useHasWhatsApp() {
 function buildShareMessage({ type, caseId, name, cidade, uf, dateBR, time }) {
   const link = `https://vigi.app/case/${caseId || ''}`;
   const prefix =
-    type === 'animal'
-      ? '🐾 ALERTA - Animal perdido'
-      : type === 'object'
-        ? '🧳 ALERTA - Objeto perdido'
-        : '🚨 ALERTA - Criança desaparecida';
+    type === 'animal' ? '🐾 ALERTA - Animal perdido' :
+    type === 'object' ? '🧳 ALERTA - Objeto perdido' :
+    '🚨 ALERTA - Criança desaparecida';
   return (
     `${prefix}\n\n` +
     `Nome: ${name || 'N/I'}\n` +
@@ -147,24 +94,15 @@ function buildShareMessage({ type, caseId, name, cidade, uf, dateBR, time }) {
     `Ajude agora:\n${link}`
   );
 }
-async function shareNative(msg) {
-  Log.info('SHARE/native', { len: msg?.length || 0 });
-  await Share.share({ message: msg });
-}
+async function shareNative(msg) { Log.info('SHARE/native', { len: msg?.length || 0 }); await Share.share({ message: msg }); }
 async function shareWhatsApp(msg) {
   const url = `whatsapp://send?text=${encodeURIComponent(msg)}`;
   try {
     const ok = await Linking.canOpenURL(url);
     Log.info('WHATSAPP/check', { ok, len: msg?.length || 0 });
-    if (ok) {
-      await Linking.openURL(url);
-    } else {
-      await Share.share({ message: msg });
-    }
-  } catch (e) {
-    Log.warn('WHATSAPP/fallback', e?.message || String(e));
-    await Share.share({ message: msg });
-  }
+    if (ok) { await Linking.openURL(url); }
+    else { await Share.share({ message: msg }); }
+  } catch (e) { Log.warn('WHATSAPP/fallback', e?.message || String(e)); await Share.share({ message: msg }); }
 }
 
 // ---------------------------------------------------------------------------
@@ -179,13 +117,13 @@ async function cfFetch(url, opts = {}, { attempts = 2, baseDelay = 400 } = {}) {
     try {
       const resp = await fetch(url, opts);
       const json = await resp.json().catch(() => null);
-      if (!resp.ok) {throw new Error(`HTTP_${resp.status}`);}
+      if (!resp.ok) { throw new Error(`HTTP_${resp.status}`); } // normalize errors
       Log.info('CF/OK', { status: resp.status });
       return { ok: true, json, status: resp.status };
     } catch (e) {
       lastErr = e;
       Log.warn('CF/RETRY', { i, err: e?.message || String(e) });
-      if (i < attempts) {await sleep(baseDelay * Math.pow(2, i));}
+      if (i < attempts) { await sleep(baseDelay * Math.pow(2, i)); }
     }
   }
   Log.error('CF/FAIL', lastErr?.message || String(lastErr));
@@ -205,38 +143,15 @@ async function cfVerifyGuardian({ caseId, body, idempotencyKey }) {
   );
 }
 
-async function cfSendPublicAlert({
-  alertId,
-  endereco,
-  cidade,
-  uf,
-  cep,
-  lat,
-  lng,
-  radius_m,
-  severity,
-  color,
-  traceId,
-}) {
+async function cfSendPublicAlert({ alertId, endereco, cidade, uf, cep, lat, lng, radius_m, severity, color, traceId }) {
   const body = {
-    alertId,
-    endereco,
-    cidade,
-    uf,
-    cep,
-    lat,
-    lng,
-    radius_m,
-    severidade: severity,
-    color,
-    traceId,
-    debug: '1',
+    alertId, endereco, cidade, uf, cep, lat, lng, radius_m, severidade: severity, color, traceId, debug: '1',
   };
   Log.info('[NOTIF][CALL] sendPublicAlertByAddress', body);
   return await cfFetch(
     'https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/sendPublicAlertByAddress',
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
-    { attempts: 2, baseDelay: 600 },
+    { attempts: 2, baseDelay: 600 }
   );
 }
 
@@ -247,18 +162,6 @@ const isoToday = todayISO();
 const [Y, M, D] = isoToday.split('-');
 const initialDateBR = `${D}/${M}/${Y}`;
 
-const ADULT_ID_TYPES = [
-  { key: 'rg', label: 'RG (frente + verso)' },
-  { key: 'passport', label: 'Passaporte' },
-  { key: 'rne', label: 'RNE (frente + verso)' },
-];
-const CHILD_DOC_TYPES = [
-  { key: 'certidao', label: 'Certidão de nascimento' },
-  { key: 'rg_child', label: 'RG criança (frente + verso)' },
-  { key: 'passport_child', label: 'Passaporte criança' },
-  { key: 'rne_child', label: 'RNE criança (frente + verso)' },
-];
-
 const initialForm = {
   // meta
   caseId: '',
@@ -267,20 +170,10 @@ const initialForm = {
   // guardian / legal (child only)
   guardianName: '',
   cpfRaw: '',
-  adultIdType: 'rg', // 'rg' | 'passport' | 'rne'
-  childDocType: 'certidao', // 'certidao' | 'rg_child' | 'passport_child' | 'rne_child'
-
-  // flags
-  hasIdDocFront: false,
-  hasIdDocBack: false,
-  hasLinkDocFront: false,
-  hasLinkDocBack: false,
-
-  // paths
-  idDocFrontPath: '',
-  idDocBackPath: '',
-  linkDocFrontPath: '',
-  linkDocBackPath: '',
+  hasIdDoc: false,
+  hasLinkDoc: false,
+  idDocPath: '',
+  linkDocPath: '',
 
   // entity (name differs by type)
   primaryName: '',
@@ -329,17 +222,17 @@ function makeCaseId() {
   return `mc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 function ensureCaseId(currentId, dispatchRef) {
-  if (currentId && String(currentId).trim()) {return String(currentId);}
+  if (currentId && String(currentId).trim()) { return String(currentId); } // keep provided id
   const newId = makeCaseId();
-  try {
-    dispatchRef({ type: 'SET', key: 'caseId', value: newId });
-  } catch {}
+  try { dispatchRef({ type: 'SET', key: 'caseId', value: newId }); } catch {}
   Log.info('CASE_ID/GENERATED', { newId });
   return newId;
 }
 
 // ---------------------------------------------------------------------------
-/** Capture GEO best-effort */
+// Validation heuristique + helpers
+// ---------------------------------------------------------------------------
+// NOTE: screenTraceIdRef est utilisé ci-dessous ; défini plus bas puis injecté.
 async function captureGeolocationOnce({ timeoutMs = 6000 } = {}) {
   const traceId = screenTraceIdRef.current;
   Log.step(traceId, 'GEO/BEGIN');
@@ -347,10 +240,7 @@ async function captureGeolocationOnce({ timeoutMs = 6000 } = {}) {
   try {
     const { status } = await Location.requestForegroundPermissionsAsync();
     Log.info('GEO/perm', status);
-    if (status !== 'granted') {
-      Log.warn('GEO/denied');
-      return null;
-    }
+    if (status !== 'granted') { Log.warn('GEO/denied'); return null; }
 
     const withTimeout = (p, ms) =>
       Promise.race([
@@ -369,12 +259,7 @@ async function captureGeolocationOnce({ timeoutMs = 6000 } = {}) {
     } catch {
       const last = await Location.getLastKnownPositionAsync({ maxAge: 300000 });
       if (last?.coords) {
-        const geo = {
-          lat: last.coords.latitude,
-          lng: last.coords.longitude,
-          t: Date.now(),
-          lastKnown: true,
-        };
+        const geo = { lat: last.coords.latitude, lng: last.coords.longitude, t: Date.now(), lastKnown: true };
         Log.step(traceId, 'GEO/LAST_KNOWN_OK', geo);
         return geo;
       }
@@ -394,43 +279,16 @@ async function fsUpsertCase(caseId, payload) {
   Log.info('FS/UPSERT_CASE/OK');
 }
 
-// ---------------------------------------------------------------------------
-// UI sous-composants
-// ---------------------------------------------------------------------------
-const Section = ({ title, subtitle, children, style }) => (
-  <View style={[styles.card, style]}>
-    <Text style={styles.cardTitle}>{title}</Text>
-    {subtitle ? <Text style={styles.cardSubtitle}>{subtitle}</Text> : null}
-    <View style={{ marginTop: 8 }}>{children}</View>
-  </View>
-);
-
-const ChipGroup = ({ options, activeKey, onSelect }) => (
-  <View style={styles.chipRow}>
-    {options.map((opt) => {
-      const active = activeKey === opt.key;
-      return (
-        <TouchableOpacity
-          key={opt.key}
-          onPress={() => onSelect(opt.key)}
-          style={[styles.chipBox, active && styles.chipBoxActive]}
-        >
-          <Text style={[styles.chipBoxTxt, active && styles.chipBoxTxtActive]}>{opt.label}</Text>
-        </TouchableOpacity>
-      );
-    })}
-  </View>
-);
-
 // ============================================================================
 // Composant principal
 // ============================================================================
+// NOTE: screenTraceIdRef est utilisé dans captureGeolocationOnce ; on le déclare avant son appel
 let screenTraceIdRef;
-export default function MissingStart() {
-  // TraceId écran + refs
+
+export default function MissingUnified() {
   screenTraceIdRef = useRef(newTraceId('missing'));
   const screenMountTsRef = useRef(Date.now());
-  const lastActionRef = useRef('mount');
+
   const { guard, running, withBackoff } = useSubmitGuard({ cooldownMs: 1200, maxParallel: 1 });
 
   const router = useRouter();
@@ -440,99 +298,32 @@ export default function MissingStart() {
   const flow = getFlow(type);
 
   const initialParamCaseId = String(params?.caseId || '');
-  const [{ caseId, ...form }, dispatch] = useReducer(formReducer, {
-    ...initialForm,
-    type,
-    caseId: initialParamCaseId,
-  });
+  const [{ caseId, ...form }, dispatch] = useReducer(
+    formReducer,
+    { ...initialForm, type, caseId: initialParamCaseId }
+  );
 
   const { show, Toast } = useLiteToast();
   const hasWA = useHasWhatsApp();
-
-  // Upload state (par "kind")
-  const [uploadPct, setUploadPct] = useState({
-    photo: 0,
-    id_front: 0,
-    id_back: 0,
-    link_front: 0,
-    link_back: 0,
-  });
-  const [uploading, setUploading] = useState({
-    photo: false,
-    id_front: false,
-    id_back: false,
-    link_front: false,
-    link_back: false,
-  });
-  const abortersRef = useRef({
-    photo: null,
-    id_front: null,
-    id_back: null,
-    link_front: null,
-    link_back: null,
-  });
-
-  const setPct = (kind, pct) =>
-    setUploadPct((s) => ({ ...s, [kind]: Math.max(0, Math.min(100, pct || 0)) }));
-  const setIsUploading = (kind, val) =>
-    setUploading((s) => ({ ...s, [kind]: !!val }));
-
-  const cancelUpload = (kind) => {
-    try {
-      abortersRef.current[kind]?.abort();
-      abortersRef.current[kind] = null;
-      setIsUploading(kind, false);
-      setPct(kind, 0);
-      show('Upload cancelado.');
-      Log.warn('UPLOAD/CANCELLED', { kind });
-    } catch {}
-  };
-
-  // Permissions (Image Picker) — best effort
-  useEffect(() => {
-    (async () => {
-      try {
-        const perm = await ImagePicker.requestMediaLibraryPermissionsAsync?.();
-        Log.info('IMG/perm_boot', perm);
-      } catch (e) {
-        Log.warn('IMG/perm_boot_err', e?.message || String(e));
-      }
-    })();
-  }, []);
+  const [busy, setBusy] = useState(false);
 
   // Partage
-  const shareMsg = useMemo(
-    () =>
-      buildShareMessage({
-        type,
-        caseId,
-        name: form.primaryName,
-        cidade: form.lastCidade,
-        uf: form.lastUF,
-        dateBR: form.lastSeenDateBR,
-        time: form.lastSeenTime,
-      }),
-    [
-      type,
-      caseId,
-      form.primaryName,
-      form.lastCidade,
-      form.lastUF,
-      form.lastSeenDateBR,
-      form.lastSeenTime,
-    ],
-  );
+  const shareMsg = useMemo(() => buildShareMessage({
+    type,
+    caseId,
+    name: form.primaryName,
+    cidade: form.lastCidade,
+    uf: form.lastUF,
+    dateBR: form.lastSeenDateBR,
+    time: form.lastSeenTime,
+  }), [type, caseId, form.primaryName, form.lastCidade, form.lastUF, form.lastSeenDateBR, form.lastSeenTime]);
 
   // Trace mount/unmount
   useEffect(() => {
     const traceId = screenTraceIdRef.current;
     const mountTs = screenMountTsRef.current;
     Log.info('MOUNT', { traceId, at: nowTs(), type, caseId: initialParamCaseId || '(none)' });
-    const __ensureMountRef = screenMountTsRef.current;
-    void __ensureMountRef;
-    return () => {
-      Log.warn('UNMOUNT', { reason: lastActionRef.current, traceId, alive: msSince(mountTs) });
-    };
+    return () => { Log.warn('UNMOUNT', { traceId, alive: msSince(mountTs) }); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -549,38 +340,37 @@ export default function MissingStart() {
       lastUF: String(form.lastUF || '').toUpperCase(),
       contextDesc: form.description,
       extraInfo: form.extraInfo,
-      hasIdDoc: form.hasIdDocFront || form.hasIdDocBack || ['passport'].includes(form.adultIdType),
-      hasLinkDoc:
-        form.hasLinkDocFront ||
-        form.hasLinkDocBack ||
-        ['certidao', 'passport_child'].includes(form.childDocType),
+      hasIdDoc: form.hasIdDoc,
+      hasLinkDoc: form.hasLinkDoc,
       photoPath: form.photoPath,
     });
     return v.ok;
   }, [type, form]);
 
-  // -------------------------------------------------------------------------
-  // Uploads (ImagePicker sans dépréciation) + progress + abort
-  // -------------------------------------------------------------------------
+  // Uploads
   async function pickFileFromLibrary(kind) {
     const t0 = Date.now();
     const traceId = screenTraceIdRef.current;
     Log.step(traceId, 'PICK/BEGIN', { kind });
     try {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync?.();
+      const ImagePicker = await import('expo-image-picker');
+
+      // 1) Permission
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       Log.info('PICK/perm', { status: perm?.status, granted: perm?.granted });
-      if (perm && !perm.granted) {
+      if (!perm.granted) {
         show('Permissão recusada para galeria.');
         Log.warn('PICK/denied');
         return null;
       }
 
+      // 2) Lancement — API non dépréciée
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: [ImagePicker.MediaType.Images],
+        selectionLimit: 1,
         allowsEditing: false,
         quality: 0.9,
         exif: false,
-        selectionLimit: 1,
       });
 
       Log.info('PICK/result', {
@@ -588,20 +378,20 @@ export default function MissingStart() {
         count: result?.assets?.length || 0,
         ms: msSince(t0),
       });
-      if (result?.canceled || !result?.assets?.length) {return null;}
+      if (result.canceled || !result.assets?.length) { return null; }
 
+      // 3) Normalisation
       const asset = result.assets[0];
       const uri = asset.uri;
       const fileName = asset.fileName || asset.filename || `upload_${Date.now()}.jpg`;
       const lower = (uri || '').toLowerCase();
 
-      let mime =
-        asset.mimeType || (asset.type === 'image' ? 'image/jpeg' : 'application/octet-stream');
-      if (lower.endsWith('.png')) {mime = 'image/png';}
-      else if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {mime = 'image/jpeg';}
-      else if (lower.endsWith('.webp')) {mime = 'image/webp';}
+      let mime = asset.type === 'image' ? 'image/jpeg' : 'application/octet-stream';
+      if (lower.endsWith('.png')) { mime = 'image/png'; }
+      else if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) { mime = 'image/jpeg'; }
+      else if (lower.endsWith('.webp')) { mime = 'image/webp'; }
 
-      return { uri, fileName, mime, kind };
+      return { uri, name: fileName, mime, kind };
     } catch (e) {
       Log.error('PICK/ERROR', e?.message || e);
       show('Falha ao acessar a galeria.');
@@ -610,120 +400,57 @@ export default function MissingStart() {
   }
 
   async function onUpload(kind) {
-    if (uploading[kind]) {
-      // si on reclique pendant un upload, on propose d’annuler
-      cancelUpload(kind);
-      return;
-    }
-
     const traceId = screenTraceIdRef.current;
     Log.step(traceId, 'UPLOAD/BEGIN', { kind, type, caseId });
-
     const picked = await pickFileFromLibrary(kind);
-    if (!picked) {
-      Log.warn('UPLOAD/ABORT_NO_PICK', { kind });
-      return;
-    }
-
-    const { uri, fileName, mime } = picked;
-    const ensuredId = ensureCaseId(caseId, dispatch);
-
-    // Prépare progress + abort
-    const controller = new AbortController();
-    abortersRef.current[kind] = controller;
-    setPct(kind, 0);
-    setIsUploading(kind, true);
-
+    if (!picked) { Log.warn('UPLOAD/ABORT_NO_PICK', { kind }); return; }
+    const { uri, name, mime } = picked;
+    setBusy(true);
     try {
+      const ensuredId = ensureCaseId(caseId, dispatch);
       const common = {
-        uri,
-        fileName,
-        mime,
+        uri, name, mime,
         caseId: String(ensuredId),
-        onProgress: (p) => setPct(kind, p),
-        signal: controller.signal,
+        userId: auth.currentUser?.uid || 'anon',
+        cpfRaw: form.cpfRaw,
+        geo: undefined,
       };
+      let resp;
+      if (kind === 'id') { resp = await uploadIdDocument(common); }
+      else if (kind === 'link') { resp = await uploadLinkDocument(common); }
+      else if (kind === 'photo') { resp = await uploadChildPhoto(common); }
+      else { Log.warn('UPLOAD/UNKNOWN_KIND', kind); return; }
 
-      let res;
-      if (kind === 'photo') {res = await uploadMainPhoto(common);}
-      else if (kind === 'id_front') {res = await uploadIdFront(common);}
-      else if (kind === 'id_back') {res = await uploadIdBack(common);}
-      else if (kind === 'link_front') {res = await uploadLinkFront(common);}
-      else if (kind === 'link_back') {res = await uploadLinkBack(common);}
-      else {
-        Log.warn('UPLOAD/UNKNOWN_KIND', kind);
-        return;
-      }
+      Log.info('UPLOAD/RESP', { kind, ok: !!resp?.ok });
+      if (!resp?.ok) { show(resp?.reason || 'Falha no upload.'); Log.warn('UPLOAD/KO', { kind }); return; }
 
-      Log.info('UPLOAD/RESP', { kind, url: res?.url, path: res?.path, bytes: res?.bytes });
-      if (!res?.url) {
-        show('Falha no upload.');
-        Log.warn('UPLOAD/KO', { kind, res });
-        return;
-      }
-
-      // Applique le résultat dans le state
-      if (kind === 'photo') {
-        dispatch({ type: 'BULK_SET', payload: { photoPath: res.url, caseId: ensuredId } });
+      if (kind === 'id') {
+        dispatch({ type: 'BULK_SET', payload: { hasIdDoc: true, idDocPath: resp.redactedUrl, caseId: ensuredId } });
+        show('Documento de identidade anexado.');
+      } else if (kind === 'link') {
+        dispatch({ type: 'BULK_SET', payload: { hasLinkDoc: true, linkDocPath: resp.redactedUrl, caseId: ensuredId } });
+        show('Documento de vínculo anexado.');
+      } else if (kind === 'photo') {
+        dispatch({ type: 'BULK_SET', payload: { photoPath: resp.redactedUrl, caseId: ensuredId } });
         show('Foto anexada.');
       }
-      if (kind === 'id_front') {
-        dispatch({
-          type: 'BULK_SET',
-          payload: { hasIdDocFront: true, idDocFrontPath: res.url, caseId: ensuredId },
-        });
-        show('Documento (frente) anexado.');
-      }
-      if (kind === 'id_back') {
-        dispatch({
-          type: 'BULK_SET',
-          payload: { hasIdDocBack: true, idDocBackPath: res.url, caseId: ensuredId },
-        });
-        show('Documento (verso) anexado.');
-      }
-      if (kind === 'link_front') {
-        dispatch({
-          type: 'BULK_SET',
-          payload: { hasLinkDocFront: true, linkDocFrontPath: res.url, caseId: ensuredId },
-        });
-        show('Vínculo (frente) anexado.');
-      }
-      if (kind === 'link_back') {
-        dispatch({
-          type: 'BULK_SET',
-          payload: { hasLinkDocBack: true, linkDocBackPath: res.url, caseId: ensuredId },
-        });
-        show('Vínculo (verso) anexado.');
-      }
 
-      setPct(kind, 100);
-      Log.step(traceId, 'UPLOAD/END', { kind, pct: 100 });
+      Log.step(traceId, 'UPLOAD/END', { kind });
     } catch (e) {
-      if (e?.name === 'AbortError') {
-        Log.warn('UPLOAD/ABORTED', { kind });
-      } else {
-        Log.error('UPLOAD/ERROR', e?.message || e);
-        show('Erro no upload.');
-      }
+      Log.error('UPLOAD/ERROR', e?.message || e);
+      show('Erro no upload.');
     } finally {
-      setIsUploading(kind, false);
-      abortersRef.current[kind] = null;
-      // on laisse la barre à 100% une seconde si succès visuel
-      setTimeout(() => {
-        if (uploadPct[kind] === 100) {setPct(kind, 0);}
-      }, 900);
+      setBusy(false);
     }
   }
 
-  // -------------------------------------------------------------------------
-  // Submit (sans draft) — guard propre + traces
-  // -------------------------------------------------------------------------
+  // Submit (sans draft)
   const onSubmit = useCallback(async () => {
-    lastActionRef.current = 'submit_tapped';
     const t0 = Date.now();
     const traceId = screenTraceIdRef.current;
     Log.step(traceId, 'SUBMIT/BEGIN', { type });
 
+    // Validation centralisée
     const v = validateClient({
       type,
       guardianName: form.guardianName,
@@ -735,22 +462,14 @@ export default function MissingStart() {
       lastUF: String(form.lastUF || '').toUpperCase(),
       contextDesc: form.description,
       extraInfo: form.extraInfo,
-      hasIdDoc: form.hasIdDocFront || form.hasIdDocBack || ['passport'].includes(form.adultIdType),
-      hasLinkDoc:
-        form.hasLinkDocFront ||
-        form.hasLinkDocBack ||
-        ['certidao', 'passport_child'].includes(form.childDocType),
+      hasIdDoc: form.hasIdDoc,
+      hasLinkDoc: form.hasLinkDoc,
       photoPath: form.photoPath,
     });
 
-    // Bloque l’envoi si un upload est en cours (évite les surprises réseau)
-    const anyUploading = Object.values(uploading).some(Boolean);
-    if (anyUploading) {
-      Alert.alert('Aguarde', 'Um upload ainda está em andamento. Tente novamente em instantes.');
-      return;
-    }
-
+    setBusy(true);
     try {
+      // Assurer un caseId
       const ensuredId = ensureCaseId(caseId, dispatch);
 
       // Localisation (best-effort)
@@ -762,6 +481,7 @@ export default function MissingStart() {
         : null;
 
       if (!v.ok) {
+        // Rejet: persistance + raisons + toast
         await fsUpsertCase(ensuredId, {
           kind: type,
           ownerId: auth.currentUser?.uid || 'anon',
@@ -775,21 +495,11 @@ export default function MissingStart() {
             uf: String(form.lastUF || '').toUpperCase(),
           },
           context: { description: form.description || '', extraInfo: form.extraInfo || '' },
-          guardian:
-            type === 'child'
-              ? {
-                  fullName: form.guardianName?.trim() || '',
-                  cpfRaw: onlyDigits(form.cpfRaw),
-                  idType: form.adultIdType,
-                  childDocType: form.childDocType,
-                  docs: {
-                    idDocFrontRedacted: form.idDocFrontPath || '',
-                    idDocBackRedacted: form.idDocBackPath || '',
-                    linkDocFrontRedacted: form.linkDocFrontPath || '',
-                    linkDocBackRedacted: form.linkDocBackPath || '',
-                  },
-                }
-              : undefined,
+          guardian: type === 'child' ? {
+            fullName: form.guardianName?.trim() || '',
+            cpfRaw: onlyDigits(form.cpfRaw),
+            docs: { idDocRedacted: form.idDocPath || '', linkDocRedacted: form.linkDocPath || '' },
+          } : undefined,
           consent: !!form.consent,
           status: 'rejected',
           statusReasons: v.reasons || [],
@@ -802,7 +512,7 @@ export default function MissingStart() {
         return;
       }
 
-      // Validé
+      // Validé: on persiste (warnings inclus)
       const payloadValidated = {
         kind: type,
         ownerId: auth.currentUser?.uid || 'anon',
@@ -816,21 +526,11 @@ export default function MissingStart() {
           uf: String(form.lastUF || '').toUpperCase(),
         },
         context: { description: form.description || '', extraInfo: form.extraInfo || '' },
-        guardian:
-          type === 'child'
-            ? {
-                fullName: form.guardianName?.trim() || '',
-                cpfRaw: onlyDigits(form.cpfRaw),
-                idType: form.adultIdType,
-                childDocType: form.childDocType,
-                docs: {
-                  idDocFrontRedacted: form.idDocFrontPath || '',
-                  idDocBackRedacted: form.idDocBackPath || '',
-                  linkDocFrontRedacted: form.linkDocFrontPath || '',
-                  linkDocBackRedacted: form.linkDocBackPath || '',
-                },
-              }
-            : undefined,
+        guardian: type === 'child' ? {
+          fullName: form.guardianName?.trim() || '',
+          cpfRaw: onlyDigits(form.cpfRaw),
+          docs: { idDocRedacted: form.idDocPath || '', linkDocRedacted: form.linkDocPath || '' },
+        } : undefined,
         consent: !!form.consent,
         status: 'validated',
         statusReasons: [],
@@ -848,14 +548,7 @@ export default function MissingStart() {
           guardian: {
             fullName: form.guardianName?.trim() || '',
             cpfRaw: onlyDigits(form.cpfRaw),
-            idType: form.adultIdType,
-            childDocType: form.childDocType,
-            docProofs: [
-              form.idDocFrontPath && 'ID_FRONT',
-              form.idDocBackPath && 'ID_BACK',
-              form.linkDocFrontPath && 'LINK_CHILD_DOC_FRONT',
-              form.linkDocBackPath && 'LINK_CHILD_DOC_BACK',
-            ].filter(Boolean),
+            docProofs: ['ID_FRONT', 'LINK_CHILD_DOC'],
           },
           child: {
             firstName: form.primaryName?.trim() || '',
@@ -877,13 +570,11 @@ export default function MissingStart() {
           .catch((e) => Log.warn('CF verifyGuardian err', e?.message || String(e)));
       }
 
-      // Publication auto
+      // Publication auto (5 km enfant / 2 km animal/objet)
       const endereco = [
         [form.lastRua, form.lastNumero].filter(Boolean).join(', '),
         [form.lastCidade, String(form.lastUF || '').toUpperCase()].filter(Boolean).join(' / '),
-      ]
-        .filter(Boolean)
-        .join(' · ');
+      ].filter(Boolean).join(' · ');
 
       const radius_m = type === 'child' ? 5000 : 2000;
       const severity = 'medium';
@@ -902,7 +593,7 @@ export default function MissingStart() {
         color,
         traceId,
       });
-      if (!ok) {Log.warn('[PUBLIC_ALERT] dispatch KO — cfSendPublicAlert');}
+      if (!ok) { Log.warn('[PUBLIC_ALERT] dispatch KO — cfSendPublicAlert'); }
 
       if (Array.isArray(v.warnings) && v.warnings.length) {
         show(`Validado com avisos (${v.warnings.length}). Você pode detalhar depois.`);
@@ -911,91 +602,45 @@ export default function MissingStart() {
       }
 
       Log.step(traceId, 'SUBMIT/END', { ms: msSince(t0), status: 'validated' });
-      setTimeout(() => {
-        Log.info('NAVIGATE/home');
-        lastActionRef.current = 'submit_success_navigate';
-        router.replace({ pathname: '/(tabs)/home' });
-      }, 700);
+      setTimeout(() => { Log.info('NAVIGATE/home'); router.replace({ pathname: '/(tabs)/home' }); }, 700);
     } catch (e) {
       Log.error('SUBMIT/ERROR', e?.message || e);
       Alert.alert('Erro', 'Falha ao enviar. Tente novamente.');
+    } finally {
+      setBusy(false);
     }
-  }, [type, form, router, caseId, show, uploading]);
+  }, [type, form, router, caseId, show]);
 
-  // RENDER rules (recto/verso)
-  const needsAdultBack = ['rg', 'rne'].includes(form.adultIdType);
-  const needsChildBack = ['rg_child', 'rne_child'].includes(form.childDocType);
-  const needsChildFront = ['certidao', 'rg_child', 'passport_child', 'rne_child'].includes(
-    form.childDocType,
-  );
-
-  // petit helper UI progression
-  const ProgressInline = ({ kind }) => {
-    const pct = uploadPct[kind] || 0;
-    const isUp = uploading[kind];
-    if (!isUp && pct === 0) {return null;}
-    return (
-      <View style={styles.progressWrap}>
-        <View style={[styles.progressBar, { width: `${pct}%` }]} />
-        <Text style={styles.progressTxt}>{pct}%</Text>
-        {isUp ? (
-          <TouchableOpacity onPress={() => cancelUpload(kind)} style={styles.progressCancel}>
-            <X size={14} color="#e5e7eb" />
-          </TouchableOpacity>
-        ) : null}
-      </View>
-    );
-  };
-
+  // RENDER
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.select({ ios: 'padding', android: undefined })}
-      keyboardVerticalOffset={Platform.select({ ios: 60, android: 0 })}
-      style={{ flex: 1 }}
-    >
+    <KeyboardAvoidingView behavior={Platform.select({ ios: 'padding', android: undefined })} style={{ flex: 1 }}>
       <View style={styles.page}>
         {/* Toast overlay */}
         <View style={{ position: 'absolute', top: 0, left: 0, right: 0 }}>{Toast}</View>
 
         {/* Top bar */}
         <View style={styles.topbar}>
-          <TouchableOpacity
-            onPress={() => {
-              Log.info('NAVIGATE/back');
-              lastActionRef.current = 'back_tapped';
-              router.back();
-            }}
-            style={styles.backBtn}
-          >
+          <TouchableOpacity onPress={() => { Log.info('NAVIGATE/back'); router.back(); }} style={styles.backBtn}>
             <ChevronLeft color="#fff" size={22} />
             <Text style={styles.backTxt}>Voltar</Text>
           </TouchableOpacity>
-          <Text style={styles.topTitle}>{FLOW_RULES[type]?.title || 'Missing'}</Text>
+          <Text style={styles.topTitle}>{(FLOW_RULES[type]?.title || 'Missing')}</Text>
           <View style={{ width: 60 }} />
         </View>
 
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-          {/* Bandeau attention minimal */}
+          {/* Bandeau attention */}
           <View style={styles.alertCard}>
-            <TriangleAlert color="#111827" size={18} style={{ marginRight: 8 }} />
-            <Text style={styles.alertMsg}>
-              Uso responsável. Boa fé. VigiApp não substitui autoridades.
-            </Text>
+            <TriangleAlert color="#1f2937" size={20} style={{ marginRight: 10 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.alertTitle}>Uso responsável</Text>
+              <Text style={styles.alertMsg}>Boa fé e responsabilidade. VigiApp não substitui autoridades.</Text>
+            </View>
           </View>
 
-          {/* DOCUMENTS — Responsável (Adulto) */}
+          {/* Bloc docs légaux — uniquement child */}
           {type === 'child' && (
-            <Section
-              title="Documentos do responsável"
-              subtitle="Escolha o tipo e anexe as imagens. Para RNE e RG, frentes e versos."
-            >
-              <ChipGroup
-                options={ADULT_ID_TYPES}
-                activeKey={form.adultIdType}
-                onSelect={(k) => dispatch({ type: 'SET', key: 'adultIdType', value: k })}
-              />
-
-              {/* Identité du responsable */}
+            <>
               <View style={styles.row}>
                 <TextInput
                   style={styles.input}
@@ -1015,383 +660,233 @@ export default function MissingStart() {
                   keyboardType="number-pad"
                   value={form.cpfRaw}
                   maxLength={11}
-                  onChangeText={(t) =>
-                    dispatch({ type: 'SET', key: 'cpfRaw', value: onlyDigits(t) })
-                  }
+                  onChangeText={(t) => dispatch({ type: 'SET', key: 'cpfRaw', value: onlyDigits(t) })}
                 />
               </View>
 
-              {/* Uploads Adulto */}
-              <View style={styles.rowCol}>
+              <View style={styles.row}>
                 <TouchableOpacity
-                  style={[
-                    styles.btnGhost,
-                    form.hasIdDocFront && styles.btnGhostOk,
-                    uploading.id_front && styles.btnGhostBusy,
-                  ]}
-                  onPress={() => onUpload('id_front')}
+                  style={[styles.btnGhost, form.hasIdDoc && styles.btnGhostOk]}
+                  onPress={() => onUpload('id')}
+                  disabled={busy}
                 >
-                  <FileCheck2
-                    color={form.hasIdDocFront ? '#22C55E' : '#7dd3fc'}
-                    size={16}
-                  />
-                  <Text style={styles.btnGhostTxt}>
-                    {form.adultIdType === 'passport'
-                      ? form.hasIdDocFront
-                        ? 'Passaporte ✅'
-                        : uploading.id_front
-                          ? 'Enviando…'
-                          : 'Anexar passaporte'
-                      : form.hasIdDocFront
-                        ? `${form.adultIdType === 'rne' ? 'RNE' : 'RG'} (frente) ✅`
-                        : uploading.id_front
-                          ? 'Enviando…'
-                          : `Anexar ${form.adultIdType === 'rne' ? 'RNE' : 'RG'} (frente)`}
-                  </Text>
+                  <FileCheck2 color={form.hasIdDoc ? '#22C55E' : '#7dd3fc'} size={16} />
+                  <Text style={styles.btnGhostTxt}>{form.hasIdDoc ? 'ID anexado ✅' : 'Anexar doc. identidade'}</Text>
                 </TouchableOpacity>
-                <ProgressInline kind="id_front" />
 
-                {needsAdultBack && (
-                  <>
-                    <TouchableOpacity
-                      style={[
-                        styles.btnGhost,
-                        form.hasIdDocBack && styles.btnGhostOk,
-                        uploading.id_back && styles.btnGhostBusy,
-                      ]}
-                      onPress={() => onUpload('id_back')}
-                    >
-                      <FileCheck2
-                        color={form.hasIdDocBack ? '#22C55E' : '#7dd3fc'}
-                        size={16}
-                      />
-                      <Text style={styles.btnGhostTxt}>
-                        {form.hasIdDocBack
-                          ? `${form.adultIdType === 'rne' ? 'RNE' : 'RG'} (verso) ✅`
-                          : uploading.id_back
-                            ? 'Enviando…'
-                            : `Anexar ${form.adultIdType === 'rne' ? 'RNE' : 'RG'} (verso)`}
-                      </Text>
-                    </TouchableOpacity>
-                    <ProgressInline kind="id_back" />
-                  </>
-                )}
+                <TouchableOpacity
+                  style={[styles.btnGhost, form.hasLinkDoc && styles.btnGhostOk]}
+                  onPress={() => onUpload('link')}
+                  disabled={busy}
+                >
+                  <FileCheck2 color={form.hasLinkDoc ? '#22C55E' : '#7dd3fc'} size={16} />
+                  <Text style={styles.btnGhostTxt}>{form.hasLinkDoc ? 'Vínculo anexado ✅' : 'Anexar doc. vínculo'}</Text>
+                </TouchableOpacity>
               </View>
-            </Section>
+            </>
           )}
 
-          {/* DOCUMENTOS — Criança (Vínculo) */}
+          {/* Nom principal */}
+          <View style={styles.row}>
+            <TextInput
+              style={styles.input}
+              placeholder={
+                type === 'animal' ? 'Nome do animal' :
+                type === 'object' ? 'Objeto (ex.: iPhone 13, mochila preta)' :
+                'Primeiro nome da criança'
+              }
+              placeholderTextColor="#9aa0a6"
+              value={form.primaryName}
+              onChangeText={(v) => dispatch({ type: 'SET', key: 'primaryName', value: v })}
+              autoCapitalize="words"
+            />
+          </View>
+
+          {/* Child-only extras */}
           {type === 'child' && (
-            <Section
-              title="Documento da criança (vínculo)"
-              subtitle="Certidão (1), RG/RNE (frente+verso) ou Passaporte (1)."
-            >
-              <ChipGroup
-                options={CHILD_DOC_TYPES}
-                activeKey={form.childDocType}
-                onSelect={(k) => dispatch({ type: 'SET', key: 'childDocType', value: k })}
-              />
-
-              {needsChildFront && (
-                <View style={styles.rowCol}>
+            <>
+              <View style={styles.row}>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Data de nascimento (DD/MM/AAAA)"
+                  placeholderTextColor="#9aa0a6"
+                  value={form.childDobBR}
+                  onChangeText={(v) => dispatch({ type: 'SET', key: 'childDobBR', value: v })}
+                  maxLength={10}
+                  keyboardType="number-pad"
+                />
+              </View>
+              <View style={[styles.row, { gap: 10 }]}>
+                {['F', 'M'].map((s) => (
                   <TouchableOpacity
-                    style={[
-                      styles.btnGhost,
-                      form.hasLinkDocFront && styles.btnGhostOk,
-                      uploading.link_front && styles.btnGhostBusy,
-                    ]}
-                    onPress={() => onUpload('link_front')}
+                    key={s}
+                    style={sexoChipStyle(form.childSex, s)}
+                    onPress={() => dispatch({ type: 'SET', key: 'childSex', value: s })}
                   >
-                    <FileCheck2
-                      color={form.hasLinkDocFront ? '#22C55E' : '#7dd3fc'}
-                      size={16}
-                    />
-                    <Text style={styles.btnGhostTxt}>
-                      {form.childDocType === 'certidao'
-                        ? form.hasLinkDocFront
-                          ? 'Certidão ✅'
-                          : uploading.link_front
-                            ? 'Enviando…'
-                            : 'Anexar certidão'
-                        : form.childDocType === 'passport_child'
-                          ? form.hasLinkDocFront
-                            ? 'Passaporte (criança) ✅'
-                            : uploading.link_front
-                              ? 'Enviando…'
-                              : 'Anexar passaporte (criança)'
-                          : form.hasLinkDocFront
-                            ? `${form.childDocType === 'rne_child' ? 'RNE criança' : 'RG criança'} (frente) ✅`
-                            : uploading.link_front
-                              ? 'Enviando…'
-                              : `Anexar ${form.childDocType === 'rne_child' ? 'RNE criança' : 'RG criança'} (frente)`}
-                    </Text>
+                    <Text style={styles.chipTxtActive}>{s === 'M' ? 'Menino' : 'Menina'}</Text>
                   </TouchableOpacity>
-                  <ProgressInline kind="link_front" />
-
-                  {needsChildBack && (
-                    <>
-                      <TouchableOpacity
-                        style={[
-                          styles.btnGhost,
-                          form.hasLinkDocBack && styles.btnGhostOk,
-                          uploading.link_back && styles.btnGhostBusy,
-                        ]}
-                        onPress={() => onUpload('link_back')}
-                      >
-                        <FileCheck2
-                          color={form.hasLinkDocBack ? '#22C55E' : '#7dd3fc'}
-                          size={16}
-                        />
-                        <Text style={styles.btnGhostTxt}>
-                          {form.hasLinkDocBack
-                            ? `${form.childDocType === 'rne_child' ? 'RNE criança' : 'RG criança'} (verso) ✅`
-                            : uploading.link_back
-                              ? 'Enviando…'
-                              : `Anexar ${form.childDocType === 'rne_child' ? 'RNE criança' : 'RG criança'} (verso)`}
-                        </Text>
-                      </TouchableOpacity>
-                      <ProgressInline kind="link_back" />
-                    </>
-                  )}
-                </View>
-              )}
-            </Section>
+                ))}
+              </View>
+            </>
           )}
 
-          {/* IDENTITÉ PRINCIPALE */}
-          <Section
-            title={type === 'animal' ? 'Animal' : type === 'object' ? 'Objeto' : 'Criança'}
-            subtitle={
-              type === 'animal'
-                ? 'Nome e sinais ajudam na identificação.'
-                : type === 'object'
-                  ? 'Ex.: iPhone 13, mochila preta…'
-                  : 'Primeiro nome ajuda a circulação do alerta.'
-            }
-          >
-            <View style={styles.row}>
-              <TextInput
-                style={styles.input}
-                placeholder={
-                  type === 'animal'
-                    ? 'Nome do animal'
-                    : type === 'object'
-                      ? 'Objeto'
-                      : 'Primeiro nome da criança'
-                }
-                placeholderTextColor="#9aa0a6"
-                value={form.primaryName}
-                onChangeText={(v) => dispatch({ type: 'SET', key: 'primaryName', value: v })}
-                autoCapitalize="words"
-              />
-            </View>
+          {/* Date/heure + adresse */}
+          <View style={styles.row}>
+            <TextInput
+              style={styles.input}
+              placeholder="Data (DD/MM/AAAA)"
+              placeholderTextColor="#9aa0a6"
+              value={form.lastSeenDateBR}
+              onChangeText={(v) => dispatch({ type: 'SET', key: 'lastSeenDateBR', value: v })}
+              maxLength={10}
+              keyboardType="number-pad"
+            />
+          </View>
 
-            {type === 'child' && (
-              <>
-                <View style={styles.row}>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Data de nascimento (DD/MM/AAAA)"
-                    placeholderTextColor="#9aa0a6"
-                    value={form.childDobBR}
-                    onChangeText={(v) => dispatch({ type: 'SET', key: 'childDobBR', value: v })}
-                    maxLength={10}
-                    keyboardType="number-pad"
-                  />
-                </View>
-                <View style={styles.sexoRow}>
-                  {['F', 'M'].map((s) => (
-                    <TouchableOpacity
-                      key={s}
-                      style={sexoChipStyle(form.childSex, s)}
-                      onPress={() => dispatch({ type: 'SET', key: 'childSex', value: s })}
-                    >
-                      <Text style={styles.chipTxtActive}>{s === 'M' ? 'Menino' : 'Menina'}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </>
-            )}
-          </Section>
+          <View style={styles.row}>
+            <TextInput
+              style={styles.input}
+              placeholder="Hora (HH:mm) — opcional"
+              placeholderTextColor="#9aa0a6"
+              value={form.lastSeenTime}
+              onChangeText={(v) => dispatch({ type: 'SET', key: 'lastSeenTime', value: v })}
+              maxLength={5}
+              keyboardType="number-pad"
+            />
+          </View>
 
-          {/* LIEU / TEMPS */}
-          <Section title="Onde e quando" subtitle="Preencha o que souber.">
-            <View style={styles.row}>
-              <TextInput
-                style={styles.input}
-                placeholder="Data (DD/MM/AAAA)"
-                placeholderTextColor="#9aa0a6"
-                value={form.lastSeenDateBR}
-                onChangeText={(v) => dispatch({ type: 'SET', key: 'lastSeenDateBR', value: v })}
-                maxLength={10}
-                keyboardType="number-pad"
-              />
-              <TextInput
-                style={[styles.input, { width: 120 }]}
-                placeholder="Hora (HH:mm)"
-                placeholderTextColor="#9aa0a6"
-                value={form.lastSeenTime}
-                onChangeText={(v) => dispatch({ type: 'SET', key: 'lastSeenTime', value: v })}
-                maxLength={5}
-                keyboardType="number-pad"
-              />
-            </View>
+          <View style={styles.row}>
+            <TextInput
+              style={[styles.input, { flex: 1 }]}
+              placeholder="Rua (opcional)"
+              placeholderTextColor="#9aa0a6"
+              value={form.lastRua}
+              onChangeText={(v) => dispatch({ type: 'SET', key: 'lastRua', value: v })}
+            />
+            <TextInput
+              style={[styles.input, { width: 120 }]}
+              placeholder="N° (opcional)"
+              placeholderTextColor="#9aa0a6"
+              value={form.lastNumero}
+              onChangeText={(v) => dispatch({ type: 'SET', key: 'lastNumero', value: v })}
+              keyboardType="number-pad"
+            />
+          </View>
 
-            <View style={styles.row}>
-              <TextInput
-                style={[styles.input, { flex: 1 }]}
-                placeholder="Rua (opcional)"
-                placeholderTextColor="#9aa0a6"
-                value={form.lastRua}
-                onChangeText={(v) => dispatch({ type: 'SET', key: 'lastRua', value: v })}
-              />
-              <TextInput
-                style={[styles.input, { width: 120 }]}
-                placeholder="N°"
-                placeholderTextColor="#9aa0a6"
-                value={form.lastNumero}
-                onChangeText={(v) => dispatch({ type: 'SET', key: 'lastNumero', value: v })}
-                keyboardType="number-pad"
-              />
-            </View>
+          <View style={styles.row}>
+            <TextInput
+              style={[styles.input, { flex: 1 }]}
+              placeholder="Cidade"
+              placeholderTextColor="#9aa0a6"
+              value={form.lastCidade}
+              onChangeText={(v) => dispatch({ type: 'SET', key: 'lastCidade', value: v })}
+              autoCapitalize="words"
+            />
+            <TextInput
+              style={[styles.input, { width: 100 }]}
+              placeholder="UF"
+              placeholderTextColor="#9aa0a6"
+              value={form.lastUF}
+              onChangeText={(v) => dispatch({ type: 'SET', key: 'lastUF', value: String(v).toUpperCase() })}
+              autoCapitalize="characters"
+              maxLength={2}
+            />
+          </View>
 
-            <View style={styles.row}>
-              <TextInput
-                style={[styles.input, { flex: 1 }]}
-                placeholder="Cidade"
-                placeholderTextColor="#9aa0a6"
-                value={form.lastCidade}
-                onChangeText={(v) => dispatch({ type: 'SET', key: 'lastCidade', value: v })}
-                autoCapitalize="words"
-              />
-              <TextInput
-                style={[styles.input, { width: 100 }]}
-                placeholder="UF"
-                placeholderTextColor="#9aa0a6"
-                value={form.lastUF}
-                onChangeText={(v) =>
-                  dispatch({ type: 'SET', key: 'lastUF', value: String(v).toUpperCase() })
-                }
-                autoCapitalize="characters"
-                maxLength={2}
-              />
-            </View>
-          </Section>
+          {/* Photo */}
+          <View style={styles.row}>
+            <TouchableOpacity
+              style={[styles.btnGhost, form.photoPath && styles.btnGhostOk]}
+              onPress={() => onUpload('photo')}
+              disabled={busy}
+            >
+              <ImageIcon color={form.photoPath ? '#22C55E' : '#fca5a5'} size={16} />
+              <Text style={styles.btnGhostTxt}>{form.photoPath ? 'Foto anexada ✅' : 'Anexar foto'}</Text>
+            </TouchableOpacity>
+          </View>
 
-          {/* PHOTO */}
-          <Section title="Foto" subtitle="Melhor uma foto recente e nítida.">
-            <View style={styles.rowCol}>
-              <TouchableOpacity
-                style={[
-                  styles.btnGhost,
-                  form.photoPath && styles.btnGhostOk,
-                  uploading.photo && styles.btnGhostBusy,
-                ]}
-                onPress={() => onUpload('photo')}
-              >
-                <ImageIcon color={form.photoPath ? '#22C55E' : '#9aa0a6'} size={16} />
-                <Text style={styles.btnGhostTxt}>
-                  {form.photoPath
-                    ? 'Foto anexada ✅'
-                    : uploading.photo
-                      ? 'Enviando…'
-                      : 'Anexar foto'}
-                </Text>
-              </TouchableOpacity>
-              <ProgressInline kind="photo" />
-            </View>
-          </Section>
+          {/* Description + Infos complémentaires */}
+          <View style={styles.row}>
+            <TextInput
+              style={[styles.input, styles.multiline]}
+              placeholder={
+                type === 'animal'
+                  ? 'Descrição (porte, raça, coleira, comportamento, onde foi visto)...'
+                  : type === 'object'
+                    ? 'Descrição (marca, modelo, cor, número de série se houver)...'
+                    : 'Descrição do caso (onde/como, último trajeto, companhia, motivo provável)...'
+              }
+              placeholderTextColor="#9aa0a6"
+              value={form.description}
+              onChangeText={(v) => dispatch({ type: 'SET', key: 'description', value: v })}
+              multiline
+            />
+          </View>
 
-          {/* DESCRIÇÃO */}
-          <Section title="Detalhes" subtitle="Ajude quem vê o alerta a reconhecer.">
-            <View style={styles.row}>
-              <TextInput
-                style={[styles.input, styles.multiline]}
-                placeholder={
-                  type === 'animal'
-                    ? 'Descrição (porte, raça, coleira, comportamento, onde foi visto)…'
-                    : type === 'object'
-                      ? 'Descrição (marca, modelo, cor, número de série)…'
-                      : 'Descrição do caso (onde/como, último trajeto, companhia)…'
-                }
-                placeholderTextColor="#9aa0a6"
-                value={form.description}
-                onChangeText={(v) => dispatch({ type: 'SET', key: 'description', value: v })}
-                multiline
-              />
-            </View>
+          <View style={styles.row}>
+            <TextInput
+              style={[styles.input, styles.multiline]}
+              placeholder={
+                type === 'animal'
+                  ? 'Informações complementares (sinais, microchip, necessidades especiais)...'
+                  : type === 'object'
+                    ? 'Informações complementares (capa, adesivos, acessórios, IMEI)...'
+                    : 'Informações complementares (roupa, apelidos, sinais visíveis)...'
+              }
+              placeholderTextColor="#9aa0a6"
+              value={form.extraInfo}
+              onChangeText={(v) => dispatch({ type: 'SET', key: 'extraInfo', value: v })}
+              multiline
+            />
+          </View>
 
-            <View style={styles.row}>
-              <TextInput
-                style={[styles.input, styles.multiline]}
-                placeholder={
-                  type === 'animal'
-                    ? 'Informações complementares (sinais, microchip, necessidades)…'
-                    : type === 'object'
-                      ? 'Informações complementares (capa, adesivos, acessórios, IMEI)…'
-                      : 'Informações complementares (roupa, apelidos, sinais visíveis)…'
-                }
-                placeholderTextColor="#9aa0a6"
-                value={form.extraInfo}
-                onChangeText={(v) => dispatch({ type: 'SET', key: 'extraInfo', value: v })}
-                multiline
-              />
-            </View>
-          </Section>
-
-          {/* CONSENTEMENT */}
+          {/* Consentement */}
           <TouchableOpacity
-            activeOpacity={0.9}
             style={[styles.consentBox, form.consent && styles.consentBoxOn]}
             onPress={() => dispatch({ type: 'SET', key: 'consent', value: !form.consent })}
           >
-            <View style={[styles.checkbox, form.consent && styles.checkboxOn]}>
-              {form.consent ? <Check size={16} color="#0f172a" /> : null}
-            </View>
-            <User color={form.consent ? '#16a34a' : '#9aa0a6'} size={16} />
+            <User color={form.consent ? '#22C55E' : '#9aa0a6'} size={16} />
             <Text style={styles.consentTxt}>{flow.consentLabel}</Text>
           </TouchableOpacity>
 
-          {/* ACTIONS */}
+          {/* Actions */}
+          <View style={{ height: 12 }} />
+
           <TouchableOpacity
-            style={[styles.primaryBtn, { backgroundColor: canSubmit ? '#22C55E' : '#374151' }]}
-            onPress={guard('submit', async () =>
-              withBackoff(onSubmit, { attempts: 2, baseDelay: 600 }),
-            )}
-            disabled={!canSubmit || running('submit') || Object.values(uploading).some(Boolean)}
+            style={[styles.primaryBtn, { backgroundColor: canSubmit ? '#22C55E' : '#475569' }]}
+            onPress={guard('submit', async () => withBackoff(onSubmit, { attempts: 2, baseDelay: 600 }))}
+            disabled={!canSubmit || busy || running('submit')}
           >
-            <Text style={styles.primaryTxt}>
-              {running('submit') ? 'Enviando…' : 'Enviar'}
-            </Text>
+            <Text style={styles.primaryTxt}>{(busy || running('submit')) ? 'Enviando...' : 'Enviar'}</Text>
           </TouchableOpacity>
 
           {/* Partilha */}
-          <View style={styles.shareRow}>
+          <View style={styles.row}>
+            <View style={{ flex: 1 }} />
             <TouchableOpacity
               style={styles.shareBtn}
-              onPress={async () => {
-                Log.info('SHARE/native/click');
-                await shareNative(shareMsg);
-              }}
+              onPress={async () => { Log.info('SHARE/native/click'); await shareNative(shareMsg); }}
+              disabled={busy}
             >
               <Share2 color="#0ea5e9" size={16} />
               <Text style={styles.shareTxt}>Compartilhar</Text>
             </TouchableOpacity>
-            {hasWA && (
+          </View>
+
+          {hasWA && (
+            <View style={{ marginTop: 10 }}>
               <TouchableOpacity
                 style={[styles.shareBtn, { borderColor: '#22C55E' }]}
-                onPress={async () => {
-                  Log.info('SHARE/whatsapp/click');
-                  await shareWhatsApp(shareMsg);
-                }}
+                onPress={async () => { Log.info('SHARE/whatsapp/click'); await shareWhatsApp(shareMsg); }}
+                disabled={busy}
               >
                 <Share2 color="#22C55E" size={16} />
                 <Text style={[styles.shareTxt, { color: '#22C55E' }]}>WhatsApp</Text>
               </TouchableOpacity>
-            )}
-          </View>
+            </View>
+          )}
 
-          <View style={{ height: 24 }} />
+          <View style={{ height: 28 }} />
         </ScrollView>
       </View>
     </KeyboardAvoidingView>
@@ -1403,93 +898,64 @@ function sexoChipStyle(current, s) {
   const active = current === s;
   const base = [styles.chip];
   let colorStyles = {};
-  if (s === 'F') {colorStyles = active ? styles.chipFActive : styles.chipF;}
-  else if (s === 'M') {colorStyles = active ? styles.chipMActive : styles.chipM;}
+  if (s === 'F') { colorStyles = active ? styles.chipFActive : styles.chipF; }
+  else if (s === 'M') { colorStyles = active ? styles.chipMActive : styles.chipM; }
   return [base, colorStyles];
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#0b0f14' },
-
+  page: { flex: 1, backgroundColor: '#181A20' },
   topbar: {
     paddingTop: Platform.select({ ios: 14, android: 10, default: 12 }),
     paddingHorizontal: 14,
     paddingBottom: 8,
     flexDirection: 'row',
     alignItems: 'center',
-    borderBottomColor: '#111827',
+    borderBottomColor: '#2a2f39',
     borderBottomWidth: StyleSheet.hairlineWidth,
-    backgroundColor: '#0b0f14',
   },
-  backBtn: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingRight: 8 },
-  backTxt: { color: '#e5e7eb', marginLeft: 4, fontSize: 15 },
-  topTitle: { color: '#e5e7eb', fontSize: 16, fontWeight: '700', flex: 1, textAlign: 'center' },
-
-  scroll: { padding: 16, paddingBottom: 40 },
+  backBtn: { flexDirection: 'row', alignItems: 'center' },
+  backTxt: { color: '#fff', marginLeft: 4, fontSize: 15 },
+  topTitle: { color: '#fff', fontSize: 16, fontWeight: '700', flex: 1, textAlign: 'center' },
+  scroll: { padding: 18, paddingBottom: 40 },
 
   alertCard: {
     flexDirection: 'row',
-    backgroundColor: '#fef3c7',
-    padding: 10,
+    backgroundColor: '#fbbf24',
+    padding: 12,
     borderRadius: 12,
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  alertMsg: { color: '#111827', fontSize: 13 },
-
-  card: {
-    backgroundColor: '#0e141b',
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#17202a',
+    alignItems: 'flex-start',
     marginBottom: 12,
   },
-  cardTitle: { color: '#f3f4f6', fontSize: 15, fontWeight: '800' },
-  cardSubtitle: { color: '#9aa0a6', fontSize: 12, marginTop: 2 },
+  alertTitle: { color: '#1f2937', fontSize: 14, fontWeight: '800', marginBottom: 2 },
+  alertMsg: { color: '#1f2937', fontSize: 13, opacity: 0.95 },
 
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10 },
-  rowCol: { gap: 10, marginTop: 10 },
 
   input: {
     flex: 1,
     borderWidth: 1,
-    borderColor: '#1f2a35',
-    backgroundColor: '#0b1117',
-    color: '#e5e7eb',
-    paddingVertical: 11,
-    paddingHorizontal: 12,
-    borderRadius: 12,
+    borderColor: '#353840',
+    backgroundColor: '#222',
+    color: '#fff',
+    padding: 11,
+    borderRadius: 10,
   },
   multiline: { height: 96, textAlignVertical: 'top' },
 
-  sexoRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
-
-  chip: { borderRadius: 18, paddingVertical: 8, paddingHorizontal: 12 },
-  chipF: { backgroundColor: '#241b24', borderWidth: 2, borderColor: '#f472b6' },
+  chip: { borderRadius: 20, paddingVertical: 8, paddingHorizontal: 12 },
+  chipF: { backgroundColor: '#31232c', borderWidth: 2, borderColor: '#f472b6' },
   chipFActive: { backgroundColor: '#f472b6', borderWidth: 2, borderColor: '#f472b6' },
-  chipM: { backgroundColor: '#231a1a', borderWidth: 2, borderColor: '#ef4444' },
+  chipM: { backgroundColor: '#2f2222', borderWidth: 2, borderColor: '#ef4444' },
   chipMActive: { backgroundColor: '#ef4444', borderWidth: 2, borderColor: '#ef4444' },
   chipTxtActive: { color: '#fff', fontWeight: '700' },
 
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
-  chipBox: {
-    backgroundColor: '#0b1117',
-    borderWidth: 1,
-    borderColor: '#1f2a35',
-    borderRadius: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-  },
-  chipBoxActive: { borderColor: '#22C55E' },
-  chipBoxTxt: { color: '#cfd3db', fontWeight: '700' },
-  chipBoxTxtActive: { color: '#22C55E' },
-
   btnGhost: {
-    backgroundColor: '#0b1117',
-    borderWidth: 1,
-    borderColor: '#1f2a35',
-    borderRadius: 12,
+    flex: 1,
+    backgroundColor: '#23262F',
+    borderWidth: 2,
+    borderColor: '#23262F',
+    borderRadius: 10,
     paddingVertical: 10,
     paddingHorizontal: 12,
     flexDirection: 'row',
@@ -1498,92 +964,31 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   btnGhostOk: { borderColor: '#22C55E' },
-  btnGhostBusy: { opacity: 0.9, borderColor: '#3b82f6' },
   btnGhostTxt: { color: '#cfd3db', fontWeight: '600' },
 
-  // Progress inline
-  progressWrap: {
-    position: 'relative',
-    marginTop: 6,
-    height: 14,
-    borderRadius: 10,
-    backgroundColor: '#0b1117',
-    borderWidth: 1,
-    borderColor: '#1f2a35',
-    overflow: 'hidden',
-  },
-  progressBar: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    backgroundColor: '#22C55E',
-  },
-  progressTxt: {
-    textAlign: 'center',
-    color: '#e5e7eb',
-    fontSize: 11,
-    lineHeight: 14,
-    fontWeight: '700',
-  },
-  progressCancel: {
-    position: 'absolute',
-    right: 6,
-    top: -12,
-    padding: 6,
-  },
-
   consentBox: {
-    marginTop: 4,
-    marginBottom: 8,
-    backgroundColor: '#0b1117',
-    borderColor: '#233244',
+    marginTop: 12,
+    backgroundColor: '#23262F',
+    borderColor: '#353840',
     borderWidth: 1,
-    borderRadius: 14,
+    borderRadius: 10,
     padding: 12,
     flexDirection: 'row',
-    gap: 10,
+    gap: 8,
     alignItems: 'center',
   },
-  consentBoxOn: {
-    borderColor: '#22C55E',
-    shadowColor: '#22C55E',
-    shadowOpacity: 0.55,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 6,
-  },
-  checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: '#6b7280',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
-  },
-  checkboxOn: {
-    borderColor: '#16a34a',
-    backgroundColor: '#22C55E',
-  },
-  consentTxt: { color: '#cfd3db', flex: 1, fontSize: 13, lineHeight: 18 },
+  consentBoxOn: { borderColor: '#22C55E' },
+  consentTxt: { color: '#cfd3db', flex: 1 },
 
-  primaryBtn: {
-    marginTop: 10,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  primaryTxt: { color: '#0b0f14', fontWeight: '800', fontSize: 16 },
+  primaryBtn: { marginTop: 16, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+  primaryTxt: { color: '#000', fontWeight: '800', fontSize: 16 },
 
-  shareRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
   shareBtn: {
     flex: 1,
-    borderRadius: 12,
+    borderRadius: 10,
     paddingVertical: 12,
     alignItems: 'center',
-    backgroundColor: '#0b1117',
+    backgroundColor: '#111827',
     borderWidth: 1,
     borderColor: '#0ea5e9',
     flexDirection: 'row',
@@ -1597,8 +1002,8 @@ const styles = StyleSheet.create({
     top: Platform.select({ ios: 66, android: 48, default: 56 }),
     left: 10,
     right: 10,
-    backgroundColor: '#0e141b',
-    borderColor: '#17202a',
+    backgroundColor: '#2b2e36',
+    borderColor: '#3a3f4b',
     borderWidth: 1,
     paddingVertical: 10,
     paddingHorizontal: 12,
