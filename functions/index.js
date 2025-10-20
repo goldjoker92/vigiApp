@@ -1,5 +1,5 @@
 // =============================================================================
-// VigiApp — Cloud Functions v2 (HTTP) — index.js (FULL, CLEAN, MULTIPART‑SAFE)
+// VigiApp — Cloud Functions v2 (HTTP) — index.js (FULL, CLEAN, MULTIPART-SAFE)
 // =============================================================================
 
 /* Boot tolérant (ne doit jamais casser le démarrage) */
@@ -21,7 +21,7 @@ const { onRequest } = require('firebase-functions/v2/https');
 /* -------------------------------------------------------------------------- */
 setGlobalOptions({
   region: process.env.HTTP_REGION || 'southamerica-east1',
-  cors: true,               // Géré par le framework; pas besoin d'OPTIONS custom
+  cors: true,               // Géré par la plateforme
   timeoutSeconds: 60,
   memory: '256MiB',
   concurrency: 40,
@@ -33,14 +33,14 @@ setGlobalOptions({
 function log(level, msg, extra = {}) {
   const line = { ts: new Date().toISOString(), service: 'api', level, msg, ...extra };
   const text = JSON.stringify(line);
-  if (level === 'error') { console.error(text); }
-  else if (level === 'warn') { console.warn(text); }
-  else { console.log(text); }
+  if (level === 'error') {console.error(text);}
+  else if (level === 'warn') {console.warn(text);}
+  else {console.log(text);}
 }
 log('info', 'Loaded codebase');
 
 /* -------------------------------------------------------------------------- */
-/* Helpers FS                                                                 */
+/* Helpers FS & résolution                                                    */
 /* -------------------------------------------------------------------------- */
 const list = (p) => (fs.existsSync(p) ? fs.readdirSync(p) : []);
 const statInfo = (p) => {
@@ -51,12 +51,11 @@ const statInfo = (p) => {
     return { path: p, exists: false };
   }
 };
-
 /** IMPORTANT: d’abord functions/uploads (prod), puis src/uploads (dev) */
 const pathCandidates = () => [
   path.join(__dirname, 'uploads', 'handleUpload'),        // PROD prioritaire
   path.join(__dirname, 'src', 'uploads', 'handleUpload'), // DEV fallback
-  path.join(process.cwd(), 'uploads', 'handleUpload'),     // tolérance
+  path.join(process.cwd(), 'uploads', 'handleUpload'),     // tolérance CI
   path.join(process.cwd(), 'src', 'uploads', 'handleUpload'),
 ];
 
@@ -92,7 +91,7 @@ function tryRequire(paths, exportName = null) {
 
       const m = require(p);
       const mod = exportName ? m?.[exportName] : m;
-      if (!mod) { throw new Error(`Export "${exportName}" introuvable dans ${p}`); }
+      if (!mod) {throw new Error(`Export "${exportName}" introuvable dans ${p}`);}
 
       const keys = (mod && typeof mod === 'object') ? Object.keys(mod) : [];
       const defKeys = (mod && mod.default && typeof mod.default === 'object') ? Object.keys(mod.default) : [];
@@ -174,7 +173,7 @@ app.use((req, res, next) => {
   let bytesOut = 0;
   res.end = function (chunk, encoding, cb) {
     try {
-      if (chunk) { bytesOut += Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(String(chunk), encoding || 'utf8'); }
+      if (chunk) {bytesOut += Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(String(chunk), encoding || 'utf8');}
     } catch {}
     return origEnd.call(this, chunk, encoding, cb);
   };
@@ -190,14 +189,23 @@ app.use((req, res, next) => {
 /* Body-parser JSON/URL-encoded seulement si pas multipart */
 app.use((req, res, next) => {
   const ct = String(req.headers['content-type'] || '').toLowerCase();
-  if (ct.startsWith('application/json')) { return express.json({ limit: '10mb' })(req, res, next); }
-  if (ct.startsWith('application/x-www-form-urlencoded')) { return express.urlencoded({ extended: true, limit: '2mb' })(req, res, next); }
+  if (ct.startsWith('application/json')) {return express.json({ limit: '10mb' })(req, res, next);}
+  if (ct.startsWith('application/x-www-form-urlencoded')) {return express.urlencoded({ extended: true, limit: '2mb' })(req, res, next);}
   return next();
 });
 
-/* Santé */
+/* Santé + Ping (simples) */
 app.get('/_health', (_req, res) => res.status(200).json({ ok: true, service: 'api', ts: new Date().toISOString() }));
 app.get('/_ready',  (_req, res) => res.status(200).send('ok'));
+app.get('/ping', (req, res) => {
+  res.status(200).json({
+    ok: true,
+    pong: true,
+    ts: new Date().toISOString(),
+    rid: req._rid,
+    echo: { query: req.query }
+  });
+});
 
 /* Introspection (optionnelle) */
 const EXPOSE_INTROSPECTION = (process.env.EXPOSE_INTROSPECTION || 'true') === 'true';
@@ -247,8 +255,8 @@ if (EXPOSE_INTROSPECTION) {
 /* -------------------------------------------------------------------------- */
 const REQUIRE_IDEM = (process.env.REQUIRE_UPLOAD_IDEM || 'true') === 'true';
 function requireIdempotencyKey(req, res, next) {
-  if (req.method !== 'POST') { return next(); }
-  if (req.path !== '/upload/id' && req.path !== '/api/upload/id') { return next(); }
+  if (req.method !== 'POST') {return next();}
+  if (req.path !== '/upload/id' && req.path !== '/api/upload/id') {return next();}
 
   const key = String(req.get('x-idempotency-key') || '').trim();
   if (REQUIRE_IDEM && !key) {
@@ -271,7 +279,7 @@ function requireIdempotencyKey(req, res, next) {
 /* -------------------------------------------------------------------------- */
 let uploadHandlerFn = null;
 async function getUploadHandler() {
-  if (uploadHandlerFn) { return uploadHandlerFn; }
+  if (uploadHandlerFn) {return uploadHandlerFn;}
 
   const candidates = pathCandidates();
   log('info', 'UPLOAD_LOADER/CANDIDATES', { candidates, exists: candidates.map((c) => statInfo(c + '.js')) });
@@ -279,12 +287,12 @@ async function getUploadHandler() {
   const mod = tryRequire(candidates, null);
 
   let picked = null;
-  if (typeof mod === 'function') { picked = { kind: 'cjs_function', fn: mod }; }
-  else if (mod?.uploadMissingChildDoc) { picked = { kind: 'cjs_named_uploadMissingChildDoc', fn: mod.uploadMissingChildDoc }; }
-  else if (mod?.uploadId) { picked = { kind: 'cjs_named_uploadId', fn: mod.uploadId }; }
-  else if (mod?.default && typeof mod.default === 'function') { picked = { kind: 'esm_default_function', fn: mod.default }; }
-  else if (mod?.default?.uploadMissingChildDoc) { picked = { kind: 'esm_default_named_uploadMissingChildDoc', fn: mod.default.uploadMissingChildDoc }; }
-  else if (mod?.default?.uploadId) { picked = { kind: 'esm_default_named_uploadId', fn: mod.default.uploadId }; }
+  if (typeof mod === 'function') {picked = { kind: 'cjs_function', fn: mod };}
+  else if (mod?.uploadMissingChildDoc) {picked = { kind: 'cjs_named_uploadMissingChildDoc', fn: mod.uploadMissingChildDoc };}
+  else if (mod?.uploadId) {picked = { kind: 'cjs_named_uploadId', fn: mod.uploadId };}
+  else if (mod?.default && typeof mod.default === 'function') {picked = { kind: 'esm_default_function', fn: mod.default };}
+  else if (mod?.default?.uploadMissingChildDoc) {picked = { kind: 'esm_default_named_uploadMissingChildDoc', fn: mod.default.uploadMissingChildDoc };}
+  else if (mod?.default?.uploadId) {picked = { kind: 'esm_default_named_uploadId', fn: mod.default.uploadId };}
 
   if (!picked) {
     log('error', 'UPLOAD_LOADER/UNAVAILABLE', {
@@ -292,7 +300,7 @@ async function getUploadHandler() {
       expects: 'function OR { uploadMissingChildDoc } OR { uploadId } OR default variants',
       note: 'Chemin attendu: functions/uploads/handleUpload.js (ou src/uploads en fallback)'
     });
-    // Fallback non bloquant (ne casse pas le boot, évite les probes KO)
+    // Fallback non bloquant (évite les probes KO)
     uploadHandlerFn = async (_req, res) => res.status(503).json({ ok: false, error: 'upload_handler_missing', hint: 'check uploads/handleUpload.js' });
   } else {
     uploadHandlerFn = picked.fn;
@@ -306,7 +314,12 @@ async function getUploadHandler() {
 /* -------------------------------------------------------------------------- */
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10 MB
+    files: 1,
+    fields: 20,
+    parts: 30,
+  },
 });
 
 function enforceMultipart(req, res, next) {
@@ -345,13 +358,14 @@ app.post(
       length: req.headers['content-length'],
       hasFile: !!req.file,
       fileMeta: req.file ? { fieldname: req.file.fieldname, originalname: req.file.originalname, mimetype: req.file.mimetype, size: req.file.size } : null,
+      fields: req.body ? Object.keys(req.body) : [],
     });
     try {
       const fn = await getUploadHandler();
       await fn(req, res);
     } catch (err) {
       log('error', 'UPLOAD/THREW (direct)', { rid: req._rid, error: String(err?.message || err) });
-      if (!res.headersSent) { res.status(500).json({ ok: false, error: 'internal_error' }); }
+      if (!res.headersSent) {res.status(500).json({ ok: false, error: 'internal_error' });}
     }
   }
 );
@@ -366,6 +380,16 @@ if ((process.env.MOUNT_API_PREFIX || 'true') === 'true') {
     res.status(200).json({ ok: true, service: 'api', base: '/api', ts: new Date().toISOString() }),
   );
   router.get('/_ready',  (_req, res) => res.status(200).send('ok'));
+  router.get('/ping', (req, res) => {
+    res.status(200).json({
+      ok: true,
+      pong: true,
+      base: '/api',
+      ts: new Date().toISOString(),
+      rid: req._rid,
+      echo: { query: req.query }
+    });
+  });
 
   if (EXPOSE_INTROSPECTION) {
     router.get('/__routes', (_req, res) => {
@@ -423,6 +447,7 @@ if ((process.env.MOUNT_API_PREFIX || 'true') === 'true') {
         length: req.headers['content-length'],
         hasFile: !!req.file,
         fileMeta: req.file ? { fieldname: req.file.fieldname, originalname: req.file.originalname, mimetype: req.file.mimetype, size: req.file.size } : null,
+        fields: req.body ? Object.keys(req.body) : [],
       });
       try {
         const fn = await getUploadHandler();
@@ -435,7 +460,7 @@ if ((process.env.MOUNT_API_PREFIX || 'true') === 'true') {
   );
 
   app.use('/api', router);
-  log('info', 'API_PREFIX/MOUNTED', { base: '/api', routes: ['GET /_health', 'POST /upload/id'] });
+  log('info', 'API_PREFIX/MOUNTED', { base: '/api', routes: ['GET /_health', 'GET /ping', 'POST /upload/id'] });
 }
 
 /* -------------------------------------------------------------------------- */
@@ -450,4 +475,4 @@ app.use((req, res) => {
 /* Export principal — Cloud Functions v2 (PAS de app.listen)                  */
 /* -------------------------------------------------------------------------- */
 exports.api = onRequest(app);
-log('info', 'FUNCTION/EXPORTED', { fn: 'api', routes: ['GET /_health', 'POST /upload/id', 'GET /__routes?'] });
+log('info', 'FUNCTION/EXPORTED', { fn: 'api', routes: ['GET /_health', 'GET /ping', 'POST /upload/id', 'GET /__routes?'] });
