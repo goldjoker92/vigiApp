@@ -5,8 +5,12 @@
   "license": "UNLICENSED",
   "type": "commonjs",
   "main": "index.js",
-  "engines": { "node": "20" },
-  "_moduleAliases": { "@": "./src" },
+  "engines": {
+    "node": "20"
+  },
+  "_moduleAliases": {
+    "@": "./src"
+  },
   "scripts": {
     "serve": "firebase emulators:start --only functions",
     "logs": "firebase functions:log",
