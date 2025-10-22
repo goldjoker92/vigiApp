@@ -1,26 +1,11 @@
-// app/missing-start.jsx
 // ============================================================================
 // VigiApp — Flux "Missing" (child/animal/object)
-// Version épurée + UX responsive + docs séparés (Responsável / Criança)
-// Ajouts:
-//  - Type de doc adulte: RG (F+V), Passaporte (1), RNE (F+V) [étrangers]
-//  - Type de doc enfant: Certidão (1), RG criança (F+V), Passaporte criança (1), RNE criança (F+V)
-//  - Consent box: checkbox verte + contour + glow à l’activation
-//  - Placeholders plus légers, espacements aérés, scroll/keyboard agréables
-//  - Conservation de la logique (uploads id_front/id_back & link_front/link_back)
-//  - Logs & traces: traceId d’écran, step() pour étapes clés, timings msSince()
-//  - ImagePicker: API non dépréciée (mediaTypes, selectionLimit)
-//  - Uploads: progression %, annulation par fichier (AbortController)
+// UI: Dropdown doc (BG/overlay), Autocomplete OSM dans "Rua", dates dd-MM-yy
+// Submit progress par étapes, builder anti-yoyo (une seule source de vérité)
+// Full responsive, tracé/logué, zéro objet inline pour la validation
 // ============================================================================
 
-import React, {
-  useEffect,
-  useMemo,
-  useRef,
-  useReducer,
-  useState,
-  useCallback,
-} from 'react';
+import React, { useEffect, useMemo, useRef, useReducer, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -33,6 +18,7 @@ import {
   KeyboardAvoidingView,
   Share,
   Linking,
+  ActivityIndicator,
 } from 'react-native';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
@@ -48,15 +34,15 @@ import {
   Share2,
   Check,
   X,
+  ChevronDown,
 } from 'lucide-react-native';
 
-// Flux
+// Règles de flux (inchangé)
 import { FLOW_RULES, getFlow } from '../../src/miss/lib/flowRules';
+// Helpers existants
+import { todayISO, onlyDigits } from '../../src/miss/lib/helpers';
 
-// Libs locales
-import { formatDateBRToISO, todayISO, onlyDigits } from '../../src/miss/lib/helpers';
-
-// ✅ Nouveaux uploaders unifiés (avec progress + abort)
+// Uploaders (progress + abort)
 import {
   uploadIdFront,
   uploadIdBack,
@@ -65,11 +51,19 @@ import {
   uploadChildPhoto as uploadMainPhoto,
 } from '../../src/miss/lib/uploaders';
 
-// Guard
+// Guard / Overlays / Toast prêt
 import { useSubmitGuard } from '../../src/miss/lib/useSubmitGuard';
+import AgePolicyNotice from '../../src/miss/age/AgePolicyNotice';
+import SubmitDisabledOverlay from '../../src/miss/lib/SubmitDisabledOverlay';
+import { useReadyToast } from '../../src/miss/lib/useReadyToast';
 
-// Validation centralisée (warnings non bloquants pour animal/objet)
+// Masks existants (CPF)
+import { maskCPF } from '../../src/miss/lib/masks';
+
+// Validation centralisée
 import { validateClient } from '../../src/miss/lib/validations';
+
+import PlaygroundMini from '../../src/miss/lib/dev/PlaygroundMini';
 
 // ---------------------------------------------------------------------------
 // Logger / Tracer
@@ -88,6 +82,73 @@ const Log = {
 };
 
 // ---------------------------------------------------------------------------
+// Dates & masks
+// ---------------------------------------------------------------------------
+function pad2(n) {
+  return String(n).padStart(2, '0');
+}
+
+// dd-MM-yy (ex: 22-10-25) — pour “Onde e quando”
+function maskDateShort(input) {
+  const d = String(input || '')
+    .replace(/[^\d]/g, '')
+    .slice(0, 6); // ddMMyy
+  const a = d.slice(0, 2);
+  const b = d.slice(2, 4);
+  const c = d.slice(4, 6);
+  if (d.length <= 2) {return a;}
+  if (d.length <= 4) {return `${a}-${b}`;}
+  return `${a}-${b}-${c}`;
+}
+
+// dd/MM/aaaa — pour DOB enfant (slashes auto)
+function maskDateBR(input) {
+  const digits = String(input || '')
+    .replace(/[^\d]/g, '')
+    .slice(0, 8); // ddMMyyyy
+  const a = digits.slice(0, 2);
+  const b = digits.slice(2, 4);
+  const c = digits.slice(4, 8);
+  if (digits.length <= 2) {return a;}
+  if (digits.length <= 4) {return `${a}/${b}`;}
+  return `${a}/${b}/${c}`;
+}
+function normalizeDateBR(s) {
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec((s || '').trim());
+  if (!m) {return s;}
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(+m[1])}/${pad(+m[2])}/${m[3]}`;
+}
+
+// Normalise: 1-1-25 -> 01-01-25
+function normalizeDateShort(s) {
+  const m = /^(\d{1,2})-(\d{1,2})-(\d{2})$/.exec(s?.trim() || '');
+  if (!m) {return s;}
+  const d = pad2(+m[1]);
+  const mo = pad2(+m[2]);
+  const yy = m[3];
+  return `${d}-${mo}-${yy}`;
+}
+// Convertit dd-MM-yy en ISO (assume 20yy pour 00..79, sinon 19yy)
+function shortToISO(s, fallbackTime = '00:00') {
+  const m = /^(\d{2})-(\d{2})-(\d{2})$/.exec(s?.trim() || '');
+  if (!m) {return null;}
+  const [_, dd, MM, yy] = m;
+  const yyyy = Number(yy) <= 79 ? `20${yy}` : `19${yy}`;
+  return `${yyyy}-${MM}-${dd}T${fallbackTime}:00.00${fallbackTime.endsWith(':00') ? '' : '0'}Z`.replace(
+    '::',
+    ':',
+  );
+}
+
+// ✅ Helper de conversion DOB BR → ISO (fix régression)
+function brDateToISO(d) {
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec((d || '').trim());
+  if (!m) {return null;}
+  return `${m[3]}-${m[2]}-${m[1]}T00:00:00.000Z`;
+}
+
+// ---------------------------------------------------------------------------
 // Toast léger inline
 // ---------------------------------------------------------------------------
 function useLiteToast() {
@@ -98,7 +159,7 @@ function useLiteToast() {
     const s = String(text);
     Log.info('TOAST', s);
     setMsg(s);
-    timer.current = setTimeout(() => setMsg(null), 3200);
+    timer.current = setTimeout(() => setMsg(null), 9000);
   };
   useEffect(() => () => timer.current && clearTimeout(timer.current), []);
   const Toast = !msg ? null : (
@@ -116,14 +177,8 @@ function useHasWhatsApp() {
   const [hasWA, setHasWA] = useState(false);
   useEffect(() => {
     Linking.canOpenURL('whatsapp://send')
-      .then((ok) => {
-        Log.info('WHATSAPP/canOpenURL', ok);
-        setHasWA(!!ok);
-      })
-      .catch((e) => {
-        Log.warn('WHATSAPP/error', e?.message || String(e));
-        setHasWA(false);
-      });
+      .then((ok) => setHasWA(!!ok))
+      .catch(() => setHasWA(false));
   }, []);
   return hasWA;
 }
@@ -131,7 +186,7 @@ function useHasWhatsApp() {
 // ---------------------------------------------------------------------------
 // Partage
 // ---------------------------------------------------------------------------
-function buildShareMessage({ type, caseId, name, cidade, uf, dateBR, time }) {
+function buildShareMessage({ type, caseId, name, cidade, uf, dateShort, time }) {
   const link = `https://vigi.app/case/${caseId || ''}`;
   const prefix =
     type === 'animal'
@@ -143,57 +198,44 @@ function buildShareMessage({ type, caseId, name, cidade, uf, dateBR, time }) {
     `${prefix}\n\n` +
     `Nome: ${name || 'N/I'}\n` +
     `Local: ${cidade || 'N/I'}${uf ? ` (${uf})` : ''}\n` +
-    `Data: ${dateBR || 'N/I'}${time ? ` às ${time}` : ''}\n\n` +
+    `Data: ${dateShort || 'N/I'}${time ? ` às ${time}` : ''}\n\n` +
     `Ajude agora:\n${link}`
   );
 }
 async function shareNative(msg) {
-  Log.info('SHARE/native', { len: msg?.length || 0 });
   await Share.share({ message: msg });
 }
 async function shareWhatsApp(msg) {
   const url = `whatsapp://send?text=${encodeURIComponent(msg)}`;
   try {
     const ok = await Linking.canOpenURL(url);
-    Log.info('WHATSAPP/check', { ok, len: msg?.length || 0 });
-    if (ok) {
-      await Linking.openURL(url);
-    } else {
-      await Share.share({ message: msg });
-    }
-  } catch (e) {
-    Log.warn('WHATSAPP/fallback', e?.message || String(e));
+    if (ok) {await Linking.openURL(url);}
+    else {await Share.share({ message: msg });}
+  } catch {
     await Share.share({ message: msg });
   }
 }
 
 // ---------------------------------------------------------------------------
-// Services — CF + backoff + publish
+// Services — CF + backoff
 // ---------------------------------------------------------------------------
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
 async function cfFetch(url, opts = {}, { attempts = 2, baseDelay = 400 } = {}) {
-  Log.info('CF/FETCH', { url, attempts, baseDelay });
   let lastErr;
   for (let i = 0; i <= attempts; i++) {
     try {
       const resp = await fetch(url, opts);
       const json = await resp.json().catch(() => null);
       if (!resp.ok) {throw new Error(`HTTP_${resp.status}`);}
-      Log.info('CF/OK', { status: resp.status });
       return { ok: true, json, status: resp.status };
     } catch (e) {
       lastErr = e;
-      Log.warn('CF/RETRY', { i, err: e?.message || String(e) });
       if (i < attempts) {await sleep(baseDelay * Math.pow(2, i));}
     }
   }
-  Log.error('CF/FAIL', lastErr?.message || String(lastErr));
   return { ok: false, error: lastErr?.message || String(lastErr) };
 }
-
 async function cfVerifyGuardian({ caseId, body, idempotencyKey }) {
-  Log.info('CF/VERIFY_GUARDIAN', { caseId, idempotencyKey });
   return await cfFetch(
     'https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/verifyGuardian',
     {
@@ -204,7 +246,6 @@ async function cfVerifyGuardian({ caseId, body, idempotencyKey }) {
     { attempts: 2, baseDelay: 600 },
   );
 }
-
 async function cfSendPublicAlert({
   alertId,
   endereco,
@@ -232,7 +273,6 @@ async function cfSendPublicAlert({
     traceId,
     debug: '1',
   };
-  Log.info('[NOTIF][CALL] sendPublicAlertByAddress', body);
   return await cfFetch(
     'https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/sendPublicAlertByAddress',
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
@@ -241,11 +281,11 @@ async function cfSendPublicAlert({
 }
 
 // ---------------------------------------------------------------------------
-// Reducer — modèle de formulaire
+// Form reducer / modèle
 // ---------------------------------------------------------------------------
 const isoToday = todayISO();
 const [Y, M, D] = isoToday.split('-');
-const initialDateBR = `${D}/${M}/${Y}`;
+const initialDateShort = `${pad2(+D)}-${pad2(+M)}-${String(Y).slice(2)}`;
 
 const ADULT_ID_TYPES = [
   { key: 'rg', label: 'RG (frente + verso)' },
@@ -267,8 +307,8 @@ const initialForm = {
   // guardian / legal (child only)
   guardianName: '',
   cpfRaw: '',
-  adultIdType: 'rg', // 'rg' | 'passport' | 'rne'
-  childDocType: 'certidao', // 'certidao' | 'rg_child' | 'passport_child' | 'rne_child'
+  adultIdType: 'rg',
+  childDocType: 'certidao',
 
   // flags
   hasIdDocFront: false,
@@ -282,20 +322,21 @@ const initialForm = {
   linkDocFrontPath: '',
   linkDocBackPath: '',
 
-  // entity (name differs by type)
+  // entity
   primaryName: '',
 
   // child-only extras
-  childDobBR: '',
+  childDobBR: '', // dd/MM/aaaa
   childSex: '',
 
   // when/where
-  lastSeenDateBR: initialDateBR,
+  lastSeenDateBR: initialDateShort, // dd-MM-yy
   lastSeenTime: '',
   lastRua: '',
   lastNumero: '',
   lastCidade: '',
   lastUF: '',
+  lastCEP: '',
 
   // media
   photoPath: '',
@@ -309,7 +350,6 @@ const initialForm = {
 };
 
 function formReducer(state, action) {
-  Log.info('REDUCER', action?.type, action);
   switch (action.type) {
     case 'INIT':
       return { ...state, ...action.payload };
@@ -323,7 +363,7 @@ function formReducer(state, action) {
 }
 
 // ---------------------------------------------------------------------------
-// Génération d'ID local (pas de draft)
+// ID Locaux
 // ---------------------------------------------------------------------------
 function makeCaseId() {
   return `mc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -334,68 +374,53 @@ function ensureCaseId(currentId, dispatchRef) {
   try {
     dispatchRef({ type: 'SET', key: 'caseId', value: newId });
   } catch {}
-  Log.info('CASE_ID/GENERATED', { newId });
   return newId;
 }
 
 // ---------------------------------------------------------------------------
-/** Capture GEO best-effort */
+// GEO best-effort
+// ---------------------------------------------------------------------------
+let screenTraceIdRef; // défini dans le composant, accessible ici
 async function captureGeolocationOnce({ timeoutMs = 6000 } = {}) {
-  const traceId = screenTraceIdRef.current;
+  const traceId = screenTraceIdRef?.current;
   Log.step(traceId, 'GEO/BEGIN');
-
   try {
     const { status } = await Location.requestForegroundPermissionsAsync();
-    Log.info('GEO/perm', status);
-    if (status !== 'granted') {
-      Log.warn('GEO/denied');
-      return null;
-    }
-
+    if (status !== 'granted') {return null;}
     const withTimeout = (p, ms) =>
       Promise.race([
         p,
         new Promise((_, rej) => setTimeout(() => rej(new Error('GEO_TIMEOUT')), ms)),
       ]);
-
     try {
       const pos = await withTimeout(
         Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
         timeoutMs,
       );
-      const geo = { lat: pos.coords.latitude, lng: pos.coords.longitude, t: Date.now() };
-      Log.step(traceId, 'GEO/CURRENT_OK', geo);
-      return geo;
+      return { lat: pos.coords.latitude, lng: pos.coords.longitude, t: Date.now() };
     } catch {
       const last = await Location.getLastKnownPositionAsync({ maxAge: 300000 });
-      if (last?.coords) {
-        const geo = {
+      if (last?.coords)
+        {return {
           lat: last.coords.latitude,
           lng: last.coords.longitude,
           t: Date.now(),
           lastKnown: true,
-        };
-        Log.step(traceId, 'GEO/LAST_KNOWN_OK', geo);
-        return geo;
-      }
-      Log.warn('GEO/NONE');
+        };}
       return null;
     }
-  } catch (e) {
-    Log.error('GEO/ERROR', e?.message || e);
+  } catch {
     return null;
   }
 }
 
 async function fsUpsertCase(caseId, payload) {
-  Log.info('FS/UPSERT_CASE', { caseId, keys: Object.keys(payload || {}) });
   const ref = doc(db, 'missingCases', String(caseId));
   await setDoc(ref, payload, { merge: true });
-  Log.info('FS/UPSERT_CASE/OK');
 }
 
 // ---------------------------------------------------------------------------
-// UI sous-composants
+// Sections
 // ---------------------------------------------------------------------------
 const Section = ({ title, subtitle, children, style }) => (
   <View style={[styles.card, style]}>
@@ -405,29 +430,169 @@ const Section = ({ title, subtitle, children, style }) => (
   </View>
 );
 
-const ChipGroup = ({ options, activeKey, onSelect }) => (
-  <View style={styles.chipRow}>
-    {options.map((opt) => {
-      const active = activeKey === opt.key;
-      return (
-        <TouchableOpacity
-          key={opt.key}
-          onPress={() => onSelect(opt.key)}
-          style={[styles.chipBox, active && styles.chipBoxActive]}
-        >
-          <Text style={[styles.chipBoxTxt, active && styles.chipBoxTxtActive]}>{opt.label}</Text>
-        </TouchableOpacity>
-      );
-    })}
-  </View>
-);
+// ---------------------------------------------------------------------------
+// Builder anti-yoyo : source de vérité unique (UI/validator)
+// ---------------------------------------------------------------------------
+const deriveDocs = (f) => ({
+  hasIdDoc: !!(f.hasIdDocFront || f.hasIdDocBack || f.idDocFrontPath || f.idDocBackPath),
+  hasLinkDoc: !!(f.hasLinkDocFront || f.hasLinkDocBack || f.linkDocFrontPath || f.linkDocBackPath),
+});
+
+const buildValidationPayload = (type, form) => {
+  const docs = deriveDocs(form);
+  return {
+    type,
+    guardianName: form.guardianName,
+    cpfRaw: form.cpfRaw,
+    childFirstName: form.primaryName,
+    childDobBR: form.childDobBR, // dd/MM/aaaa
+    childSex: form.childSex,
+    lastCidade: form.lastCidade,
+    lastUF: String(form.lastUF || '').toUpperCase(),
+    contextDesc: form.description,
+    extraInfo: form.extraInfo,
+    hasIdDoc: docs.hasIdDoc,
+    hasLinkDoc: docs.hasLinkDoc,
+    photoPath: form.photoPath,
+    consent: form.consent,
+  };
+};
+
+// ---------------------------------------------------------------------------
+// Dropdown docs avec BG et overlay actif
+// ---------------------------------------------------------------------------
+const DocDropdown = ({ label, valueKey, options, onSelect }) => {
+  const [open, setOpen] = useState(false);
+  const current = options.find((o) => o.key === valueKey);
+  return (
+    <View style={{ marginTop: 10 }}>
+      <Text style={styles.label}>{label}</Text>
+      <TouchableOpacity
+        onPress={() => setOpen((o) => !o)}
+        style={[
+          styles.dropdown,
+          { backgroundColor: '#0b1117', borderColor: '#1f2a35' },
+          open && {
+            borderColor: '#22C55E',
+            shadowColor: '#22C55E',
+            shadowOpacity: 0.25,
+            shadowRadius: 8,
+          },
+        ]}
+      >
+        <Text style={styles.dropdownTxt}>{current?.label || 'Selecione'}</Text>
+        <ChevronDown size={16} color="#cfd3db" />
+      </TouchableOpacity>
+      {open && (
+        <View style={styles.dropdownMenu}>
+          {options.map((opt) => {
+            const active = opt.key === valueKey;
+            return (
+              <TouchableOpacity
+                key={opt.key}
+                style={[
+                  styles.dropdownItem,
+                  { backgroundColor: '#0b1117' },
+                  active && styles.dropdownItemActive,
+                ]}
+                onPress={() => {
+                  onSelect(opt.key);
+                  setOpen(false);
+                }}
+              >
+                <Text
+                  style={[
+                    styles.dropdownItemTxt,
+                    active && { color: '#22C55E', fontWeight: '800' },
+                  ]}
+                >
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
+    </View>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// Autocomplétion OSM sur "Rua"
+// ---------------------------------------------------------------------------
+function useOSMStreetAutocomplete() {
+  const [qRua, setQRua] = useState('');
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [locked, setLocked] = useState(false);
+  const debounceRef = useRef(null);
+
+  useEffect(() => {
+    const txt = (qRua || '').trim();
+    const shouldQuery = (!locked && txt.length >= 4) || (locked && txt.length >= 7);
+    if (!shouldQuery) {
+      setItems([]);
+      return;
+    }
+    if (debounceRef.current) {clearTimeout(debounceRef.current);}
+    debounceRef.current = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=6&q=${encodeURIComponent(
+          txt,
+        )}`;
+        const resp = await fetch(url, {
+          headers: { 'Accept-Language': 'pt-BR', 'User-Agent': 'VigiApp/1.0 (OSM autocomplete)' },
+        });
+        const json = await resp.json();
+        const mapped = (json || []).map((r) => ({
+          id: r.place_id,
+          label: r.display_name,
+          addr: r.address || {},
+          lat: r.lat,
+          lon: r.lon,
+        }));
+        setItems(mapped);
+      } catch (e) {
+        Log.warn('OSM/RUA_ERR', e?.message || String(e));
+        setItems([]);
+      } finally {
+        setLoading(false);
+      }
+    }, 350);
+    return () => debounceRef.current && clearTimeout(debounceRef.current);
+  }, [qRua, locked]);
+
+  const onPick = (it, dispatch) => {
+    const a = it.addr || {};
+    dispatch({
+      type: 'BULK_SET',
+      payload: {
+        lastRua: a.road || a.pedestrian || a.footway || a.cycleway || a.path || '',
+        lastNumero: a.house_number || '',
+        lastCidade: a.city || a.town || a.village || a.municipality || '',
+        lastUF: (a.state_code || a.state || '').toString().slice(0, 2).toUpperCase(),
+        lastCEP: a.postcode || '',
+      },
+    });
+    setQRua(a.road || a.pedestrian || a.footway || a.cycleway || a.path || it.label || '');
+    setLocked(true);
+    setItems([]);
+  };
+
+  const onEditRua = (txt) => {
+    setQRua(txt);
+    if (locked && txt.length < 7) {return;}
+    if (locked && txt.length >= 7) {setLocked(false);}
+  };
+
+  return { qRua, setQRua: onEditRua, items, loading, locked, setLocked, onPick };
+}
 
 // ============================================================================
 // Composant principal
 // ============================================================================
-let screenTraceIdRef;
 export default function MissingStart() {
-  // TraceId écran + refs
   screenTraceIdRef = useRef(newTraceId('missing'));
   const screenMountTsRef = useRef(Date.now());
   const lastActionRef = useRef('mount');
@@ -449,7 +614,7 @@ export default function MissingStart() {
   const { show, Toast } = useLiteToast();
   const hasWA = useHasWhatsApp();
 
-  // Upload state (par "kind")
+  // Upload state
   const [uploadPct, setUploadPct] = useState({
     photo: 0,
     id_front: 0,
@@ -472,10 +637,12 @@ export default function MissingStart() {
     link_back: null,
   });
 
+  // Submit progress global (0..1)
+  const [submitProgress, setSubmitProgress] = useState(0);
+
   const setPct = (kind, pct) =>
     setUploadPct((s) => ({ ...s, [kind]: Math.max(0, Math.min(100, pct || 0)) }));
-  const setIsUploading = (kind, val) =>
-    setUploading((s) => ({ ...s, [kind]: !!val }));
+  const setIsUploading = (kind, val) => setUploading((s) => ({ ...s, [kind]: !!val }));
 
   const cancelUpload = (kind) => {
     try {
@@ -484,23 +651,42 @@ export default function MissingStart() {
       setIsUploading(kind, false);
       setPct(kind, 0);
       show('Upload cancelado.');
-      Log.warn('UPLOAD/CANCELLED', { kind });
     } catch {}
   };
 
-  // Permissions (Image Picker) — best effort
+  // Autorisation galerie
   useEffect(() => {
     (async () => {
       try {
-        const perm = await ImagePicker.requestMediaLibraryPermissionsAsync?.();
-        Log.info('IMG/perm_boot', perm);
-      } catch (e) {
-        Log.warn('IMG/perm_boot_err', e?.message || String(e));
-      }
+        await ImagePicker.requestMediaLibraryPermissionsAsync?.();
+      } catch {}
     })();
   }, []);
 
-  // Partage
+  // Trace mount/unmount
+  useEffect(() => {
+    const traceId = screenTraceIdRef.current;
+    const mountTs = screenMountTsRef.current;
+    Log.info('MOUNT', { traceId, at: nowTs(), type, caseId: initialParamCaseId || '(none)' });
+    return () => {
+      Log.warn('UNMOUNT', { reason: lastActionRef.current, traceId, alive: msSince(mountTs) });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // canSubmit via builder unique
+  const payload = useMemo(() => buildValidationPayload(type, form), [type, form]);
+  const diag = useMemo(() => validateClient(payload, { ns: 'btn_state' }), [payload]);
+  const canSubmit = diag.ok;
+
+  // Toast "prêt à envoyer"
+  useReadyToast(canSubmit, show, {
+    durationMs: 6000,
+    text: '✅ Pronto para enviar — você já pode tocar em Enviar.',
+    ns: '[MISSING/READY]',
+  });
+
+  // Sharing message
   const shareMsg = useMemo(
     () =>
       buildShareMessage({
@@ -509,7 +695,7 @@ export default function MissingStart() {
         name: form.primaryName,
         cidade: form.lastCidade,
         uf: form.lastUF,
-        dateBR: form.lastSeenDateBR,
+        dateShort: form.lastSeenDateBR,
         time: form.lastSeenTime,
       }),
     [
@@ -523,58 +709,14 @@ export default function MissingStart() {
     ],
   );
 
-  // Trace mount/unmount
-  useEffect(() => {
-    const traceId = screenTraceIdRef.current;
-    const mountTs = screenMountTsRef.current;
-    Log.info('MOUNT', { traceId, at: nowTs(), type, caseId: initialParamCaseId || '(none)' });
-    const __ensureMountRef = screenMountTsRef.current;
-    void __ensureMountRef;
-    return () => {
-      Log.warn('UNMOUNT', { reason: lastActionRef.current, traceId, alive: msSince(mountTs) });
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Bouton actif ? (ok même si warnings animal/objet)
-  const canSubmit = useMemo(() => {
-    const v = validateClient({
-      type,
-      guardianName: form.guardianName,
-      cpfRaw: form.cpfRaw,
-      childFirstName: form.primaryName,
-      childDobBR: form.childDobBR,
-      childSex: form.childSex,
-      lastCidade: form.lastCidade,
-      lastUF: String(form.lastUF || '').toUpperCase(),
-      contextDesc: form.description,
-      extraInfo: form.extraInfo,
-      hasIdDoc: form.hasIdDocFront || form.hasIdDocBack || ['passport'].includes(form.adultIdType),
-      hasLinkDoc:
-        form.hasLinkDocFront ||
-        form.hasLinkDocBack ||
-        ['certidao', 'passport_child'].includes(form.childDocType),
-      photoPath: form.photoPath,
-    });
-    return v.ok;
-  }, [type, form]);
-
-  // -------------------------------------------------------------------------
-  // Uploads (ImagePicker sans dépréciation) + progress + abort
-  // -------------------------------------------------------------------------
+  // Upload picking
   async function pickFileFromLibrary(kind) {
-    const t0 = Date.now();
-    const traceId = screenTraceIdRef.current;
-    Log.step(traceId, 'PICK/BEGIN', { kind });
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync?.();
-      Log.info('PICK/perm', { status: perm?.status, granted: perm?.granted });
       if (perm && !perm.granted) {
         show('Permissão recusada para galeria.');
-        Log.warn('PICK/denied');
         return null;
       }
-
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: false,
@@ -582,28 +724,17 @@ export default function MissingStart() {
         exif: false,
         selectionLimit: 1,
       });
-
-      Log.info('PICK/result', {
-        canceled: result?.canceled,
-        count: result?.assets?.length || 0,
-        ms: msSince(t0),
-      });
       if (result?.canceled || !result?.assets?.length) {return null;}
-
       const asset = result.assets[0];
       const uri = asset.uri;
       const fileName = asset.fileName || asset.filename || `upload_${Date.now()}.jpg`;
       const lower = (uri || '').toLowerCase();
-
       let mime =
         asset.mimeType || (asset.type === 'image' ? 'image/jpeg' : 'application/octet-stream');
       if (lower.endsWith('.png')) {mime = 'image/png';}
-      else if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {mime = 'image/jpeg';}
       else if (lower.endsWith('.webp')) {mime = 'image/webp';}
-
       return { uri, fileName, mime, kind };
-    } catch (e) {
-      Log.error('PICK/ERROR', e?.message || e);
+    } catch {
       show('Falha ao acessar a galeria.');
       return null;
     }
@@ -611,24 +742,15 @@ export default function MissingStart() {
 
   async function onUpload(kind) {
     if (uploading[kind]) {
-      // si on reclique pendant un upload, on propose d’annuler
       cancelUpload(kind);
       return;
     }
-
-    const traceId = screenTraceIdRef.current;
-    Log.step(traceId, 'UPLOAD/BEGIN', { kind, type, caseId });
-
     const picked = await pickFileFromLibrary(kind);
-    if (!picked) {
-      Log.warn('UPLOAD/ABORT_NO_PICK', { kind });
-      return;
-    }
+    if (!picked) {return;}
 
     const { uri, fileName, mime } = picked;
     const ensuredId = ensureCaseId(caseId, dispatch);
 
-    // Prépare progress + abort
     const controller = new AbortController();
     abortersRef.current[kind] = controller;
     setPct(kind, 0);
@@ -643,26 +765,18 @@ export default function MissingStart() {
         onProgress: (p) => setPct(kind, p),
         signal: controller.signal,
       };
-
       let res;
       if (kind === 'photo') {res = await uploadMainPhoto(common);}
       else if (kind === 'id_front') {res = await uploadIdFront(common);}
       else if (kind === 'id_back') {res = await uploadIdBack(common);}
       else if (kind === 'link_front') {res = await uploadLinkFront(common);}
       else if (kind === 'link_back') {res = await uploadLinkBack(common);}
-      else {
-        Log.warn('UPLOAD/UNKNOWN_KIND', kind);
-        return;
-      }
 
-      Log.info('UPLOAD/RESP', { kind, url: res?.url, path: res?.path, bytes: res?.bytes });
       if (!res?.url) {
         show('Falha no upload.');
-        Log.warn('UPLOAD/KO', { kind, res });
         return;
       }
 
-      // Applique le résultat dans le state
       if (kind === 'photo') {
         dispatch({ type: 'BULK_SET', payload: { photoPath: res.url, caseId: ensuredId } });
         show('Foto anexada.');
@@ -697,53 +811,29 @@ export default function MissingStart() {
       }
 
       setPct(kind, 100);
-      Log.step(traceId, 'UPLOAD/END', { kind, pct: 100 });
     } catch (e) {
-      if (e?.name === 'AbortError') {
-        Log.warn('UPLOAD/ABORTED', { kind });
-      } else {
-        Log.error('UPLOAD/ERROR', e?.message || e);
-        show('Erro no upload.');
-      }
+      if (e?.name !== 'AbortError') {show('Erro no upload.');}
     } finally {
       setIsUploading(kind, false);
       abortersRef.current[kind] = null;
-      // on laisse la barre à 100% une seconde si succès visuel
       setTimeout(() => {
         if (uploadPct[kind] === 100) {setPct(kind, 0);}
       }, 900);
     }
   }
 
-  // -------------------------------------------------------------------------
-  // Submit (sans draft) — guard propre + traces
-  // -------------------------------------------------------------------------
+  // Submit — étapes + builder
   const onSubmit = useCallback(async () => {
     lastActionRef.current = 'submit_tapped';
-    const t0 = Date.now();
-    const traceId = screenTraceIdRef.current;
-    Log.step(traceId, 'SUBMIT/BEGIN', { type });
+    setSubmitProgress(0.1);
 
-    const v = validateClient({
-      type,
-      guardianName: form.guardianName,
-      cpfRaw: form.cpfRaw,
-      childFirstName: form.primaryName,
-      childDobBR: form.childDobBR,
-      childSex: form.childSex,
-      lastCidade: form.lastCidade,
-      lastUF: String(form.lastUF || '').toUpperCase(),
-      contextDesc: form.description,
-      extraInfo: form.extraInfo,
-      hasIdDoc: form.hasIdDocFront || form.hasIdDocBack || ['passport'].includes(form.adultIdType),
-      hasLinkDoc:
-        form.hasLinkDocFront ||
-        form.hasLinkDocBack ||
-        ['certidao', 'passport_child'].includes(form.childDocType),
-      photoPath: form.photoPath,
-    });
+    const v = validateClient(payload, { ns: 'submit_click' });
+    if (!v.ok) {
+      Alert.alert('Rejeitado', v.msg || 'Dados insuficientes.');
+      return;
+    }
+    setSubmitProgress(0.25);
 
-    // Bloque l’envoi si un upload est en cours (évite les surprises réseau)
     const anyUploading = Object.values(uploading).some(Boolean);
     if (anyUploading) {
       Alert.alert('Aguarde', 'Um upload ainda está em andamento. Tente novamente em instantes.');
@@ -752,57 +842,19 @@ export default function MissingStart() {
 
     try {
       const ensuredId = ensureCaseId(caseId, dispatch);
+      setSubmitProgress(0.35);
 
-      // Localisation (best-effort)
       const geo = await captureGeolocationOnce();
+      setSubmitProgress(0.45);
 
-      // Timestamps
+      // Dates ISO
       const lastSeenISO = form.lastSeenDateBR
-        ? `${formatDateBRToISO(form.lastSeenDateBR)}T${form.lastSeenTime || '00:00'}:00.000Z`
+        ? shortToISO(form.lastSeenDateBR, form.lastSeenTime || '00:00')
         : null;
 
-      if (!v.ok) {
-        await fsUpsertCase(ensuredId, {
-          kind: type,
-          ownerId: auth.currentUser?.uid || 'anon',
-          media: { photoRedacted: form.photoPath || '' },
-          primary: { name: form.primaryName || '' },
-          lastSeenAt: lastSeenISO,
-          lastKnownAddress: {
-            rua: form.lastRua || '',
-            numero: form.lastNumero || '',
-            cidade: form.lastCidade || '',
-            uf: String(form.lastUF || '').toUpperCase(),
-          },
-          context: { description: form.description || '', extraInfo: form.extraInfo || '' },
-          guardian:
-            type === 'child'
-              ? {
-                  fullName: form.guardianName?.trim() || '',
-                  cpfRaw: onlyDigits(form.cpfRaw),
-                  idType: form.adultIdType,
-                  childDocType: form.childDocType,
-                  docs: {
-                    idDocFrontRedacted: form.idDocFrontPath || '',
-                    idDocBackRedacted: form.idDocBackPath || '',
-                    linkDocFrontRedacted: form.linkDocFrontPath || '',
-                    linkDocBackRedacted: form.linkDocBackPath || '',
-                  },
-                }
-              : undefined,
-          consent: !!form.consent,
-          status: 'rejected',
-          statusReasons: v.reasons || [],
-          statusWarnings: [],
-          submitMeta: { geo: geo || null, submittedAt: Timestamp.now() },
-          updatedAt: Timestamp.now(),
-        });
-        Log.warn('SUBMIT/REJECTED', v);
-        Alert.alert('Rejeitado', v.msg || 'Dados insuficientes.');
-        return;
-      }
+      // ✅ Fix régression: DOB ISO stockée et réutilisée
+      const childDobISO = form.childDobBR ? brDateToISO(form.childDobBR) : null;
 
-      // Validé
       const payloadValidated = {
         kind: type,
         ownerId: auth.currentUser?.uid || 'anon',
@@ -814,6 +866,7 @@ export default function MissingStart() {
           numero: form.lastNumero || '',
           cidade: form.lastCidade || '',
           uf: String(form.lastUF || '').toUpperCase(),
+          cep: form.lastCEP || '',
         },
         context: { description: form.description || '', extraInfo: form.extraInfo || '' },
         guardian:
@@ -823,6 +876,7 @@ export default function MissingStart() {
                 cpfRaw: onlyDigits(form.cpfRaw),
                 idType: form.adultIdType,
                 childDocType: form.childDocType,
+                childDobISO, // ✅ maintenant rempli
                 docs: {
                   idDocFrontRedacted: form.idDocFrontPath || '',
                   idDocBackRedacted: form.idDocBackPath || '',
@@ -840,10 +894,11 @@ export default function MissingStart() {
       };
 
       await fsUpsertCase(ensuredId, payloadValidated);
+      setSubmitProgress(0.65);
 
-      // Vérif CF non bloquante (child)
       if (type === 'child') {
         const idem = newTraceId('idem');
+
         const body = {
           guardian: {
             fullName: form.guardianName?.trim() || '',
@@ -859,7 +914,7 @@ export default function MissingStart() {
           },
           child: {
             firstName: form.primaryName?.trim() || '',
-            dob: form.childDobBR ? formatDateBRToISO(form.childDobBR) : '',
+            dob: childDobISO, // ✅ cohérent avec Firestore
             sex: form.childSex || '',
             lastSeenAt: lastSeenISO,
             lastKnownAddress: {
@@ -867,20 +922,21 @@ export default function MissingStart() {
               numero: form.lastNumero || '',
               cidade: form.lastCidade || '',
               uf: String(form.lastUF || '').toUpperCase(),
+              cep: form.lastCEP || '',
             },
           },
           media: { photoRedacted: form.photoPath || '' },
           meta: { geo: geo || null },
         };
-        cfVerifyGuardian({ caseId: String(ensuredId), body, idempotencyKey: idem })
-          .then((resp) => Log.info('CF verifyGuardian resp', resp))
-          .catch((e) => Log.warn('CF verifyGuardian err', e?.message || String(e)));
+        // Non bloquant
+        cfVerifyGuardian({ caseId: String(ensuredId), body, idempotencyKey: idem }).catch(() => {});
       }
+      setSubmitProgress(0.75);
 
-      // Publication auto
       const endereco = [
         [form.lastRua, form.lastNumero].filter(Boolean).join(', '),
         [form.lastCidade, String(form.lastUF || '').toUpperCase()].filter(Boolean).join(' / '),
+        form.lastCEP && `CEP ${form.lastCEP}`,
       ]
         .filter(Boolean)
         .join(' · ');
@@ -894,15 +950,17 @@ export default function MissingStart() {
         endereco,
         cidade: form.lastCidade || '',
         uf: String(form.lastUF || '').toUpperCase(),
-        cep: '',
+        cep: form.lastCEP || '',
         lat: geo?.lat || null,
         lng: geo?.lng || null,
         radius_m,
         severity,
         color,
-        traceId,
+        traceId: screenTraceIdRef.current,
       });
-      if (!ok) {Log.warn('[PUBLIC_ALERT] dispatch KO — cfSendPublicAlert');}
+      if (!ok) {Log.warn('[PUBLIC_ALERT] KO');}
+
+      setSubmitProgress(0.9);
 
       if (Array.isArray(v.warnings) && v.warnings.length) {
         show(`Validado com avisos (${v.warnings.length}). Você pode detalhar depois.`);
@@ -910,26 +968,25 @@ export default function MissingStart() {
         show('Validado ✅ — alerta enviado.');
       }
 
-      Log.step(traceId, 'SUBMIT/END', { ms: msSince(t0), status: 'validated' });
+      setSubmitProgress(1);
       setTimeout(() => {
-        Log.info('NAVIGATE/home');
         lastActionRef.current = 'submit_success_navigate';
         router.replace({ pathname: '/(tabs)/home' });
-      }, 700);
-    } catch (e) {
-      Log.error('SUBMIT/ERROR', e?.message || e);
+      }, 650);
+    } catch {
       Alert.alert('Erro', 'Falha ao enviar. Tente novamente.');
+      setSubmitProgress(0);
     }
-  }, [type, form, router, caseId, show, uploading]);
+  }, [payload, type, form, router, caseId, show, uploading]);
 
-  // RENDER rules (recto/verso)
+  // Règles recto/verso
   const needsAdultBack = ['rg', 'rne'].includes(form.adultIdType);
   const needsChildBack = ['rg_child', 'rne_child'].includes(form.childDocType);
   const needsChildFront = ['certidao', 'rg_child', 'passport_child', 'rne_child'].includes(
     form.childDocType,
   );
 
-  // petit helper UI progression
+  // Progress upload inline
   const ProgressInline = ({ kind }) => {
     const pct = uploadPct[kind] || 0;
     const isUp = uploading[kind];
@@ -947,6 +1004,20 @@ export default function MissingStart() {
     );
   };
 
+  // OSM sur Rua
+  const streetAuto = useOSMStreetAutocomplete();
+
+  // Keep qRua et form.lastRua synchronisés
+  useEffect(() => {
+    if (!streetAuto.locked && form.lastRua && streetAuto.qRua !== form.lastRua) {
+      streetAuto.setQRua(form.lastRua);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.lastRua]);
+
+  // ========================================================================
+  // RENDER
+  // ========================================================================
   return (
     <KeyboardAvoidingView
       behavior={Platform.select({ ios: 'padding', android: undefined })}
@@ -961,7 +1032,6 @@ export default function MissingStart() {
         <View style={styles.topbar}>
           <TouchableOpacity
             onPress={() => {
-              Log.info('NAVIGATE/back');
               lastActionRef.current = 'back_tapped';
               router.back();
             }}
@@ -974,8 +1044,17 @@ export default function MissingStart() {
           <View style={{ width: 60 }} />
         </View>
 
+        {/* Barre de progression globale Submit */}
+        {running('submit') ? (
+          <View style={styles.submitProgressWrap}>
+            <View
+              style={[styles.submitProgressBar, { width: `${Math.round(submitProgress * 100)}%` }]}
+            />
+          </View>
+        ) : null}
+
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-          {/* Bandeau attention minimal */}
+          {/* Alerte haut */}
           <View style={styles.alertCard}>
             <TriangleAlert color="#111827" size={18} style={{ marginRight: 8 }} />
             <Text style={styles.alertMsg}>
@@ -983,20 +1062,21 @@ export default function MissingStart() {
             </Text>
           </View>
 
-          {/* DOCUMENTS — Responsável (Adulto) */}
+          {/* DOCS ADULTE */}
           {type === 'child' && (
             <Section
               title="Documentos do responsável"
-              subtitle="Escolha o tipo e anexe as imagens. Para RNE e RG, frentes e versos."
+              subtitle="Selecione o tipo e anexe. Para RG/RNE: frente e verso."
             >
-              <ChipGroup
+              <DocDropdown
+                label="Tipo de peça (adulto)"
+                valueKey={form.adultIdType}
                 options={ADULT_ID_TYPES}
-                activeKey={form.adultIdType}
                 onSelect={(k) => dispatch({ type: 'SET', key: 'adultIdType', value: k })}
               />
 
-              {/* Identité du responsable */}
-              <View style={styles.row}>
+              {/* Identité */}
+              <View style={{ marginTop: 10 }}>
                 <TextInput
                   style={styles.input}
                   placeholder="Nome completo do responsável"
@@ -1006,23 +1086,26 @@ export default function MissingStart() {
                   autoCapitalize="words"
                 />
               </View>
-
-              <View style={styles.row}>
+              <View style={{ marginTop: 10 }}>
                 <TextInput
                   style={styles.input}
                   placeholder="CPF (somente números)"
                   placeholderTextColor="#9aa0a6"
                   keyboardType="number-pad"
+                  autoComplete="off"
                   value={form.cpfRaw}
-                  maxLength={11}
-                  onChangeText={(t) =>
-                    dispatch({ type: 'SET', key: 'cpfRaw', value: onlyDigits(t) })
+                  maxLength={14}
+                  onChangeText={(t) => dispatch({ type: 'SET', key: 'cpfRaw', value: maskCPF(t) })}
+                  onBlur={() =>
+                    dispatch({ type: 'SET', key: 'cpfRaw', value: maskCPF(form.cpfRaw) })
                   }
                 />
               </View>
 
-              {/* Uploads Adulto */}
-              <View style={styles.rowCol}>
+              <AgePolicyNotice dobBR={form.childDobBR} />
+
+              {/* Uploaders adulte */}
+              <View style={{ marginTop: 10 }}>
                 <TouchableOpacity
                   style={[
                     styles.btnGhost,
@@ -1031,10 +1114,7 @@ export default function MissingStart() {
                   ]}
                   onPress={() => onUpload('id_front')}
                 >
-                  <FileCheck2
-                    color={form.hasIdDocFront ? '#22C55E' : '#7dd3fc'}
-                    size={16}
-                  />
+                  <FileCheck2 color={form.hasIdDocFront ? '#22C55E' : '#7dd3fc'} size={16} />
                   <Text style={styles.btnGhostTxt}>
                     {form.adultIdType === 'passport'
                       ? form.hasIdDocFront
@@ -1061,10 +1141,7 @@ export default function MissingStart() {
                       ]}
                       onPress={() => onUpload('id_back')}
                     >
-                      <FileCheck2
-                        color={form.hasIdDocBack ? '#22C55E' : '#7dd3fc'}
-                        size={16}
-                      />
+                      <FileCheck2 color={form.hasIdDocBack ? '#22C55E' : '#7dd3fc'} size={16} />
                       <Text style={styles.btnGhostTxt}>
                         {form.hasIdDocBack
                           ? `${form.adultIdType === 'rne' ? 'RNE' : 'RG'} (verso) ✅`
@@ -1080,20 +1157,21 @@ export default function MissingStart() {
             </Section>
           )}
 
-          {/* DOCUMENTOS — Criança (Vínculo) */}
+          {/* DOCS ENFANT */}
           {type === 'child' && (
             <Section
               title="Documento da criança (vínculo)"
-              subtitle="Certidão (1), RG/RNE (frente+verso) ou Passaporte (1)."
+              subtitle="Certidão (1), RG/RNE (F+V) ou Passaporte (1)."
             >
-              <ChipGroup
+              <DocDropdown
+                label="Tipo de peça (criança)"
+                valueKey={form.childDocType}
                 options={CHILD_DOC_TYPES}
-                activeKey={form.childDocType}
                 onSelect={(k) => dispatch({ type: 'SET', key: 'childDocType', value: k })}
               />
 
               {needsChildFront && (
-                <View style={styles.rowCol}>
+                <View style={{ marginTop: 10 }}>
                   <TouchableOpacity
                     style={[
                       styles.btnGhost,
@@ -1102,10 +1180,7 @@ export default function MissingStart() {
                     ]}
                     onPress={() => onUpload('link_front')}
                   >
-                    <FileCheck2
-                      color={form.hasLinkDocFront ? '#22C55E' : '#7dd3fc'}
-                      size={16}
-                    />
+                    <FileCheck2 color={form.hasLinkDocFront ? '#22C55E' : '#7dd3fc'} size={16} />
                     <Text style={styles.btnGhostTxt}>
                       {form.childDocType === 'certidao'
                         ? form.hasLinkDocFront
@@ -1138,10 +1213,7 @@ export default function MissingStart() {
                         ]}
                         onPress={() => onUpload('link_back')}
                       >
-                        <FileCheck2
-                          color={form.hasLinkDocBack ? '#22C55E' : '#7dd3fc'}
-                          size={16}
-                        />
+                        <FileCheck2 color={form.hasLinkDocBack ? '#22C55E' : '#7dd3fc'} size={16} />
                         <Text style={styles.btnGhostTxt}>
                           {form.hasLinkDocBack
                             ? `${form.childDocType === 'rne_child' ? 'RNE criança' : 'RG criança'} (verso) ✅`
@@ -1169,7 +1241,7 @@ export default function MissingStart() {
                   : 'Primeiro nome ajuda a circulação do alerta.'
             }
           >
-            <View style={styles.row}>
+            <View style={{ marginTop: 10 }}>
               <TextInput
                 style={styles.input}
                 placeholder={
@@ -1188,17 +1260,31 @@ export default function MissingStart() {
 
             {type === 'child' && (
               <>
-                <View style={styles.row}>
+                <View style={{ marginTop: 10 }}>
                   <TextInput
                     style={styles.input}
-                    placeholder="Data de nascimento (DD/MM/AAAA)"
+                    placeholder="Data de nascimento (dd/MM/aaaa)"
                     placeholderTextColor="#9aa0a6"
-                    value={form.childDobBR}
-                    onChangeText={(v) => dispatch({ type: 'SET', key: 'childDobBR', value: v })}
-                    maxLength={10}
                     keyboardType="number-pad"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    value={form.childDobBR}
+                    maxLength={10}
+                    onChangeText={(v) =>
+                      dispatch({ type: 'SET', key: 'childDobBR', value: maskDateBR(v) })
+                    }
+                    onBlur={() =>
+                      dispatch({
+                        type: 'SET',
+                        key: 'childDobBR',
+                        value: normalizeDateBR(form.childDobBR || ''),
+                      })
+                    }
                   />
                 </View>
+
+                <AgePolicyNotice dobBR={form.childDobBR} />
+
                 <View style={styles.sexoRow}>
                   {['F', 'M'].map((s) => (
                     <TouchableOpacity
@@ -1216,18 +1302,30 @@ export default function MissingStart() {
 
           {/* LIEU / TEMPS */}
           <Section title="Onde e quando" subtitle="Preencha o que souber.">
-            <View style={styles.row}>
+            <View style={{ marginTop: 10 }}>
               <TextInput
                 style={styles.input}
-                placeholder="Data (DD/MM/AAAA)"
+                placeholder="Data (dd-MM-aa)"
                 placeholderTextColor="#9aa0a6"
                 value={form.lastSeenDateBR}
-                onChangeText={(v) => dispatch({ type: 'SET', key: 'lastSeenDateBR', value: v })}
-                maxLength={10}
+                onChangeText={(v) =>
+                  dispatch({ type: 'SET', key: 'lastSeenDateBR', value: maskDateShort(v) })
+                }
+                onBlur={() =>
+                  dispatch({
+                    type: 'SET',
+                    key: 'lastSeenDateBR',
+                    value: normalizeDateShort(form.lastSeenDateBR || ''),
+                  })
+                }
+                maxLength={8}
                 keyboardType="number-pad"
               />
+            </View>
+
+            <View style={{ marginTop: 10 }}>
               <TextInput
-                style={[styles.input, { width: 120 }]}
+                style={styles.input}
                 placeholder="Hora (HH:mm)"
                 placeholderTextColor="#9aa0a6"
                 value={form.lastSeenTime}
@@ -1237,35 +1335,62 @@ export default function MissingStart() {
               />
             </View>
 
-            <View style={styles.row}>
+            {/* Rua + auto-complétion OSM inline */}
+            <View style={{ marginTop: 10 }}>
               <TextInput
-                style={[styles.input, { flex: 1 }]}
-                placeholder="Rua (opcional)"
+                style={styles.input}
+                placeholder="Rua"
                 placeholderTextColor="#9aa0a6"
-                value={form.lastRua}
-                onChangeText={(v) => dispatch({ type: 'SET', key: 'lastRua', value: v })}
+                value={streetAuto.qRua}
+                onChangeText={(txt) => {
+                  streetAuto.setQRua(txt);
+                  dispatch({ type: 'SET', key: 'lastRua', value: txt });
+                }}
               />
+              {streetAuto.loading ? (
+                <View style={styles.osmRow}>
+                  <ActivityIndicator />
+                  <Text style={{ color: '#cfd3db' }}>Buscando…</Text>
+                </View>
+              ) : null}
+              {streetAuto.items.length > 0 && (
+                <View style={styles.dropdownMenu}>
+                  {streetAuto.items.map((it) => (
+                    <TouchableOpacity
+                      key={it.id}
+                      style={styles.dropdownItem}
+                      onPress={() => streetAuto.onPick(it, dispatch)}
+                    >
+                      <Text style={styles.dropdownItemTxt}>{it.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+
+            <View style={{ marginTop: 10 }}>
               <TextInput
-                style={[styles.input, { width: 120 }]}
-                placeholder="N°"
+                style={styles.input}
+                placeholder="Número"
                 placeholderTextColor="#9aa0a6"
                 value={form.lastNumero}
                 onChangeText={(v) => dispatch({ type: 'SET', key: 'lastNumero', value: v })}
                 keyboardType="number-pad"
               />
             </View>
-
-            <View style={styles.row}>
+            <View style={{ marginTop: 10 }}>
               <TextInput
-                style={[styles.input, { flex: 1 }]}
+                style={styles.input}
                 placeholder="Cidade"
                 placeholderTextColor="#9aa0a6"
                 value={form.lastCidade}
                 onChangeText={(v) => dispatch({ type: 'SET', key: 'lastCidade', value: v })}
                 autoCapitalize="words"
               />
+            </View>
+            <View style={{ marginTop: 10 }}>
               <TextInput
-                style={[styles.input, { width: 100 }]}
+                style={styles.input}
                 placeholder="UF"
                 placeholderTextColor="#9aa0a6"
                 value={form.lastUF}
@@ -1276,11 +1401,21 @@ export default function MissingStart() {
                 maxLength={2}
               />
             </View>
+            <View style={{ marginTop: 10 }}>
+              <TextInput
+                style={styles.input}
+                placeholder="CEP"
+                placeholderTextColor="#9aa0a6"
+                value={form.lastCEP}
+                onChangeText={(v) => dispatch({ type: 'SET', key: 'lastCEP', value: v })}
+                keyboardType="number-pad"
+              />
+            </View>
           </Section>
 
           {/* PHOTO */}
           <Section title="Foto" subtitle="Melhor uma foto recente e nítida.">
-            <View style={styles.rowCol}>
+            <View style={{ marginTop: 10 }}>
               <TouchableOpacity
                 style={[
                   styles.btnGhost,
@@ -1302,9 +1437,9 @@ export default function MissingStart() {
             </View>
           </Section>
 
-          {/* DESCRIÇÃO */}
+          {/* DÉTAILS */}
           <Section title="Detalhes" subtitle="Ajude quem vê o alerta a reconhecer.">
-            <View style={styles.row}>
+            <View style={{ marginTop: 10 }}>
               <TextInput
                 style={[styles.input, styles.multiline]}
                 placeholder={
@@ -1320,8 +1455,7 @@ export default function MissingStart() {
                 multiline
               />
             </View>
-
-            <View style={styles.row}>
+            <View style={{ marginTop: 10 }}>
               <TextInput
                 style={[styles.input, styles.multiline]}
                 placeholder={
@@ -1353,26 +1487,35 @@ export default function MissingStart() {
           </TouchableOpacity>
 
           {/* ACTIONS */}
-          <TouchableOpacity
-            style={[styles.primaryBtn, { backgroundColor: canSubmit ? '#22C55E' : '#374151' }]}
-            onPress={guard('submit', async () =>
-              withBackoff(onSubmit, { attempts: 2, baseDelay: 600 }),
-            )}
-            disabled={!canSubmit || running('submit') || Object.values(uploading).some(Boolean)}
-          >
-            <Text style={styles.primaryTxt}>
-              {running('submit') ? 'Enviando…' : 'Enviar'}
-            </Text>
-          </TouchableOpacity>
+          <View style={{ position: 'relative' }}>
+            <TouchableOpacity
+              style={[styles.primaryBtn, { backgroundColor: canSubmit ? '#22C55E' : '#374151' }]}
+              onPress={guard('submit', async () =>
+                withBackoff(onSubmit, { attempts: 2, baseDelay: 600 }),
+              )}
+              disabled={!canSubmit || running('submit') || Object.values(uploading).some(Boolean)}
+            >
+              <Text style={styles.primaryTxt}>{running('submit') ? 'Enviando…' : 'Enviar'}</Text>
+            </TouchableOpacity>
 
-          {/* Partilha */}
+            <SubmitDisabledOverlay
+              disabled={!canSubmit || running('submit') || Object.values(uploading).some(Boolean)}
+              onExplain={() => {
+                const v = validateClient(buildValidationPayload(type, form), { ns: 'explain' });
+                if (v.reasons?.length) {
+                  const txt = `🚫 Campos obrigatórios faltando:\n• ${v.reasons.join('\n• ')}`;
+                  show(txt);
+                  Log.info('[VALIDATE][KO][reasons]', v.reasons);
+                }
+              }}
+            />
+          </View>
+
+          {/* Partage */}
           <View style={styles.shareRow}>
             <TouchableOpacity
               style={styles.shareBtn}
-              onPress={async () => {
-                Log.info('SHARE/native/click');
-                await shareNative(shareMsg);
-              }}
+              onPress={async () => await shareNative(shareMsg)}
             >
               <Share2 color="#0ea5e9" size={16} />
               <Text style={styles.shareTxt}>Compartilhar</Text>
@@ -1380,10 +1523,7 @@ export default function MissingStart() {
             {hasWA && (
               <TouchableOpacity
                 style={[styles.shareBtn, { borderColor: '#22C55E' }]}
-                onPress={async () => {
-                  Log.info('SHARE/whatsapp/click');
-                  await shareWhatsApp(shareMsg);
-                }}
+                onPress={async () => await shareWhatsApp(shareMsg)}
               >
                 <Share2 color="#22C55E" size={16} />
                 <Text style={[styles.shareTxt, { color: '#22C55E' }]}>WhatsApp</Text>
@@ -1392,6 +1532,7 @@ export default function MissingStart() {
           </View>
 
           <View style={{ height: 24 }} />
+          {__DEV__ && <PlaygroundMini />}
         </ScrollView>
       </View>
     </KeyboardAvoidingView>
@@ -1425,6 +1566,15 @@ const styles = StyleSheet.create({
   backTxt: { color: '#e5e7eb', marginLeft: 4, fontSize: 15 },
   topTitle: { color: '#e5e7eb', fontSize: 16, fontWeight: '700', flex: 1, textAlign: 'center' },
 
+  // Barre submit globale
+  submitProgressWrap: {
+    height: 3,
+    backgroundColor: '#0e141b',
+    borderBottomWidth: 1,
+    borderBottomColor: '#17202a',
+  },
+  submitProgressBar: { height: 3, backgroundColor: '#22C55E' },
+
   scroll: { padding: 16, paddingBottom: 40 },
 
   alertCard: {
@@ -1448,11 +1598,7 @@ const styles = StyleSheet.create({
   cardTitle: { color: '#f3f4f6', fontSize: 15, fontWeight: '800' },
   cardSubtitle: { color: '#9aa0a6', fontSize: 12, marginTop: 2 },
 
-  row: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10 },
-  rowCol: { gap: 10, marginTop: 10 },
-
   input: {
-    flex: 1,
     borderWidth: 1,
     borderColor: '#1f2a35',
     backgroundColor: '#0b1117',
@@ -1463,8 +1609,10 @@ const styles = StyleSheet.create({
   },
   multiline: { height: 96, textAlignVertical: 'top' },
 
-  sexoRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
+  label: { color: '#cfd3db', fontSize: 13, marginBottom: 6 },
 
+  // Chips sexe
+  sexoRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
   chip: { borderRadius: 18, paddingVertical: 8, paddingHorizontal: 12 },
   chipF: { backgroundColor: '#241b24', borderWidth: 2, borderColor: '#f472b6' },
   chipFActive: { backgroundColor: '#f472b6', borderWidth: 2, borderColor: '#f472b6' },
@@ -1472,19 +1620,37 @@ const styles = StyleSheet.create({
   chipMActive: { backgroundColor: '#ef4444', borderWidth: 2, borderColor: '#ef4444' },
   chipTxtActive: { color: '#fff', fontWeight: '700' },
 
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
-  chipBox: {
+  // Dropdown générique
+  dropdown: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#1f2a35',
+    backgroundColor: '#0b1117',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+  },
+  dropdownTxt: { color: '#cfd3db', fontWeight: '600' },
+  dropdownMenu: {
+    marginTop: 6,
     backgroundColor: '#0b1117',
     borderWidth: 1,
     borderColor: '#1f2a35',
     borderRadius: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
+    overflow: 'hidden',
   },
-  chipBoxActive: { borderColor: '#22C55E' },
-  chipBoxTxt: { color: '#cfd3db', fontWeight: '700' },
-  chipBoxTxtActive: { color: '#22C55E' },
+  dropdownItem: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderTopColor: '#15202b',
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  dropdownItemActive: { backgroundColor: 'rgba(34,197,94,0.08)' },
+  dropdownItemTxt: { color: '#cfd3db' },
 
+  // Boutons fantômes
   btnGhost: {
     backgroundColor: '#0b1117',
     borderWidth: 1,
@@ -1501,7 +1667,7 @@ const styles = StyleSheet.create({
   btnGhostBusy: { opacity: 0.9, borderColor: '#3b82f6' },
   btnGhostTxt: { color: '#cfd3db', fontWeight: '600' },
 
-  // Progress inline
+  // Progress upload inline
   progressWrap: {
     position: 'relative',
     marginTop: 6,
@@ -1512,13 +1678,7 @@ const styles = StyleSheet.create({
     borderColor: '#1f2a35',
     overflow: 'hidden',
   },
-  progressBar: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    backgroundColor: '#22C55E',
-  },
+  progressBar: { position: 'absolute', left: 0, top: 0, bottom: 0, backgroundColor: '#22C55E' },
   progressTxt: {
     textAlign: 'center',
     color: '#e5e7eb',
@@ -1526,13 +1686,9 @@ const styles = StyleSheet.create({
     lineHeight: 14,
     fontWeight: '700',
   },
-  progressCancel: {
-    position: 'absolute',
-    right: 6,
-    top: -12,
-    padding: 6,
-  },
+  progressCancel: { position: 'absolute', right: 6, top: -12, padding: 6 },
 
+  // Consent
   consentBox: {
     marginTop: 4,
     marginBottom: 8,
@@ -1563,20 +1719,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'transparent',
   },
-  checkboxOn: {
-    borderColor: '#16a34a',
-    backgroundColor: '#22C55E',
-  },
+  checkboxOn: { borderColor: '#16a34a', backgroundColor: '#22C55E' },
   consentTxt: { color: '#cfd3db', flex: 1, fontSize: 13, lineHeight: 18 },
 
-  primaryBtn: {
-    marginTop: 10,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
+  // CTA
+  primaryBtn: { marginTop: 10, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
   primaryTxt: { color: '#0b0f14', fontWeight: '800', fontSize: 16 },
 
+  // Partage
   shareRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
   shareBtn: {
     flex: 1,
@@ -1592,6 +1742,7 @@ const styles = StyleSheet.create({
   },
   shareTxt: { color: '#0ea5e9', fontWeight: '800' },
 
+  // Toast
   toastWrap: {
     position: 'absolute',
     top: Platform.select({ ios: 66, android: 48, default: 56 }),
@@ -1606,4 +1757,7 @@ const styles = StyleSheet.create({
     zIndex: 999,
   },
   toastText: { color: '#fff', textAlign: 'center', fontWeight: '700' },
+
+  // OSM Row (spinner)
+  osmRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },
 });
