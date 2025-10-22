@@ -44,8 +44,12 @@ const isUF2 = (s) => /^[A-Za-z]{2}$/.test(String(s || '').trim());
 // Masque CPF dans les logs (ne garde que 2 derniers chiffres)
 function maskCpfForLog(s = '') {
   const d = onlyDigits(s);
-  if (!d) {return '';}
-  if (d.length <= 2) {return `***********${d}`;}
+  if (!d) {
+    return '';
+  }
+  if (d.length <= 2) {
+    return `***********${d}`;
+  }
   return `***********${d.slice(-2)}`;
 }
 
@@ -138,10 +142,14 @@ export function validateClient(input, opts = {}) {
     }
 
     const meta = { traceId, tookMs: msSince(t0) };
-    if (trace) {Log.step(traceId, 'END', { ns, status: res.status, ok: res.ok, tookMs: meta.tookMs });}
+    if (trace) {
+      Log.step(traceId, 'END', { ns, status: res.status, ok: res.ok, tookMs: meta.tookMs });
+    }
     return { ...res, meta };
   } catch (e) {
-    if (trace) {Log.error('UNCAUGHT', e?.message || String(e), { traceId });}
+    if (trace) {
+      Log.error('UNCAUGHT', e?.message || String(e), { traceId });
+    }
     return {
       ok: false,
       status: 'rejected',
@@ -161,18 +169,28 @@ function validateChild(d, { trace, traceId }) {
   const warnings = [];
 
   // Photo (bloquant)
-  if (!hasText(d?.photoPath)) {reasons.push(TR.NEED_PHOTO);}
+  if (!hasText(d?.photoPath)) {
+    reasons.push(TR.NEED_PHOTO);
+  }
 
   // Localisation minimale (bloquant)
-  if (!hasText(d?.lastCidade) || !isUF2(d?.lastUF)) {reasons.push(TR.NEED_CITY_UF);}
+  if (!hasText(d?.lastCidade) || !isUF2(d?.lastUF)) {
+    reasons.push(TR.NEED_CITY_UF);
+  }
 
   // Responsável
-  if (!hasText(d?.guardianName)) {reasons.push(TR.NEED_GUARDIAN_NAME);}
+  if (!hasText(d?.guardianName)) {
+    reasons.push(TR.NEED_GUARDIAN_NAME);
+  }
   const cpfDigits = onlyDigits(d?.cpfRaw);
-  if (!cpfDigits || cpfDigits.length !== 11) {reasons.push(TR.BAD_CPF);}
+  if (!cpfDigits || cpfDigits.length !== 11) {
+    reasons.push(TR.BAD_CPF);
+  }
 
   // Criança
-  if (!hasText(d?.childFirstName)) {reasons.push(TR.NEED_NAME_CHILD);}
+  if (!hasText(d?.childFirstName)) {
+    reasons.push(TR.NEED_NAME_CHILD);
+  }
 
   if (!hasText(d?.childDobBR)) {
     reasons.push(TR.NEED_DOB);
@@ -180,35 +198,57 @@ function validateChild(d, { trace, traceId }) {
     const age = computeAgeEligibility(d.childDobBR);
     // age = { ok: boolean, status: 'OK'|'INVALID'|'MISSING'|'OVER_LIMIT', ... }
     if (!age.ok) {
-      if (age.status === 'INVALID') {reasons.push(TR.BAD_DOB);}
-      else if (age.status === 'MISSING') {reasons.push(TR.NEED_DOB);}
-      else if (age.status === 'OVER_LIMIT') {reasons.push(TR.AGE_OVER);}
+      if (age.status === 'INVALID') {
+        reasons.push(TR.BAD_DOB);
+      } else if (age.status === 'MISSING') {
+        reasons.push(TR.NEED_DOB);
+      } else if (age.status === 'OVER_LIMIT') {
+        reasons.push(TR.AGE_OVER);
+      }
     }
-    if (trace) {Log.step(traceId, 'AGE_CHECK', { status: age?.status || 'NA', ok: !!age?.ok });}
+    if (trace) {
+      Log.step(traceId, 'AGE_CHECK', { status: age?.status || 'NA', ok: !!age?.ok });
+    }
   }
 
-  if (!d?.childSex || !['M', 'F'].includes(d.childSex)) {reasons.push(TR.NEED_SEX);}
+  if (!d?.childSex || !['M', 'F'].includes(d.childSex)) {
+    reasons.push(TR.NEED_SEX);
+  }
 
   // Contexte (bloquant — tu l’as demandé strict)
-  if (!hasText(d?.contextDesc)) {reasons.push(TR.NEED_DESC_CHILD);}
+  if (!hasText(d?.contextDesc)) {
+    reasons.push(TR.NEED_DESC_CHILD);
+  }
 
   // Consent (bloquant)
-  if (!d?.consent) {reasons.push(TR.NEED_CONSENT);}
+  if (!d?.consent) {
+    reasons.push(TR.NEED_CONSENT);
+  }
 
   // Documents — les deux obligatoires
   const derived = deriveHasDocBooleans(d);
-  const hasIdDoc = d?.hasIdDoc ?? derived.hasIdDoc;     // responsável
+  const hasIdDoc = d?.hasIdDoc ?? derived.hasIdDoc; // responsável
   const hasLinkDoc = d?.hasLinkDoc ?? derived.hasLinkDoc; // criança (vínculo)
 
   if (!hasIdDoc && !hasLinkDoc) {
     reasons.push(TR.DOCS_BOTH_MISSING);
   } else {
-    if (!hasIdDoc) {reasons.push(TR.DOC_RESP_MISSING);}
-    if (!hasLinkDoc) {reasons.push(TR.DOC_CHILD_MISSING);}
+    if (!hasIdDoc) {
+      reasons.push(TR.DOC_RESP_MISSING);
+    }
+    if (!hasLinkDoc) {
+      reasons.push(TR.DOC_CHILD_MISSING);
+    }
   }
 
   const ok = reasons.length === 0;
-  if (trace) {Log.step(traceId, 'CHILD_DONE', { ok, reasonsCount: reasons.length, warningsCount: warnings.length });}
+  if (trace) {
+    Log.step(traceId, 'CHILD_DONE', {
+      ok,
+      reasonsCount: reasons.length,
+      warningsCount: warnings.length,
+    });
+  }
 
   return {
     ok,
@@ -226,14 +266,28 @@ function validateAnimal(d, { trace, traceId }) {
   const reasons = [];
   const warnings = [];
 
-  if (!hasText(d?.photoPath)) {reasons.push(TR.NEED_PHOTO);}
-  if (!hasText(d?.lastCidade) || !isUF2(d?.lastUF)) {reasons.push(TR.NEED_CITY_UF);}
+  if (!hasText(d?.photoPath)) {
+    reasons.push(TR.NEED_PHOTO);
+  }
+  if (!hasText(d?.lastCidade) || !isUF2(d?.lastUF)) {
+    reasons.push(TR.NEED_CITY_UF);
+  }
 
-  if (!hasText(d?.primaryName)) {warnings.push(TR.WARN_NAME_GENERIC);}
-  if (!hasText(d?.contextDesc)) {warnings.push(TR.WARN_DESC_GENERIC);}
+  if (!hasText(d?.primaryName)) {
+    warnings.push(TR.WARN_NAME_GENERIC);
+  }
+  if (!hasText(d?.contextDesc)) {
+    warnings.push(TR.WARN_DESC_GENERIC);
+  }
 
   const ok = reasons.length === 0;
-  if (trace) {Log.step(traceId, 'ANIMAL_DONE', { ok, reasonsCount: reasons.length, warningsCount: warnings.length });}
+  if (trace) {
+    Log.step(traceId, 'ANIMAL_DONE', {
+      ok,
+      reasonsCount: reasons.length,
+      warningsCount: warnings.length,
+    });
+  }
 
   return {
     ok,
@@ -251,14 +305,28 @@ function validateObject(d, { trace, traceId }) {
   const reasons = [];
   const warnings = [];
 
-  if (!hasText(d?.photoPath)) {reasons.push(TR.NEED_PHOTO);}
-  if (!hasText(d?.lastCidade) || !isUF2(d?.lastUF)) {reasons.push(TR.NEED_CITY_UF);}
+  if (!hasText(d?.photoPath)) {
+    reasons.push(TR.NEED_PHOTO);
+  }
+  if (!hasText(d?.lastCidade) || !isUF2(d?.lastUF)) {
+    reasons.push(TR.NEED_CITY_UF);
+  }
 
-  if (!hasText(d?.primaryName)) {warnings.push(TR.WARN_NAME_GENERIC);}
-  if (!hasText(d?.contextDesc)) {warnings.push(TR.WARN_DESC_GENERIC);}
+  if (!hasText(d?.primaryName)) {
+    warnings.push(TR.WARN_NAME_GENERIC);
+  }
+  if (!hasText(d?.contextDesc)) {
+    warnings.push(TR.WARN_DESC_GENERIC);
+  }
 
   const ok = reasons.length === 0;
-  if (trace) {Log.step(traceId, 'OBJECT_DONE', { ok, reasonsCount: reasons.length, warningsCount: warnings.length });}
+  if (trace) {
+    Log.step(traceId, 'OBJECT_DONE', {
+      ok,
+      reasonsCount: reasons.length,
+      warningsCount: warnings.length,
+    });
+  }
 
   return {
     ok,
