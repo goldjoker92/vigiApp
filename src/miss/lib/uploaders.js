@@ -17,23 +17,43 @@ function extFromFileName(fileName) {
 }
 function extFromMime(mime) {
   const m = String(mime || '').toLowerCase();
-  if (m.includes('png')) {return 'png';}
-  if (m.includes('webp')) {return 'webp';}
-  if (m.includes('heic')) {return 'heic';}
-  if (m.includes('jpeg') || m.includes('jpg')) {return 'jpg';}
-  if (m.includes('mp4')) {return 'mp4';}
+  if (m.includes('png')) {
+    return 'png';
+  }
+  if (m.includes('webp')) {
+    return 'webp';
+  }
+  if (m.includes('heic')) {
+    return 'heic';
+  }
+  if (m.includes('jpeg') || m.includes('jpg')) {
+    return 'jpg';
+  }
+  if (m.includes('mp4')) {
+    return 'mp4';
+  }
   return '';
 }
 function pickExt(fileName, mime) {
   return extFromFileName(fileName) || extFromMime(mime) || 'jpg';
 }
 function pickMime(mime, fileName) {
-  if (mime) {return String(mime);}
+  if (mime) {
+    return String(mime);
+  }
   const ext = extFromFileName(fileName);
-  if (ext === 'png') {return 'image/png';}
-  if (ext === 'webp') {return 'image/webp';}
-  if (ext === 'heic' || ext === 'heif') {return 'image/heic';}
-  if (ext === 'mp4') {return 'video/mp4';}
+  if (ext === 'png') {
+    return 'image/png';
+  }
+  if (ext === 'webp') {
+    return 'image/webp';
+  }
+  if (ext === 'heic' || ext === 'heif') {
+    return 'image/heic';
+  }
+  if (ext === 'mp4') {
+    return 'video/mp4';
+  }
   return 'image/jpeg';
 }
 function sanitizeId(v) {
@@ -44,11 +64,11 @@ function sanitizeId(v) {
 // Mapping fichiers par “kind”
 // ----------------------------------------------
 const FILE_NAMES = {
-  photo:      'photo',       // photo principale de l’enfant/animal/objet
-  id_front:   'id_front',    // doc responsable (recto)
-  id_back:    'id_back',     // doc responsable (verso)
-  link_front: 'link_front',  // doc de l’enfant (recto ou unique)
-  link_back:  'link_back',   // doc de l’enfant (verso)
+  photo: 'photo', // photo principale de l’enfant/animal/objet
+  id_front: 'id_front', // doc responsable (recto)
+  id_back: 'id_back', // doc responsable (verso)
+  link_front: 'link_front', // doc de l’enfant (recto ou unique)
+  link_back: 'link_back', // doc de l’enfant (verso)
 };
 
 // ----------------------------------------------
@@ -58,7 +78,7 @@ async function doUpload(kind, { caseId, uri, fileName, mime, onProgress, signal 
   const safeCaseId = sanitizeId(caseId);
   const base = FILE_NAMES[kind] || kind || 'file';
   const ext = pickExt(fileName, mime);
-  const ct  = pickMime(mime, fileName);
+  const ct = pickMime(mime, fileName);
 
   const path = `missing/${safeCaseId}/${base}.${ext}`;
 

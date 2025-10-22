@@ -10,13 +10,25 @@ import auth from '@react-native-firebase/auth';
 const NS = '[UPLOAD_CORE]';
 
 function normMime(mime) {
-  if (!mime) {return 'image/jpeg';}
+  if (!mime) {
+    return 'image/jpeg';
+  }
   const m = String(mime).toLowerCase();
-  if (m.includes('png')) {return 'image/png';}
-  if (m.includes('webp')) {return 'image/webp';}
-  if (m.includes('jpg') || m.includes('jpeg')) {return 'image/jpeg';}
-  if (m.includes('heic')) {return 'image/heic';}
-  if (m.includes('mp4') || m.includes('video')) {return 'video/mp4';}
+  if (m.includes('png')) {
+    return 'image/png';
+  }
+  if (m.includes('webp')) {
+    return 'image/webp';
+  }
+  if (m.includes('jpg') || m.includes('jpeg')) {
+    return 'image/jpeg';
+  }
+  if (m.includes('heic')) {
+    return 'image/heic';
+  }
+  if (m.includes('mp4') || m.includes('video')) {
+    return 'video/mp4';
+  }
   return 'application/octet-stream';
 }
 
@@ -58,7 +70,9 @@ async function ensureAuth() {
 export async function uploadToStorage({ path, uri, mime, onProgress, signal }) {
   console.log(NS, 'begin', { path, mime, uri });
 
-  if (!path || !uri) {throw new Error('UPLOAD_ARGS_MISSING');}
+  if (!path || !uri) {
+    throw new Error('UPLOAD_ARGS_MISSING');
+  }
 
   // 1) S’assurer qu’on a un user (anonyme ou réel)
   await ensureAuth();
@@ -77,13 +91,18 @@ export async function uploadToStorage({ path, uri, mime, onProgress, signal }) {
   const abort = () => {
     if (!aborted) {
       aborted = true;
-      try { task.cancel(); } catch {}
+      try {
+        task.cancel();
+      } catch {}
       console.warn(NS, 'upload cancelled');
     }
   };
   if (signal) {
-    if (signal.aborted) {abort();}
-    else {signal.addEventListener('abort', abort, { once: true });}
+    if (signal.aborted) {
+      abort();
+    } else {
+      signal.addEventListener('abort', abort, { once: true });
+    }
   }
 
   // 4) Promesse d’upload avec progression
@@ -112,7 +131,7 @@ export async function uploadToStorage({ path, uri, mime, onProgress, signal }) {
           console.error(NS, 'getDownloadURL/error', e?.message || String(e));
           reject(e);
         }
-      }
+      },
     );
   });
 }

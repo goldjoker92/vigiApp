@@ -135,14 +135,12 @@ function tryRequire(paths, exportName = null) {
 function makeFallbackHttp(name) {
   return onRequest((req, res) => {
     log('error', 'FALLBACK_INVOKED', { fn: name, path: req.path, method: req.method });
-    res
-      .status(503)
-      .json({
-        ok: false,
-        error: 'module_unavailable',
-        function: name,
-        hint: 'module missing or bad export',
-      });
+    res.status(503).json({
+      ok: false,
+      error: 'module_unavailable',
+      function: name,
+      hint: 'module missing or bad export',
+    });
   });
 }
 
@@ -317,13 +315,11 @@ function requireIdempotencyKey(req, res, next) {
       path: req.path,
       method: req.method,
     });
-    return res
-      .status(400)
-      .json({
-        ok: false,
-        error: 'missing_idempotency_key',
-        msg: 'Header X-Idempotency-Key is required for /upload/id',
-      });
+    return res.status(400).json({
+      ok: false,
+      error: 'missing_idempotency_key',
+      msg: 'Header X-Idempotency-Key is required for /upload/id',
+    });
   }
   if (!REQUIRE_IDEM && !key) {
     const gen = `srv_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -383,13 +379,11 @@ async function getUploadHandler() {
     });
     // Fallback non bloquant (ne casse pas le boot, évite les probes KO)
     uploadHandlerFn = async (_req, res) =>
-      res
-        .status(503)
-        .json({
-          ok: false,
-          error: 'upload_handler_missing',
-          hint: 'check uploads/handleUpload.js',
-        });
+      res.status(503).json({
+        ok: false,
+        error: 'upload_handler_missing',
+        hint: 'check uploads/handleUpload.js',
+      });
   } else {
     uploadHandlerFn = picked.fn;
     log('info', 'UPLOAD_LOADER/READY', {
