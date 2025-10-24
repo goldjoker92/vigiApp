@@ -56,8 +56,8 @@ export async function writeMissingCaseOnce(caseId, payload) {
  * - Non utilisé par l’écran principal, mais pratique pour scripts/outillage.
  */
 export async function upsertMissingCase(caseId, partial) {
-  if (!caseId || typeof caseId !== 'string') throw new Error('upsertMissingCase: caseId invalide');
-  if (!partial || typeof partial !== 'object') throw new Error('upsertMissingCase: payload invalide');
+  if (!caseId || typeof caseId !== 'string') {throw new Error('upsertMissingCase: caseId invalide');}
+  if (!partial || typeof partial !== 'object') {throw new Error('upsertMissingCase: payload invalide');}
 
   const ref = doc(db, 'missingCases', caseId);
 

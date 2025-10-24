@@ -54,33 +54,33 @@ const initialDateShort = `${pad2(+D)}-${pad2(+M)}-${String(Y).slice(2)}`;
 function maskDateShort(input){
   const d=String(input||'').replace(/[^\d]/g,'').slice(0,6);
   const a=d.slice(0,2), b=d.slice(2,4), c=d.slice(4,6);
-  if(d.length<=2) return a;
-  if(d.length<=4) return `${a}-${b}`;
+  if(d.length<=2) {return a;}
+  if(d.length<=4) {return `${a}-${b}`;}
   return `${a}-${b}-${c}`;
 }
 function normalizeDateShort(s){
   const m=/^(\d{1,2})-(\d{1,2})-(\d{2})$/.exec(s?.trim()||'');
-  if(!m) return s;
+  if(!m) {return s;}
   return `${pad2(+m[1])}-${pad2(+m[2])}-${m[3]}`;
 }
 function shortToISO(s, time='00:00'){
-  const m=/^(\d{2})-(\d{2})-(\d{2})$/.exec(s?.trim()||''); if(!m) return null;
+  const m=/^(\d{2})-(\d{2})-(\d{2})$/.exec(s?.trim()||''); if(!m) {return null;}
   const [_,dd,MM,yy]=m; const yyyy=Number(yy)<=79?`20${yy}`:`19${yy}`;
   return `${yyyy}-${MM}-${dd}T${time}:00.000Z`;
 }
 function maskDateBR(input){
   const d=String(input||'').replace(/[^\d]/g,'').slice(0,8);
   const a=d.slice(0,2), b=d.slice(2,4), c=d.slice(4,8);
-  if(d.length<=2) return a;
-  if(d.length<=4) return `${a}/${b}`;
+  if(d.length<=2) {return a;}
+  if(d.length<=4) {return `${a}/${b}`;}
   return `${a}/${b}/${c}`;
 }
 function normalizeDateBR(s){
-  const m=/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec((s||'').trim()); if(!m) return s;
+  const m=/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec((s||'').trim()); if(!m) {return s;}
   const p=n=>String(n).padStart(2,'0'); return `${p(+m[1])}/${p(+m[2])}/${m[3]}`;
 }
 function brDateToISO(d){
-  const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec((d||'').trim()); if(!m) return null;
+  const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec((d||'').trim()); if(!m) {return null;}
   return `${m[3]}-${m[2]}-${m[1]}T00:00:00.000Z`;
 }
 
@@ -90,7 +90,7 @@ function brDateToISO(d){
 function useLiteToast(){
   const [msg,setMsg]=useState(null); const t=useRef(null);
   const show = s=>{
-    if(t.current) clearTimeout(t.current);
+    if(t.current) {clearTimeout(t.current);}
     const text = String(s);
     L.i('TOAST', text);
     setMsg(text);
@@ -115,7 +115,7 @@ function useOSMStreetAutocomplete(traceId){
     const txt=(qRua||'').trim();
     const should = (!locked && txt.length>=4) || (locked && txt.length>=7);
     if(!should){ setItems([]); return; }
-    if(deb.current) clearTimeout(deb.current);
+    if(deb.current) {clearTimeout(deb.current);}
     deb.current=setTimeout(async()=>{
       setLoading(true);
       const url=`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=6&countrycodes=br&q=${encodeURIComponent(txt)}`;
@@ -159,8 +159,8 @@ function useOSMStreetAutocomplete(traceId){
 
   const onEdit = txt=>{
     setQRua(txt);
-    if(locked && txt.length<7) return;
-    if(locked && txt.length>=7) setLocked(false);
+    if(locked && txt.length<7) {return;}
+    if(locked && txt.length>=7) {setLocked(false);}
   };
 
   return { qRua, setQRua:onEdit, items, loading, locked, setLocked, onPick };
@@ -188,7 +188,7 @@ function formReducer(state, action){
 }
 const makeCaseId = ()=>`mc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,8)}`;
 const ensureCaseId = (id, dispatch)=>{
-  if(id && String(id).trim()) return String(id);
+  if(id && String(id).trim()) {return String(id);}
   const nid = makeCaseId();
   try{ dispatch({type:'SET', key:'caseId', value:nid}); }catch{}
   return nid;
@@ -291,43 +291,43 @@ export default function MissingStart(){
       const perm=await ImagePicker.requestMediaLibraryPermissionsAsync?.();
       if(perm && !perm.granted){ show('Sem permissão para galeria'); return null; }
       const res=await ImagePicker.launchImageLibraryAsync({mediaTypes:ImagePicker.MediaTypeOptions.Images,quality:0.9,exif:false,selectionLimit:1});
-      if(res?.canceled || !res?.assets?.length) return null;
+      if(res?.canceled || !res?.assets?.length) {return null;}
       const a=res.assets[0]; const uri=a.uri;
       const fileName=a.fileName||a.filename||`upload_${Date.now()}.jpg`;
       const lower=(uri||'').toLowerCase();
       let mime=a.mimeType||(a.type==='image'?'image/jpeg':'application/octet-stream');
-      if(lower.endsWith('.png')) mime='image/png';
-      else if(lower.endsWith('.webp')) mime='image/webp';
+      if(lower.endsWith('.png')) {mime='image/png';}
+      else if(lower.endsWith('.webp')) {mime='image/webp';}
       L.step(traceIdRef.current,'UPLOAD/PICK',{kind, fileName, mime});
       return {uri,fileName,mime,kind};
     }catch(e){ L.w('UPLOAD/PICK_ERR', e?.message||e); show('Falha ao acessar a galeria.'); return null; }
   }
   async function onUpload(kind){
-    if(uploading[kind]) return cancelUpload(kind);
-    const picked=await pickFromLibrary(kind); if(!picked) return;
+    if(uploading[kind]) {return cancelUpload(kind);}
+    const picked=await pickFromLibrary(kind); if(!picked) {return;}
     const ensuredId=ensureCaseId(caseId, dispatch);
     const ctrl=new AbortController(); aborters.current[kind]=ctrl; setPct(kind,0); setBusy(kind,true);
     try{
       const common={...picked, caseId:String(ensuredId), onProgress:p=>setPct(kind,p), signal:ctrl.signal};
       let out;
-      if(kind==='photo') out=await uploadMainPhoto(common);
-      else if(kind==='id_front') out=await uploadIdFront(common);
-      else if(kind==='id_back') out=await uploadIdBack(common);
-      else if(kind==='link_front') out=await uploadLinkFront(common);
-      else if(kind==='link_back') out=await uploadLinkBack(common);
+      if(kind==='photo') {out=await uploadMainPhoto(common);}
+      else if(kind==='id_front') {out=await uploadIdFront(common);}
+      else if(kind==='id_back') {out=await uploadIdBack(common);}
+      else if(kind==='link_front') {out=await uploadLinkFront(common);}
+      else if(kind==='link_back') {out=await uploadLinkBack(common);}
       if(!out?.url){ L.w('UPLOAD/NO_URL',{kind}); show('Falha no upload.'); return; }
       L.step(traceIdRef.current,'UPLOAD/OK',{kind, path:out.path});
       // set form
-      if(kind==='photo') dispatch({type:'BULK_SET', payload:{photoPath:out.url, photoStoragePath:out.path, caseId:ensuredId}});
-      if(kind==='id_front') dispatch({type:'BULK_SET', payload:{hasIdDocFront:true,idDocFrontPath:out.url, caseId:ensuredId}});
-      if(kind==='id_back') dispatch({type:'BULK_SET', payload:{hasIdDocBack:true,idDocBackPath:out.url, caseId:ensuredId}});
-      if(kind==='link_front') dispatch({type:'BULK_SET', payload:{hasLinkDocFront:true,linkDocFrontPath:out.url, caseId:ensuredId}});
-      if(kind==='link_back') dispatch({type:'BULK_SET', payload:{hasLinkDocBack:true,linkDocBackPath:out.url, caseId:ensuredId}});
+      if(kind==='photo') {dispatch({type:'BULK_SET', payload:{photoPath:out.url, photoStoragePath:out.path, caseId:ensuredId}});}
+      if(kind==='id_front') {dispatch({type:'BULK_SET', payload:{hasIdDocFront:true,idDocFrontPath:out.url, caseId:ensuredId}});}
+      if(kind==='id_back') {dispatch({type:'BULK_SET', payload:{hasIdDocBack:true,idDocBackPath:out.url, caseId:ensuredId}});}
+      if(kind==='link_front') {dispatch({type:'BULK_SET', payload:{hasLinkDocFront:true,linkDocFrontPath:out.url, caseId:ensuredId}});}
+      if(kind==='link_back') {dispatch({type:'BULK_SET', payload:{hasLinkDocBack:true,linkDocBackPath:out.url, caseId:ensuredId}});}
       setPct(kind,100);
     }catch(e){ if(e?.name!=='AbortError'){ L.e('UPLOAD/ERR',{kind, err:e?.message||e}); show('Erro no upload.'); } }
     finally{
       setBusy(kind,false); aborters.current[kind]=null;
-      setTimeout(()=>{ if(uploadPct[kind]===100) setPct(kind,0); },800);
+      setTimeout(()=>{ if(uploadPct[kind]===100) {setPct(kind,0);} },800);
     }
   }
 
@@ -428,7 +428,7 @@ export default function MissingStart(){
 
   const ProgressInline = ({kind})=>{
     const pct=uploadPct[kind]||0, up=uploading[kind];
-    if(!up && pct===0) return null;
+    if(!up && pct===0) {return null;}
     return (
       <View style={styles.pWrap}>
         <View style={[styles.pBar,{width:`${pct}%`}]} />
