@@ -1,8 +1,13 @@
 // functions/src/sendPublicAlertByAddress.js
-// =============================================================================
-// VigiApp — CF v2: sendPublicAlertByAddress (adresse/CEP -> lat/lng -> envoi par rayon)
-// - Ajout: data.deepLink + data.url dans la payload FCM (sécurité / compat)
-// =============================================================================
+// ============================================================================
+// VigiApp — CF v2: sendPublicAlertByAddress
+// Entrée: lat/lng OU (endereco[, bairro], cidade/uf, cep) → géocode → push par rayon
+// - Compat totale "public" (fallback par défaut) — AUCUNE régression.
+// - Ajout optionnel: channel="missing" + kind ("child" | "animal" | "object" | ...)
+// - Deep link/data dynamiques selon le canal (public → /public-alerts/:id, missing → /missing-public-alerts/:id)
+// - data.deepLink + data.url toujours présents (compat app anciennes)
+// - Audit/métriques enrichis (channel/kind), logs/trace clairs par étapes
+// ============================================================================
 
 const { onRequest } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
@@ -15,7 +20,7 @@ try {
   /* noop */
 }
 
-// ---- Super-cache géocodage
+// ---- Super-cache géocodage (inchangé)
 const { keyFromAddress, keyFromCEP, withGeoCache } = require('./geoCache');
 
 // ---- ENV (fallbacks + mapping EXPO_PUBLIC_*)
@@ -29,14 +34,20 @@ const ENV = {
   DEVICE_CEP_FIELD: process.env.DEVICE_CEP_FIELD || 'cep',
   DEVICE_LAT_FIELD: process.env.DEVICE_LAT_FIELD || 'lat',
   DEVICE_LNG_FIELD: process.env.DEVICE_LNG_FIELD || 'lng',
-  DEVICE_CHANNEL_PUBLIC_FIELD: process.env.DEVICE_CHANNEL_PUBLIC_FIELD || 'channels.publicAlerts',
+
+  // ✅ PUBLIC inchangé, ✅ MISSING ajouté (par défaut TRUE si champ absent → pas de régression)
+  DEVICE_CHANNEL_PUBLIC_FIELD:
+    process.env.DEVICE_CHANNEL_PUBLIC_FIELD || 'channels.publicAlerts',
+  DEVICE_CHANNEL_MISSING_FIELD:
+    process.env.DEVICE_CHANNEL_MISSING_FIELD || 'channels.missingAlerts',
+
   DEVICE_ENABLED_FIELD: process.env.DEVICE_ENABLED_FIELD || 'active',
 
   ANDROID_CHANNEL_ID: process.env.ANDROID_CHANNEL_ID || 'alerts-high',
   DEFAULT_TTL_SECONDS: Number(process.env.DEFAULT_TTL_SECONDS || 3600),
 
   MIN_RADIUS_M: Number(process.env.MIN_RADIUS_M || 50),
-  MAX_RADIUS_M: Number(process.env.MAX_RADIUS_M || 3000),
+  MAX_RADIUS_M: Number(process.env.MAX_RADIUS_M || 3000), // borne classique
   DEFAULT_RADIUS_M: Number(process.env.DEFAULT_RADIUS_M || 1000),
 
   BATCH_SIZE: Number(process.env.BATCH_SIZE || 500),
@@ -56,26 +67,19 @@ const log = {
 
 // ---- Helpers généraux
 const getByPath = (obj, path, def = undefined) => {
-  if (!obj || !path) {
-    return def;
-  }
+  if (!obj || !path) return def;
   const parts = String(path).split('.');
   let cur = obj;
   for (const p of parts) {
-    if (cur && Object.prototype.hasOwnProperty.call(cur, p)) {
-      cur = cur[p];
-    } else {
-      return def;
-    }
+    if (cur && Object.prototype.hasOwnProperty.call(cur, p)) cur = cur[p];
+    else return def;
   }
   return cur;
 };
 
 let _init = false;
 function ensureInit() {
-  if (_init) {
-    return;
-  }
+  if (_init) return;
   try {
     admin.app();
   } catch {
@@ -90,12 +94,9 @@ const toNum = (v) => (typeof v === 'string' ? parseFloat(v) : v);
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
 const isFiniteNum = (n) => typeof n === 'number' && Number.isFinite(n);
 const maskToken = (t) =>
-  !t
-    ? '(empty)'
-    : String(t).length <= 14
-      ? String(t)
-      : `${String(t).slice(0, 6)}…${String(t).slice(-6)}`;
+  !t ? '(empty)' : String(t).length <= 14 ? String(t) : `${String(t).slice(0, 6)}…${String(t).slice(-6)}`;
 
+// ---- Distances
 function haversineMeters(lat1, lon1, lat2, lon2) {
   const R = 6371000,
     toRad = (d) => (d * Math.PI) / 180;
@@ -111,9 +112,7 @@ function uniqBy(arr, keyFn) {
   const out = [];
   for (const x of arr) {
     const k = keyFn(x);
-    if (!k || seen.has(k)) {
-      continue;
-    }
+    if (!k || seen.has(k)) continue;
     seen.add(k);
     out.push(x);
   }
@@ -132,9 +131,7 @@ async function _fetchJson(url, { timeoutMs = 900 } = {}) {
         'User-Agent': 'VigiApp-CF/send/2 (contact: support@vigiapp)',
       },
     });
-    if (!r.ok) {
-      throw new Error(`HTTP ${r.status}`);
-    }
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return await r.json();
   } finally {
     clearTimeout(t);
@@ -144,114 +141,71 @@ async function _fetchJson(url, { timeoutMs = 900 } = {}) {
 // ---------- Géocodage : Google / LocationIQ / OSM ----------
 async function geocodeGoogle(q, planLogs, timeoutMs = 900) {
   const key = ENV.GMAPS_KEY;
-  if (!key) {
-    throw new Error('GMAPS_KEY missing (.env EXPO_PUBLIC_GOOGLE_MAPS_KEY)');
-  }
+  if (!key) throw new Error('GMAPS_KEY missing (.env EXPO_PUBLIC_GOOGLE_MAPS_KEY)');
   const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(q)}&language=pt-BR&key=${key}`;
   const json = await _fetchJson(url, { timeoutMs });
   planLogs.push({ provider: 'google', status: json.status, results: json.results?.length || 0 });
-  if (json.status !== 'OK' || !json.results?.length) {
-    throw new Error(`google:${json.status}`);
-  }
+  if (json.status !== 'OK' || !json.results?.length) throw new Error(`google:${json.status}`);
   const best = json.results[0];
   const loc = best.geometry?.location;
-  if (!loc) {
-    throw new Error('google:no_loc');
-  }
-  return {
-    lat: loc.lat,
-    lng: loc.lng,
-    precision: best.geometry?.location_type || 'UNKNOWN',
-    provider: 'google',
-  };
+  if (!loc) throw new Error('google:no_loc');
+  return { lat: loc.lat, lng: loc.lng, precision: best.geometry?.location_type || 'UNKNOWN', provider: 'google' };
 }
 async function geocodeLocationIQ(q, planLogs, timeoutMs = 900) {
   const key = ENV.LOCATIONIQ_KEY;
-  if (!key) {
-    throw new Error('LOCATIONIQ_KEY missing (.env EXPO_PUBLIC_LOCATIONIQ_KEY)');
-  }
+  if (!key) throw new Error('LOCATIONIQ_KEY missing (.env EXPO_PUBLIC_LOCATIONIQ_KEY)');
   const url = `https://us1.locationiq.com/v1/search?key=${key}&q=${encodeURIComponent(q)}&format=json&addressdetails=1&limit=1`;
   const json = await _fetchJson(url, { timeoutMs });
   planLogs.push({ provider: 'locationiq', results: Array.isArray(json) ? json.length : 0 });
-  if (!Array.isArray(json) || !json.length) {
-    throw new Error('locationiq:no_result');
-  }
+  if (!Array.isArray(json) || !json.length) throw new Error('locationiq:no_result');
   const r = json[0];
-  return {
-    lat: parseFloat(r.lat),
-    lng: parseFloat(r.lon),
-    precision: r.type || 'UNKNOWN',
-    provider: 'locationiq',
-  };
+  return { lat: parseFloat(r.lat), lng: parseFloat(r.lon), precision: r.type || 'UNKNOWN', provider: 'locationiq' };
 }
 async function geocodeOSM(q, planLogs, timeoutMs = 900) {
   const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=1&accept-language=pt-BR&q=${encodeURIComponent(q)}`;
   const json = await _fetchJson(url, { timeoutMs });
   planLogs.push({ provider: 'osm', results: Array.isArray(json) ? json.length : 0 });
-  if (!Array.isArray(json) || !json.length) {
-    throw new Error('osm:no_result');
-  }
+  if (!Array.isArray(json) || !json.length) throw new Error('osm:no_result');
   const r = json[0];
-  return {
-    lat: parseFloat(r.lat),
-    lng: parseFloat(r.lon),
-    precision: r.class || 'UNKNOWN',
-    provider: 'osm',
-  };
+  return { lat: parseFloat(r.lat), lng: parseFloat(r.lon), precision: r.class || 'UNKNOWN', provider: 'osm' };
 }
 
 // ---------- CEP → centroïde ----------
 async function cepToCentroidViaCEP(cep, planLogs, timeoutMs = 900) {
-  const cepNum = String(cep || '')
-    .replace(/\D+/g, '')
-    .slice(0, 8);
-  if (!cepNum) {
-    throw new Error('cep:empty');
-  }
+  const cepNum = String(cep || '').replace(/\D+/g, '').slice(0, 8);
+  if (!cepNum) throw new Error('cep:empty');
   const url = `https://viacep.com.br/ws/${cepNum}/json/`;
   const json = await _fetchJson(url, { timeoutMs });
-  if (json?.erro) {
-    throw new Error('viacep:not_found');
-  }
+  if (json?.erro) throw new Error('viacep:not_found');
   planLogs.push({ provider: 'viacep', cep: cepNum, city: json.localidade, uf: json.uf });
-  const addr = [json.logradouro, json.bairro, json.localidade, json.uf, 'Brasil']
-    .filter(Boolean)
-    .join(', ');
+  const addr = [json.logradouro, json.bairro, json.localidade, json.uf, 'Brasil'].filter(Boolean).join(', ');
   try {
     const p = await geocodeOSM(addr, planLogs, timeoutMs);
-    return { ...p, provider: p.provider + '+viacep' };
+    return { ...p, provider: `${p.provider}+viacep` };
   } catch {
     const p = await geocodeGoogle(addr, planLogs, timeoutMs);
-    return { ...p, provider: p.provider + '+viacep' };
+    return { ...p, provider: `${p.provider}+viacep` };
   }
 }
 async function cepToCentroidBrasilAPI(cep, planLogs, timeoutMs = 900) {
-  const cepNum = String(cep || '')
-    .replace(/\D+/g, '')
-    .slice(0, 8);
-  if (!cepNum) {
-    throw new Error('cep:empty');
-  }
+  const cepNum = String(cep || '').replace(/\D+/g, '').slice(0, 8);
+  if (!cepNum) throw new Error('cep:empty');
   const url = `https://brasilapi.com.br/api/cep/v2/${cepNum}`;
   const json = await _fetchJson(url, { timeoutMs });
   planLogs.push({ provider: 'brasilapi', cep: cepNum, city: json.city, state: json.state });
-  const addr = [json.street, json.neighborhood, json.city, json.state, 'Brasil']
-    .filter(Boolean)
-    .join(', ');
+  const addr = [json.street, json.neighborhood, json.city, json.state, 'Brasil'].filter(Boolean).join(', ');
   try {
     const p = await geocodeOSM(addr, planLogs, timeoutMs);
-    return { ...p, provider: p.provider + '+brasilapi' };
+    return { ...p, provider: `${p.provider}+brasilapi` };
   } catch {
     const p = await geocodeGoogle(addr, planLogs, timeoutMs);
-    return { ...p, provider: p.provider + '+brasilapi' };
+    return { ...p, provider: `${p.provider}+brasilapi` };
   }
 }
 
 // ---------- métriques device ----------
 async function bumpPushStats(deviceId, alertId, kind /* attempt|sent|notSent|transient */) {
-  if (!deviceId) {
-    return;
-  }
+  if (!deviceId) return;
   await db()
     .collection(ENV.DEVICES_COLLECTION)
     .doc(deviceId)
@@ -266,7 +220,7 @@ async function bumpPushStats(deviceId, alertId, kind /* attempt|sent|notSent|tra
     );
 }
 
-// ---------- NEW: écriture du doc publicAlerts + projection ----------
+// ---------- Écriture doc publicAlerts (pour canal "public" uniquement) ----------
 async function writePublicAlertDoc({ alertId, body }) {
   try {
     const ref = db().collection('publicAlerts').doc(String(alertId));
@@ -309,20 +263,15 @@ async function writePublicAlertDoc({ alertId, body }) {
     await db()
       .collection('publicAlertsProjection')
       .doc(String(alertId))
-      .set(
-        {
-          projectedAt: FieldValue.serverTimestamp(),
-          alertId: String(alertId),
-        },
-        { merge: true },
-      );
+      .set({ projectedAt: FieldValue.serverTimestamp(), alertId: String(alertId) }, { merge: true });
   } catch (e) {
     log.warn('[PUBLIC ALERT][doc] write failed (non-blocking)', e?.message || e);
   }
 }
 
 // ============================================================================
-
+// HANDLER HTTP
+// ============================================================================
 const sendPublicAlertByAddress = onRequest(
   {
     region: process.env.HTTP_REGION || 'southamerica-east1',
@@ -340,18 +289,26 @@ const sendPublicAlertByAddress = onRequest(
         return res.status(405).json({ ok: false, code: 'method_not_allowed' });
       }
 
+      // ---- Entrée & flags
       const b = req.body || {};
       const wantDebug = String(b.debug ?? req.query?.debug) === '1';
       const createDoc = String(b.createDoc || b.createdoc || '0') === '1';
 
-      // ---------- Entrée ----------
+      // ✅ NO REGRESSION: par défaut channel="public"
+      const channel = String(b.channel || 'public').toLowerCase(); // 'public' | 'missing'
+      const kind = String(b.kind || b.categoria || '').toLowerCase(); // child|animal|object|...
+
+      // ---- Identité d'alerte
       const alertId = String(b.alertId || `debug_${Math.random().toString(16).slice(2, 8)}`);
+
+      // ---- Adresse/CEP (si pas de lat/lng)
       const endereco = b.endereco || null;
       const bairro = b.bairro || null;
       const cityIn = b.city || b.cidade || null;
       const uf = b.uf || null;
       const cepNorm = b.cep ? String(b.cep).replace(/\D+/g, '').slice(0, 8) : null;
 
+      // ---- lat/lng & rayon
       let lat = clamp(toNum(b.lat), -90, 90);
       let lng = clamp(toNum(b.lng), -180, 180);
       let hasLatLng = isFiniteNum(lat) && isFiniteNum(lng);
@@ -359,11 +316,16 @@ const sendPublicAlertByAddress = onRequest(
       let radiusM = clamp(toNum(b.radius_m) || ENV.DEFAULT_RADIUS_M, ENV.MIN_RADIUS_M, 50000);
       const severidade = String(b.severidade || 'medium');
       const color = String(b.color || '#FFA500');
+
+      // Mode test direct (token unique)
       const testToken = b.testToken || null;
 
+      // ---- TRACE: entrée
       if (ENV.LOG_LEVEL !== 'error') {
-        log.info('[SEND][in]', {
+        log.info('[STEP][IN]', {
           alertId,
+          channel,
+          kind,
           endereco,
           bairro,
           cityIn,
@@ -372,28 +334,44 @@ const sendPublicAlertByAddress = onRequest(
           lat: hasLatLng ? lat : null,
           lng: hasLatLng ? lng : null,
           radiusM,
-          hasLatLng,
           keys: { gmaps: !!ENV.GMAPS_KEY, lociq: !!ENV.LOCATIONIQ_KEY },
         });
       }
 
-      // ---------- Mode test (bypass sélection) ----------
+      // ---- MODE TEST: push direct à un token (bypass sélection)
       if (testToken) {
         try {
+          const typeStr = channel === 'missing' ? 'missing-alert' : 'public-alert';
+          const path = channel === 'missing' ? 'missing-public-alerts' : 'public-alerts';
           const msg = {
             token: testToken,
             notification: {
-              title: severidade === 'high' ? 'ALERTE VigiApp' : 'Info VigiApp',
+              title:
+                channel === 'missing'
+                  ? kind === 'child'
+                    ? '🚨 Criança desaparecida'
+                    : kind === 'animal'
+                    ? '🐾 Animal perdido'
+                    : kind === 'object'
+                    ? '🧳 Objeto perdido'
+                    : 'Alerta de desaparecido'
+                  : severidade === 'high'
+                  ? 'ALERTE VigiApp'
+                  : 'Info VigiApp',
               body: endereco
                 ? `${endereco}${bairro ? ' · ' + bairro : ''}${cityIn ? ' · ' + cityIn : ''}`
+                : channel === 'missing'
+                ? 'Alerta de desaparecido'
                 : 'Alerta público',
             },
             android: { notification: { channelId: ENV.ANDROID_CHANNEL_ID, sound: 'default' } },
             data: {
-              type: 'public-alert',
+              type: typeStr,
               alertId: String(alertId),
-              deepLink: `vigiapp://public-alerts/${alertId}`,
-              url: `vigiapp://public-alerts/${alertId}`, // ← sécurité
+              channel,
+              kind,
+              deepLink: `vigiapp://${path}/${alertId}`,
+              url: `vigiapp://${path}/${alertId}`, // compat
               severidade,
               ...(ENV.DISABLE_FCM_COLOR ? {} : { color }),
             },
@@ -406,7 +384,7 @@ const sendPublicAlertByAddress = onRequest(
             ms: Date.now() - t0,
           });
         } catch (e) {
-          log.warn('[SEND][testToken] fail', e?.message || e);
+          log.warn('[STEP][TEST_TOKEN][FAIL]', e?.message || e);
           return res.json({
             ok: true,
             mode: 'testToken',
@@ -422,13 +400,14 @@ const sendPublicAlertByAddress = onRequest(
         }
       }
 
-      // ---------- Géocodage (adresse prioritaire -> CEP fallback) ----------
+      // ---- GÉOCODAGE si pas de lat/lng
       const planLogs = [];
       if (!hasLatLng) {
         const addrQuery = [endereco, bairro, cityIn, uf, 'Brasil'].filter(Boolean).join(', ');
         const addrKey = keyFromAddress(endereco, bairro, cityIn, uf);
         let resolved = null;
 
+        // 1) Adresse→coords (cache + chain Google → LocationIQ → OSM)
         if (addrQuery && addrKey) {
           resolved = await withGeoCache(
             addrKey,
@@ -441,19 +420,18 @@ const sendPublicAlertByAddress = onRequest(
               for (const step of chain) {
                 try {
                   const r = await step();
-                  if (r) {
-                    return r;
-                  }
+                  if (r) return r;
                 } catch {}
               }
               return null;
             },
-            /* TTL addr */ 1000 * 60 * 60 * 24 * 30,
+            1000 * 60 * 60 * 24 * 30, // TTL addr 30j
           );
         }
 
+        // 2) CEP→centroïde si adresse KO
         if (!resolved && cepNorm) {
-          const isGeneral = /000$/.test(cepNorm);
+          const isGeneral = /000$/.test(cepNorm); // CEP região
           const cepKey = keyFromCEP(cepNorm);
           resolved = await withGeoCache(
             cepKey,
@@ -465,16 +443,15 @@ const sendPublicAlertByAddress = onRequest(
               for (const step of chain) {
                 try {
                   const r = await step();
-                  if (r) {
-                    return r;
-                  }
+                  if (r) return r;
                 } catch {}
               }
               return null;
             },
-            /* TTL CEP */ 1000 * 60 * 60 * 24 * 60,
+            1000 * 60 * 60 * 24 * 60, // TTL CEP 60j
           );
 
+          // CEP très générique → rayon minimum relevé
           if (isGeneral) {
             radiusM = Math.min(Math.max(radiusM, 2000), 8000);
           }
@@ -486,19 +463,17 @@ const sendPublicAlertByAddress = onRequest(
           hasLatLng = true;
           planLogs.push({ picked: resolved.provider, lat, lng, precision: resolved.precision });
         } else {
-          return res.status(400).json({
-            ok: false,
-            code: 'bad_geo',
-            msg: 'Impossible de géocoder (fournir lat/lng ou adresse/cep)',
-          });
+          return res
+            .status(400)
+            .json({ ok: false, code: 'bad_geo', msg: 'Fournir lat/lng ou adresse/cep' });
         }
       }
 
-      // Rayon clamp
+      // ---- Clamp du rayon pour rester raisonnable
       radiusM = clamp(radiusM, ENV.MIN_RADIUS_M, 8000);
 
-      // (Optionnel) Écrire le doc avant l’envoi si demandé
-      if (createDoc) {
+      // ---- (Optionnel) Écrire doc Firestore public (UNIQUEMENT canal "public")
+      if (createDoc && channel !== 'missing') {
         await writePublicAlertDoc({
           alertId,
           body: {
@@ -526,35 +501,35 @@ const sendPublicAlertByAddress = onRequest(
         });
       }
 
-      // ---------- Sélection des devices + envoi ----------
+      // ---- Sélection devices (filtre par canal) + envoi
+      log.info('[STEP][SELECT][BEGIN]', { channel, radiusM, lat, lng });
+
       const snap = await db().collection(ENV.DEVICES_COLLECTION).limit(10000).get(); // MVP scan
-      const candidates = [],
-        excluded = [];
+      const candidates = [];
+      const excluded = [];
+
       for (const d of snap.docs) {
         const v = d.data() || {};
         const deviceId = v.deviceId || d.id;
 
         const active = getByPath(v, ENV.DEVICE_ENABLED_FIELD, true) !== false;
-        const chOk = getByPath(v, ENV.DEVICE_CHANNEL_PUBLIC_FIELD, true) !== false;
-        const fcmTok = v.fcmToken || v.fcm;
 
+        // ✅ PUBLIC inchangé ; ✅ MISSING utilise son flag dédié ; par défaut TRUE si absent
+        const chOk =
+          channel === 'missing'
+            ? getByPath(v, ENV.DEVICE_CHANNEL_MISSING_FIELD, true) !== false
+            : getByPath(v, ENV.DEVICE_CHANNEL_PUBLIC_FIELD, true) !== false;
+
+        const fcmTok = v.fcmToken || v.fcm;
         const vLat = toNum(getByPath(v, ENV.DEVICE_LAT_FIELD));
         const vLng = toNum(getByPath(v, ENV.DEVICE_LNG_FIELD));
         const geoOk = isFiniteNum(vLat) && isFiniteNum(vLng);
 
         const reasons = [];
-        if (!active) {
-          reasons.push('inactive');
-        }
-        if (!chOk) {
-          reasons.push('channel_off');
-        }
-        if (!fcmTok) {
-          reasons.push('no_fcmToken');
-        }
-        if (!geoOk) {
-          reasons.push('no_latlng');
-        }
+        if (!active) reasons.push('inactive');
+        if (!chOk) reasons.push('channel_off');
+        if (!fcmTok) reasons.push('no_fcmToken');
+        if (!geoOk) reasons.push('no_latlng');
 
         let distM = null,
           inRadius = false;
@@ -573,6 +548,14 @@ const sendPublicAlertByAddress = onRequest(
       const selected = uniqBy(candidates, (x) => x.fcmToken);
       const selectedDeviceIds = selected.map((x) => x.deviceId);
 
+      log.info('[STEP][SELECT][DONE]', {
+        channel,
+        candidates: candidates.length,
+        selected: selected.length,
+        radiusM,
+      });
+
+      // ---- Envois parallèles
       let sent = 0,
         notSent = 0,
         transient = 0;
@@ -582,24 +565,44 @@ const sendPublicAlertByAddress = onRequest(
         selected.map(async (t) => {
           try {
             await bumpPushStats(t.deviceId, alertId, 'attempt');
+
+            const typeStr = channel === 'missing' ? 'missing-alert' : 'public-alert';
+            const path = channel === 'missing' ? 'missing-public-alerts' : 'public-alerts';
+
             const msg = {
               token: t.fcmToken,
               notification: {
-                title: severidade === 'high' ? 'ALERTE VigiApp' : 'Info VigiApp',
+                title:
+                  channel === 'missing'
+                    ? kind === 'child'
+                      ? '🚨 Criança desaparecida'
+                      : kind === 'animal'
+                      ? '🐾 Animal perdido'
+                      : kind === 'object'
+                      ? '🧳 Objeto perdido'
+                      : 'Alerta de desaparecido'
+                    : severidade === 'high'
+                    ? 'ALERTE VigiApp'
+                    : 'Info VigiApp',
                 body: endereco
                   ? `${endereco}${bairro ? ' · ' + bairro : ''}${cityIn ? ' · ' + cityIn : ''}`
+                  : channel === 'missing'
+                  ? 'Alerta de desaparecido'
                   : 'Alerta público',
               },
               android: { notification: { channelId: ENV.ANDROID_CHANNEL_ID, sound: 'default' } },
               data: {
-                type: 'public-alert',
+                type: typeStr,
                 alertId: String(alertId),
-                deepLink: `vigiapp://public-alerts/${alertId}`,
-                url: `vigiapp://public-alerts/${alertId}`, // ← sécurité
+                channel,
+                kind,
+                deepLink: `vigiapp://${path}/${alertId}`,
+                url: `vigiapp://${path}/${alertId}`, // compat
                 severidade,
                 ...(ENV.DISABLE_FCM_COLOR ? {} : { color }),
               },
             };
+
             await fcm().send(msg);
             await bumpPushStats(t.deviceId, alertId, 'sent');
             sent++;
@@ -607,11 +610,8 @@ const sendPublicAlertByAddress = onRequest(
             const code = e?.code || 'messaging/unknown';
             const isTransient = /unavailable|internal|quota|timeout/i.test(String(code));
             await bumpPushStats(t.deviceId, alertId, isTransient ? 'transient' : 'notSent');
-            if (isTransient) {
-              transient++;
-            } else {
-              notSent++;
-            }
+            if (isTransient) transient++;
+            else notSent++;
             byCode[code] = (byCode[code] || 0) + 1;
           }
         }),
@@ -621,9 +621,11 @@ const sendPublicAlertByAddress = onRequest(
       const attemptsAvg = recipients ? (sent + notSent + transient) / recipients : 0;
       const successPct = recipients ? Math.round((sent / recipients) * 100) : 0;
 
-      // ---------- Audit ----------
+      // ---- Audit (Firestore)
       const audit = {
         alertId,
+        channel,
+        kind,
         endereco,
         bairro,
         city: cityIn || null,
@@ -645,7 +647,7 @@ const sendPublicAlertByAddress = onRequest(
         .set({ ...audit, createdAt: FieldValue.serverTimestamp() }, { merge: true })
         .catch(() => {});
 
-      // ---------- Metrics ----------
+      // ---- Metrics (compat public — on conserve la même clé)
       const rawCategory = String(b.categoria || b.severidade || 'unknown');
       const categoryDocId =
         rawCategory
@@ -689,10 +691,12 @@ const sendPublicAlertByAddress = onRequest(
         )
         .catch((e) => console.error('[METRICS][byDay] fail:', e));
 
-      // ---------- Sortie ----------
+      // ---- Sortie
       const out = {
         ok: true,
         alertId,
+        channel,
+        kind,
         geo: { lat, lng, radiusM },
         recipients,
         sent,
@@ -716,10 +720,10 @@ const sendPublicAlertByAddress = onRequest(
           planLogs,
         };
       }
-      log.info('[SEND][out]', { alertId, recipients, sent, notSent, transient, ms: out.ms });
+      log.info('[STEP][OUT]', { alertId, channel, recipients, sent, notSent, transient, ms: out.ms });
       return res.json(out);
     } catch (e) {
-      log.error('sendPublicAlertByAddress ❌', e?.stack || e?.message || e);
+      log.error('[STEP][EXCEPTION]', e?.stack || e?.message || e);
       return res.status(500).json({ ok: false, code: 'exception', msg: e?.message || String(e) });
     }
   },

@@ -10,7 +10,7 @@ import Constants from 'expo-constants';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { initializeAuth, getAuth, getReactNativePersistence } from 'firebase/auth';
 import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, setLogLevel,connectFirestoreEmulator} from 'firebase/firestore';
 
 // --- Config depuis app.config.js (extra.* déjà présents chez toi)
 const extra = Constants?.expoConfig?.extra || {};
@@ -48,6 +48,13 @@ try {
 const db = getFirestore(app);
 console.log('ℹ️ [firebase] firestore prêt');
 console.log('ℹ️ [firebase] storageBucket =', firebaseConfig.storageBucket);
+
+if (__DEV__) {
+  // Verbose réseau Firestore (console)
+  setLogLevel('debug');
+  // Optionnel: si tu utilises l’émulateur en local
+  // connectFirestoreEmulator(db, 'localhost', 8080);
+}
 
 // --- Exports
 export { app, auth, db };
