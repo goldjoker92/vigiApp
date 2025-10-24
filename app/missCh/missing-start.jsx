@@ -23,8 +23,8 @@ import {
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { db, auth } from '../../firebase';
-import { doc, setDoc, Timestamp } from 'firebase/firestore';
+import { auth } from '../../firebase';
+import { Timestamp } from 'firebase/firestore';
 import {
   TriangleAlert,
   User,
@@ -64,6 +64,7 @@ import { maskCPF } from '../../src/miss/lib/masks';
 import { validateClient } from '../../src/miss/lib/validations';
 
 import PlaygroundMini from '../../src/miss/lib/dev/PlaygroundMini';
+import { writeMissingCaseOnce } from '../../src/miss/lib/firestoreWrite';
 
 // ---------------------------------------------------------------------------
 // Logger / Tracer
@@ -96,8 +97,12 @@ function maskDateShort(input) {
   const a = d.slice(0, 2);
   const b = d.slice(2, 4);
   const c = d.slice(4, 6);
-  if (d.length <= 2) {return a;}
-  if (d.length <= 4) {return `${a}-${b}`;}
+  if (d.length <= 2) {
+    return a;
+  }
+  if (d.length <= 4) {
+    return `${a}-${b}`;
+  }
   return `${a}-${b}-${c}`;
 }
 
@@ -109,13 +114,19 @@ function maskDateBR(input) {
   const a = digits.slice(0, 2);
   const b = digits.slice(2, 4);
   const c = digits.slice(4, 8);
-  if (digits.length <= 2) {return a;}
-  if (digits.length <= 4) {return `${a}/${b}`;}
+  if (digits.length <= 2) {
+    return a;
+  }
+  if (digits.length <= 4) {
+    return `${a}/${b}`;
+  }
   return `${a}/${b}/${c}`;
 }
 function normalizeDateBR(s) {
   const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec((s || '').trim());
-  if (!m) {return s;}
+  if (!m) {
+    return s;
+  }
   const pad = (n) => String(n).padStart(2, '0');
   return `${pad(+m[1])}/${pad(+m[2])}/${m[3]}`;
 }
@@ -123,7 +134,9 @@ function normalizeDateBR(s) {
 // Normalise: 1-1-25 -> 01-01-25
 function normalizeDateShort(s) {
   const m = /^(\d{1,2})-(\d{1,2})-(\d{2})$/.exec(s?.trim() || '');
-  if (!m) {return s;}
+  if (!m) {
+    return s;
+  }
   const d = pad2(+m[1]);
   const mo = pad2(+m[2]);
   const yy = m[3];
@@ -132,7 +145,9 @@ function normalizeDateShort(s) {
 // Convertit dd-MM-yy en ISO (assume 20yy pour 00..79, sinon 19yy)
 function shortToISO(s, fallbackTime = '00:00') {
   const m = /^(\d{2})-(\d{2})-(\d{2})$/.exec(s?.trim() || '');
-  if (!m) {return null;}
+  if (!m) {
+    return null;
+  }
   const [_, dd, MM, yy] = m;
   const yyyy = Number(yy) <= 79 ? `20${yy}` : `19${yy}`;
   return `${yyyy}-${MM}-${dd}T${fallbackTime}:00.00${fallbackTime.endsWith(':00') ? '' : '0'}Z`.replace(
@@ -144,7 +159,9 @@ function shortToISO(s, fallbackTime = '00:00') {
 // ✅ Helper de conversion DOB BR → ISO (fix régression)
 function brDateToISO(d) {
   const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec((d || '').trim());
-  if (!m) {return null;}
+  if (!m) {
+    return null;
+  }
   return `${m[3]}-${m[2]}-${m[1]}T00:00:00.000Z`;
 }
 
@@ -155,7 +172,9 @@ function useLiteToast() {
   const [msg, setMsg] = useState(null);
   const timer = useRef(null);
   const show = (text) => {
-    if (timer.current) {clearTimeout(timer.current);}
+    if (timer.current) {
+      clearTimeout(timer.current);
+    }
     const s = String(text);
     Log.info('TOAST', s);
     setMsg(s);
@@ -209,8 +228,11 @@ async function shareWhatsApp(msg) {
   const url = `whatsapp://send?text=${encodeURIComponent(msg)}`;
   try {
     const ok = await Linking.canOpenURL(url);
-    if (ok) {await Linking.openURL(url);}
-    else {await Share.share({ message: msg });}
+    if (ok) {
+      await Linking.openURL(url);
+    } else {
+      await Share.share({ message: msg });
+    }
   } catch {
     await Share.share({ message: msg });
   }
@@ -226,11 +248,15 @@ async function cfFetch(url, opts = {}, { attempts = 2, baseDelay = 400 } = {}) {
     try {
       const resp = await fetch(url, opts);
       const json = await resp.json().catch(() => null);
-      if (!resp.ok) {throw new Error(`HTTP_${resp.status}`);}
+      if (!resp.ok) {
+        throw new Error(`HTTP_${resp.status}`);
+      }
       return { ok: true, json, status: resp.status };
     } catch (e) {
       lastErr = e;
-      if (i < attempts) {await sleep(baseDelay * Math.pow(2, i));}
+      if (i < attempts) {
+        await sleep(baseDelay * Math.pow(2, i));
+      }
     }
   }
   return { ok: false, error: lastErr?.message || String(lastErr) };
@@ -369,7 +395,9 @@ function makeCaseId() {
   return `mc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 function ensureCaseId(currentId, dispatchRef) {
-  if (currentId && String(currentId).trim()) {return String(currentId);}
+  if (currentId && String(currentId).trim()) {
+    return String(currentId);
+  }
   const newId = makeCaseId();
   try {
     dispatchRef({ type: 'SET', key: 'caseId', value: newId });
@@ -386,7 +414,9 @@ async function captureGeolocationOnce({ timeoutMs = 6000 } = {}) {
   Log.step(traceId, 'GEO/BEGIN');
   try {
     const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') {return null;}
+    if (status !== 'granted') {
+      return null;
+    }
     const withTimeout = (p, ms) =>
       Promise.race([
         p,
@@ -400,23 +430,19 @@ async function captureGeolocationOnce({ timeoutMs = 6000 } = {}) {
       return { lat: pos.coords.latitude, lng: pos.coords.longitude, t: Date.now() };
     } catch {
       const last = await Location.getLastKnownPositionAsync({ maxAge: 300000 });
-      if (last?.coords)
-        {return {
+      if (last?.coords) {
+        return {
           lat: last.coords.latitude,
           lng: last.coords.longitude,
           t: Date.now(),
           lastKnown: true,
-        };}
+        };
+      }
       return null;
     }
   } catch {
     return null;
   }
-}
-
-async function fsUpsertCase(caseId, payload) {
-  const ref = doc(db, 'missingCases', String(caseId));
-  await setDoc(ref, payload, { merge: true });
 }
 
 // ---------------------------------------------------------------------------
@@ -534,7 +560,9 @@ function useOSMStreetAutocomplete() {
       setItems([]);
       return;
     }
-    if (debounceRef.current) {clearTimeout(debounceRef.current);}
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
       try {
@@ -582,8 +610,12 @@ function useOSMStreetAutocomplete() {
 
   const onEditRua = (txt) => {
     setQRua(txt);
-    if (locked && txt.length < 7) {return;}
-    if (locked && txt.length >= 7) {setLocked(false);}
+    if (locked && txt.length < 7) {
+      return;
+    }
+    if (locked && txt.length >= 7) {
+      setLocked(false);
+    }
   };
 
   return { qRua, setQRua: onEditRua, items, loading, locked, setLocked, onPick };
@@ -636,6 +668,15 @@ export default function MissingStart() {
     link_front: null,
     link_back: null,
   });
+  const stableCaseIdRef = useRef(null);
+
+  useEffect(() => {
+    // 1 seul caseId dès le mount
+    const fixed = ensureCaseId(initialParamCaseId || caseId, dispatch);
+    stableCaseIdRef.current = fixed;
+    // si tu veux : console.log('[CASEID] fixed', fixed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Submit progress global (0..1)
   const [submitProgress, setSubmitProgress] = useState(0);
@@ -724,15 +765,20 @@ export default function MissingStart() {
         exif: false,
         selectionLimit: 1,
       });
-      if (result?.canceled || !result?.assets?.length) {return null;}
+      if (result?.canceled || !result?.assets?.length) {
+        return null;
+      }
       const asset = result.assets[0];
       const uri = asset.uri;
       const fileName = asset.fileName || asset.filename || `upload_${Date.now()}.jpg`;
       const lower = (uri || '').toLowerCase();
       let mime =
         asset.mimeType || (asset.type === 'image' ? 'image/jpeg' : 'application/octet-stream');
-      if (lower.endsWith('.png')) {mime = 'image/png';}
-      else if (lower.endsWith('.webp')) {mime = 'image/webp';}
+      if (lower.endsWith('.png')) {
+        mime = 'image/png';
+      } else if (lower.endsWith('.webp')) {
+        mime = 'image/webp';
+      }
       return { uri, fileName, mime, kind };
     } catch {
       show('Falha ao acessar a galeria.');
@@ -746,7 +792,9 @@ export default function MissingStart() {
       return;
     }
     const picked = await pickFileFromLibrary(kind);
-    if (!picked) {return;}
+    if (!picked) {
+      return;
+    }
 
     const { uri, fileName, mime } = picked;
     const ensuredId = ensureCaseId(caseId, dispatch);
@@ -766,11 +814,17 @@ export default function MissingStart() {
         signal: controller.signal,
       };
       let res;
-      if (kind === 'photo') {res = await uploadMainPhoto(common);}
-      else if (kind === 'id_front') {res = await uploadIdFront(common);}
-      else if (kind === 'id_back') {res = await uploadIdBack(common);}
-      else if (kind === 'link_front') {res = await uploadLinkFront(common);}
-      else if (kind === 'link_back') {res = await uploadLinkBack(common);}
+      if (kind === 'photo') {
+        res = await uploadMainPhoto(common);
+      } else if (kind === 'id_front') {
+        res = await uploadIdFront(common);
+      } else if (kind === 'id_back') {
+        res = await uploadIdBack(common);
+      } else if (kind === 'link_front') {
+        res = await uploadLinkFront(common);
+      } else if (kind === 'link_back') {
+        res = await uploadLinkBack(common);
+      }
 
       if (!res?.url) {
         show('Falha no upload.');
@@ -778,9 +832,17 @@ export default function MissingStart() {
       }
 
       if (kind === 'photo') {
-        dispatch({ type: 'BULK_SET', payload: { photoPath: res.url, caseId: ensuredId } });
+        dispatch({
+          type: 'BULK_SET',
+          payload: {
+            photoPath: res.url,
+            photoStoragePath: res.path, // <— IMPORTANT pour la base
+            caseId: ensuredId,
+          },
+        });
         show('Foto anexada.');
       }
+
       if (kind === 'id_front') {
         dispatch({
           type: 'BULK_SET',
@@ -812,12 +874,16 @@ export default function MissingStart() {
 
       setPct(kind, 100);
     } catch (e) {
-      if (e?.name !== 'AbortError') {show('Erro no upload.');}
+      if (e?.name !== 'AbortError') {
+        show('Erro no upload.');
+      }
     } finally {
       setIsUploading(kind, false);
       abortersRef.current[kind] = null;
       setTimeout(() => {
-        if (uploadPct[kind] === 100) {setPct(kind, 0);}
+        if (uploadPct[kind] === 100) {
+          setPct(kind, 0);
+        }
       }, 900);
     }
   }
@@ -858,7 +924,10 @@ export default function MissingStart() {
       const payloadValidated = {
         kind: type,
         ownerId: auth.currentUser?.uid || 'anon',
-        media: { photoRedacted: form.photoPath || '' },
+        media: {
+          photoRedacted: form.photoPath || '',
+          photoStoragePath: form.photoStoragePath || '', // si présent
+        },
         primary: { name: form.primaryName || '' },
         lastSeenAt: lastSeenISO,
         lastKnownAddress: {
@@ -893,7 +962,7 @@ export default function MissingStart() {
         updatedAt: Timestamp.now(),
       };
 
-      await fsUpsertCase(ensuredId, payloadValidated);
+      await writeMissingCaseOnce(ensuredId, payloadValidated);
       setSubmitProgress(0.65);
 
       if (type === 'child') {
@@ -958,7 +1027,9 @@ export default function MissingStart() {
         color,
         traceId: screenTraceIdRef.current,
       });
-      if (!ok) {Log.warn('[PUBLIC_ALERT] KO');}
+      if (!ok) {
+        Log.warn('[PUBLIC_ALERT] KO');
+      }
 
       setSubmitProgress(0.9);
 
@@ -990,7 +1061,9 @@ export default function MissingStart() {
   const ProgressInline = ({ kind }) => {
     const pct = uploadPct[kind] || 0;
     const isUp = uploading[kind];
-    if (!isUp && pct === 0) {return null;}
+    if (!isUp && pct === 0) {
+      return null;
+    }
     return (
       <View style={styles.progressWrap}>
         <View style={[styles.progressBar, { width: `${pct}%` }]} />
@@ -1544,8 +1617,11 @@ function sexoChipStyle(current, s) {
   const active = current === s;
   const base = [styles.chip];
   let colorStyles = {};
-  if (s === 'F') {colorStyles = active ? styles.chipFActive : styles.chipF;}
-  else if (s === 'M') {colorStyles = active ? styles.chipMActive : styles.chipM;}
+  if (s === 'F') {
+    colorStyles = active ? styles.chipFActive : styles.chipF;
+  } else if (s === 'M') {
+    colorStyles = active ? styles.chipMActive : styles.chipM;
+  }
   return [base, colorStyles];
 }
 

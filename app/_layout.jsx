@@ -1,5 +1,8 @@
 // app/_layout.jsx
 // ============================================================================
+// Root layout (Expo Router) + bootstrap auth anonyme au lancement
+// ============================================================================
+
 import 'react-native-gesture-handler';
 import React, { useEffect, useMemo, useRef, useState, Suspense } from 'react';
 import { Slot, router } from 'expo-router';
@@ -25,6 +28,9 @@ import { attachDeviceAutoRefresh } from '../libs/registerCurrentDevice';
 
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../firebase';
+
+// 🔐 bootstrap d’auth anonyme (assure un user pour Storage/Firestore)
+import { ensureAuthOnBoot } from '../src/authBootstrap';
 
 // Logs homogènes
 const log = (...a) => console.log('[LAYOUT]', ...a);
@@ -92,19 +98,13 @@ function RCReadyHook() {
 
 // --- helpers deep link → route
 function routeFromUrlLike(rawUrl) {
-  // supporte: vigiapp://public-alerts/ID, vigiapp://missing-public-alerts/ID
-  //           /public-alerts/ID, /missing-public-alerts/ID
   try {
     const s = String(rawUrl).trim();
-
-    // Tente extraction générique d’un path
     let path = s;
     if (s.startsWith('vigiapp://')) {
       const u = new URL(s);
       path = u.pathname || '';
     }
-
-    // Matche les deux familles de routes
     const m1 = path.match(/\/?public-alerts\/([^/?#]+)/i);
     if (m1?.[1]) {
       return { pathname: '/public-alerts/[id]', params: { id: m1[1] } };
@@ -113,11 +113,8 @@ function routeFromUrlLike(rawUrl) {
     if (m2?.[1]) {
       return { pathname: '/missing-public-alerts/[id]', params: { id: m2[1] } };
     }
-
-    // Fallback legacy param style ?alertId=...
     const q = s.match(/[?&](?:alertId|id)=([^&#]+)/i);
     if (q?.[1]) {
-      // Par défaut vers public-alerts si pas de hint — mais on garde aussi missing si l’URL le dit
       if (/missing/i.test(s)) {
         return { pathname: '/missing-public-alerts/[id]', params: { id: q[1] } };
       }
@@ -146,6 +143,7 @@ function InnerLayout() {
     return offset;
   }, [insets]);
 
+  // Observe l’état auth (affiche l’UID pour la télémétrie)
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       setAuthUid(u?.uid || null);
@@ -175,15 +173,10 @@ function InnerLayout() {
           onResponse: (r) => {
             const data = r?.notification?.request?.content?.data || {};
             const rawUrl = data.url || data.deepLink || data.link || data.open;
-            if (!rawUrl) {
-              return;
-            }
+            if (!rawUrl) {return;}
             const route = routeFromUrlLike(rawUrl);
-            if (route) {
-              setTimeout(() => router.push(route), 50);
-            } else {
-              Linking.openURL(String(rawUrl)).catch(() => {});
-            }
+            if (route) {setTimeout(() => router.push(route), 50);}
+            else {Linking.openURL(String(rawUrl)).catch(() => {});}
           },
         });
       } catch (e) {
@@ -196,11 +189,8 @@ function InnerLayout() {
         const rawUrl = data.url || data.deepLink || data.link || data.open;
         if (rawUrl) {
           const route = routeFromUrlLike(rawUrl);
-          if (route) {
-            setTimeout(() => router.push(route), 50);
-          } else {
-            Linking.openURL(String(rawUrl)).catch(() => {});
-          }
+          if (route) {setTimeout(() => router.push(route), 50);}
+          else {Linking.openURL(String(rawUrl)).catch(() => {});}
         }
       } catch (e) {
         warnN('initialNotif:', e?.message || e);
@@ -208,11 +198,8 @@ function InnerLayout() {
 
       try {
         const token = await getFcmDeviceTokenAsync();
-        if (token) {
-          logN('FCM token ✅', token);
-        } else {
-          warnN('FCM token indisponible');
-        }
+        if (token) {logN('FCM token ✅', token);}
+        else {warnN('FCM token indisponible');}
       } catch (e) {
         warnN('fcm token:', e?.message || e);
       }
@@ -311,6 +298,12 @@ export default function Layout() {
   useEffect(() => {
     SystemUI.setBackgroundColorAsync('#101114').catch(() => {});
   }, []);
+
+  // 🔐 Bootstrap auth anonyme au tout début de l’app
+  useEffect(() => {
+    ensureAuthOnBoot();
+  }, []);
+
   return (
     <SafeAreaProvider>
       <InnerLayout />

@@ -18,7 +18,8 @@ const firebaseConfig = {
   apiKey: extra.FIREBASE_API_KEY,
   authDomain: extra.FIREBASE_AUTH_DOMAIN,
   projectId: extra.FIREBASE_PROJECT_ID,
-  storageBucket: extra.FIREBASE_STORAGE_BUCKET,
+  // ⬇️ IMPORTANT: bucket = *.appspot.com (pas *.firebasestorage.app)
+  storageBucket: extra.FIREBASE_STORAGE_BUCKET || 'vigiapp-c7108.appspot.com',
   messagingSenderId: extra.FIREBASE_MESSAGING_SENDER_ID,
   appId: extra.FIREBASE_APP_ID,
 };
@@ -46,6 +47,7 @@ try {
 // --- Firestore (client)
 const db = getFirestore(app);
 console.log('ℹ️ [firebase] firestore prêt');
+console.log('ℹ️ [firebase] storageBucket =', firebaseConfig.storageBucket);
 
 // --- Exports
 export { app, auth, db };
