@@ -1,5 +1,7 @@
 // ============================================================================
-// MissingStart — flux "Missing": logs complets + read-after-write robuste (serveur confirmé)
+// MissingStart — flux "Missing": OSM + Manuel, fallback GPS, sanity géo, logs riches
+// Ciblage: adresse (5 km) prioritaire, device GPS en fallback si adresse KO
+// Séparation totale de Public Alerts : topics/canaux indépendants côté back
 // ============================================================================
 
 import React, { useEffect, useMemo, useRef, useReducer, useState, useCallback } from 'react';
@@ -10,7 +12,7 @@ import {
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { auth, db } from '../../firebase';
+import { auth } from '../../firebase';
 import { Timestamp } from 'firebase/firestore';
 import { TriangleAlert, ChevronLeft, Check, X, ChevronDown, ImageIcon, FileCheck2 } from 'lucide-react-native';
 
@@ -27,7 +29,7 @@ import { maskCPF } from '../../src/miss/lib/masks';
 import { validateClient } from '../../src/miss/lib/validations';
 import PlaygroundMini from '../../src/miss/lib/dev/PlaygroundMini';
 import { writeMissingCaseOnce } from '../../src/miss/lib/firestoreWrite';
-import { waitForServerCommit } from '../../src/miss/lib/helpers/firestoreWait'; // ★ nouveau
+import { waitForServerCommit } from '../../src/miss/lib/helpers/firestoreWait';
 
 // ---------------------------------------------------------------------------
 // LOG utils
@@ -85,6 +87,30 @@ function brDateToISO(d){
 }
 
 // ---------------------------------------------------------------------------
+// GEO helpers & sanity
+// ---------------------------------------------------------------------------
+const BR_BOUNDS = { latMin:-34, latMax:6, lngMin:-74, lngMax:-28 };
+const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
+const toNum = v => (v===0?0:Number(v));
+const haversineKm = (a,b)=>{
+  if(!a||!b) return null;
+  const R=6371, dLat=(b.lat-a.lat)*Math.PI/180, dLng=(b.lng-a.lng)*Math.PI/180;
+  const s1=Math.sin(dLat/2), s2=Math.sin(dLng/2);
+  const x=s1*s1 + Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*s2*s2;
+  return 2*R*Math.asin(Math.sqrt(x));
+};
+const inBR = ({lat,lng})=>{
+  return lat>=BR_BOUNDS.latMin && lat<=BR_BOUNDS.latMax && lng>=BR_BOUNDS.lngMin && lng<=BR_BOUNDS.lngMax;
+};
+const swapIfLooksSwapped = ({lat,lng})=>{
+  // Si lat semble énorme et lng très petit (|lat|>6 && |lng|<6) -> swap
+  if(Math.abs(lat)>6 && Math.abs(lng)<6){
+    return {lat:lng, lng:lat, swapped:true};
+  }
+  return {lat,lng,swapped:false};
+};
+
+// ---------------------------------------------------------------------------
 // Lite toast
 // ---------------------------------------------------------------------------
 function useLiteToast(){
@@ -97,23 +123,22 @@ function useLiteToast(){
     t.current=setTimeout(()=>setMsg(null), 8000);
   };
   useEffect(()=>()=>t.current&&clearTimeout(t.current),[]);
-  const Toast = !msg?null:(
-    <View style={styles.toast}><Text style={styles.toastTxt}>{msg}</Text></View>
-  );
+  const Toast = !msg?null:(<View style={styles.toast}><Text style={styles.toastTxt}>{msg}</Text></View>);
   return {show, Toast};
 }
 
 // ---------------------------------------------------------------------------
-// OSM autocomplete (Brésil focus + logs)
+// OSM autocomplete (Brésil focus + logs) — contrôlé par pickedOnce + locked
 // ---------------------------------------------------------------------------
-function useOSMStreetAutocomplete(traceId){
+function useOSMStreetAutocomplete(traceId, {suppress}){
   const [qRua,setQRua]=useState(''); const [items,setItems]=useState([]);
   const [loading,setLoading]=useState(false); const [locked,setLocked]=useState(false);
   const deb=useRef(null);
 
   useEffect(()=>{
     const txt=(qRua||'').trim();
-    const should = (!locked && txt.length>=4) || (locked && txt.length>=7);
+    const shouldBase = (!locked && txt.length>=4) || (locked && txt.length>=7);
+    const should = shouldBase && !suppress; // suppression si on a déjà choisi une fois
     if(!should){ setItems([]); return; }
     if(deb.current) {clearTimeout(deb.current);}
     deb.current=setTimeout(async()=>{
@@ -141,26 +166,34 @@ function useOSMStreetAutocomplete(traceId){
       }finally{ setLoading(false); }
     }, 350);
     return ()=>deb.current&&clearTimeout(deb.current);
-  },[qRua,locked,traceId]);
+  },[qRua,locked,traceId,suppress]);
 
   const onPick=(it,dispatch)=>{
     const a=it.addr||{};
+    const lat = Number(it.lat), lng = Number(it.lon);
     dispatch({type:'BULK_SET', payload:{
       lastRua:a.road||a.pedestrian||a.footway||a.cycleway||a.path||'',
       lastNumero:a.house_number||'',
       lastCidade:a.city||a.town||a.village||a.municipality||'',
       lastUF:(a.state_code||a.state||'').toString().slice(0,2).toUpperCase(),
       lastCEP:a.postcode||'',
+      addrLat: isFinite(lat)?lat:null,
+      addrLng: isFinite(lng)?lng:null,
+      addrSource:'address',
+      addrConfidence: estimateAddressConfidence({
+        rua:a.road||a.pedestrian||a.footway||a.cycleway||a.path,
+        numero:a.house_number, cidade:a.city||a.town||a.village||a.municipality, uf:a.state_code||a.state, cep:a.postcode
+      })
     }});
     setQRua(a.road||a.pedestrian||a.footway||a.cycleway||a.path||it.labelShort||'');
     setLocked(true); setItems([]);
-    L.step(traceId,'OSM/PICK',{picked:it.labelShort||it.label});
+    L.step(traceId,'OSM/PICK',{picked:it.labelShort||it.label, lat, lng});
+    L.step(traceId,'OSM/COORDS_READY',{lat,lng});
   };
 
   const onEdit = txt=>{
     setQRua(txt);
-    if(locked && txt.length<7) {return;}
-    if(locked && txt.length>=7) {setLocked(false);}
+    // On ne relâche pas le lock automatiquement; c’est géré par un bouton "Editar"
   };
 
   return { qRua, setQRua:onEdit, items, loading, locked, setLocked, onPick };
@@ -178,6 +211,11 @@ const initialForm = {
   lastSeenDateBR:initialDateShort, lastSeenTime:'',
   lastRua:'', lastNumero:'', lastCidade:'', lastUF:'', lastCEP:'',
   photoPath:'', description:'', extraInfo:'', consent:false,
+  // Loc côté adresse (OSM ou manuel validé)
+  addrLat:null, addrLng:null, addrSource:'', addrConfidence:0,
+  // Contrôles UI
+  addressMode:'osm', // 'osm' | 'manual'
+  manualValidated:false, // l’utilisateur a validé l’adresse manuelle
 };
 function formReducer(state, action){
   switch(action.type){
@@ -195,7 +233,7 @@ const ensureCaseId = (id, dispatch)=>{
 };
 
 // ---------------------------------------------------------------------------
-// GEO best-effort
+// GEO best-effort (device)
 // ---------------------------------------------------------------------------
 async function captureGeolocationOnce(tid,{timeoutMs=6000}={}){
   L.step(tid,'GEO/BEGIN');
@@ -216,6 +254,19 @@ async function captureGeolocationOnce(tid,{timeoutMs=6000}={}){
       L.w('GEO/NONE'); return null;
     }
   }catch(e){ L.w('GEO/ERR', e?.message||e); return null; }
+}
+
+// ---------------------------------------------------------------------------
+// Confidence simple côté front (évite geocode serveur V1)
+// ---------------------------------------------------------------------------
+function estimateAddressConfidence({rua,numero,cidade,uf,cep}){
+  let c=0;
+  if(rua) c+=0.35;
+  if(cidade) c+=0.25;
+  if(uf) c+=0.15;
+  if(numero) c+=0.15;
+  if(cep) c+=0.10;
+  return Math.max(0, Math.min(1, c));
 }
 
 // ---------------------------------------------------------------------------
@@ -252,7 +303,7 @@ const CHILD_DOC_TYPES=[{key:'certidao',label:'Certidão'},{key:'rg_child',label:
 // Component
 // ============================================================================
 export default function MissingStart(){
-  const traceIdRef = useRef(newTrace('submit'));
+  const traceIdRef = useRef(newTrace('ms'));
   const mountTsRef = useRef(Date.now());
 
   const router=useRouter();
@@ -270,15 +321,44 @@ export default function MissingStart(){
   const [uploading,setUploading]=useState({photo:false,id_front:false,id_back:false,link_front:false,link_back:false});
   const aborters=useRef({photo:null,id_front:null,id_back:null,link_front:null,link_back:null});
 
+  // OSM UI control
+  const [osmPickedOnce, setOsmPickedOnce] = useState(false); // supprime dropdown après sélection
+  const streetAuto=useOSMStreetAutocomplete(traceIdRef.current, { suppress: osmPickedOnce });
+
   useEffect(()=>{
     L.i('MOUNT', {traceId:traceIdRef.current, type, caseId:caseId||'(none)'});
     return ()=>L.w('UNMOUNT', {alive:msSince(mountTsRef.current)});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
-  // OSM
-  const streetAuto=useOSMStreetAutocomplete(traceIdRef.current);
-  useEffect(()=>{ if(!streetAuto.locked && form.lastRua && streetAuto.qRua!==form.lastRua) streetAuto.setQRua(form.lastRua); },[form.lastRua]); // eslint-disable-line
+  // garder qRua aligné visuellement quand l'user modifie lastRua en manuel
+  useEffect(()=>{
+    if(form.addressMode==='manual') return;
+    if(!streetAuto.locked && form.lastRua && streetAuto.qRua!==form.lastRua){
+      streetAuto.setQRua(form.lastRua);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[form.lastRua, form.addressMode]);
+
+  // Mode adresse: 'osm' | 'manual'
+  const setAddressMode = (mode)=>{
+    dispatch({type:'SET', key:'addressMode', value:mode});
+    if(mode==='manual'){
+      setOsmPickedOnce(true); // on supprime toute dropdown OSM
+      streetAuto.setQRua(form.lastRua||'');
+      L.step(traceIdRef.current,'ADDR/MODE_SET',{mode});
+    }else{
+      setOsmPickedOnce(false);
+      L.step(traceIdRef.current,'ADDR/MODE_SET',{mode});
+    }
+  };
+
+  // Bouton "Editar endereço" (libère le lock et permet nouvelle recherche)
+  const onEditAddress = ()=>{
+    L.step(traceIdRef.current,'OSM/EDIT_REENABLE',{prevLocked:streetAuto.locked, prevPickedOnce:osmPickedOnce});
+    streetAuto.setLocked(false);
+    setOsmPickedOnce(false);
+  };
 
   // pick/upload
   const setPct=(k,v)=>setUploadPct(s=>({...s,[k]:Math.max(0,Math.min(100,v||0))}));
@@ -317,7 +397,6 @@ export default function MissingStart(){
       else if(kind==='link_back') {out=await uploadLinkBack(common);}
       if(!out?.url){ L.w('UPLOAD/NO_URL',{kind}); show('Falha no upload.'); return; }
       L.step(traceIdRef.current,'UPLOAD/OK',{kind, path:out.path});
-      // set form
       if(kind==='photo') {dispatch({type:'BULK_SET', payload:{photoPath:out.url, photoStoragePath:out.path, caseId:ensuredId}});}
       if(kind==='id_front') {dispatch({type:'BULK_SET', payload:{hasIdDocFront:true,idDocFrontPath:out.url, caseId:ensuredId}});}
       if(kind==='id_back') {dispatch({type:'BULK_SET', payload:{hasIdDocBack:true,idDocBackPath:out.url, caseId:ensuredId}});}
@@ -331,7 +410,7 @@ export default function MissingStart(){
     }
   }
 
-  // validation state
+  // validation state (non-géo)
   const buildPayload = useCallback(()=>{
     const p = {
       type,
@@ -349,20 +428,111 @@ export default function MissingStart(){
   const diag = useMemo(()=>validateClient(payload,{ns:'btn_state'}),[payload]);
   const canSubmit = diag.ok;
 
-  // submit
+  // -------------------------------------------------------------------------
+  // VALIDATION ADRESSE MANUELLE
+  // -------------------------------------------------------------------------
+  const onManualValidate = async ()=>{
+    // Si OSM a déjà lat/lng → rien à faire
+    if(form.addrSource==='address' && isFinite(form.addrLat) && isFinite(form.addrLng)){
+      show('Endereço já validado (OSM).');
+      return;
+    }
+    // Proposer fallback GPS ou annuler (pas de geocode serveur en V1)
+    Alert.alert(
+      'Validar endereço',
+      'Sem coordenadas OSM. Deseja usar sua posição (aprox.) para notificar?',
+      [
+        { text: 'Cancelar', style:'cancel', onPress:()=>L.step(traceIdRef.current,'ADDR/MANUAL_VALIDATE/CANCEL') },
+        { text: 'Usar minha posição', style:'default', onPress: async ()=>{
+          L.step(traceIdRef.current,'ADDR/MANUAL_VALIDATE/CLICK');
+          const dev = await captureGeolocationOnce(traceIdRef.current);
+          if(!dev){ show('Sem localização do dispositivo.'); L.w('ADDR/MANUAL_VALIDATE/NO_DEVICE'); return; }
+          const s = swapIfLooksSwapped({lat:dev.lat, lng:dev.lng});
+          if(s.swapped){ L.w('LOC/SANITY/SWAP_LATLNG',{before:dev, after:s}); }
+          if(!inBR(s)){ L.w('LOC/SANITY/OUT_OF_BOUNDS_DEVICE', s); show('Localização fora do Brasil.'); return; }
+          dispatch({type:'BULK_SET', payload:{
+            addrLat: s.lat, addrLng: s.lng, addrSource:'gps', addrConfidence: 0.5, manualValidated:true
+          }});
+          show('Localização aproximada definida (GPS).');
+          L.step(traceIdRef.current,'ADDR/MANUAL_VALIDATE/OK',{source:'gps', lat:s.lat, lng:s.lng});
+        }}
+      ]
+    );
+  };
+
+  // -------------------------------------------------------------------------
+  // SUBMIT (inclut sanity géo + fallback)
+  // -------------------------------------------------------------------------
   const onSubmit = useCallback(async ()=>{
     const tid=traceIdRef.current;
     L.step(tid,'SUBMIT/BEGIN',{type, user: auth.currentUser?.uid||'(anon)'});
     const v = validateClient(payload,{ns:'submit_click'});
     if(!v.ok){ L.w('SUBMIT/VALIDATE_KO', v); Alert.alert('Rejeitado', v.msg||'Dados insuficientes.'); return; }
 
-    // uploads en cours ?
     if(Object.values(uploading).some(Boolean)){ L.w('SUBMIT/WAIT_UPLOAD'); Alert.alert('Aguarde','Upload em andamento.'); return; }
 
     try{
       const ensuredId=ensureCaseId(caseId, dispatch);
       L.step(tid,'SUBMIT/CASE_ID',{ensuredId});
-      const geo=await captureGeolocationOnce(tid); // best-effort
+
+      // 1) Device geo (toujours best-effort) — utile pour fallback & sanity distance
+      const deviceGeoRaw = await captureGeolocationOnce(tid);
+      const deviceGeo = deviceGeoRaw ? swapIfLooksSwapped({lat:toNum(deviceGeoRaw.lat), lng:toNum(deviceGeoRaw.lng)}) : null;
+      if(deviceGeo?.swapped){ L.w('LOC/SANITY/SWAP_LATLNG_DEVICE',{after:deviceGeo}); }
+
+      // 2) Construire "location" à partir de l'adresse (prioritaire) OU fallback
+      let useLocation = null; // {lat,lng,source,addressConfidence}
+      if(form.addrSource==='address' && isFinite(form.addrLat) && isFinite(form.addrLng)){
+        const maybeSwap = swapIfLooksSwapped({lat:toNum(form.addrLat), lng:toNum(form.addrLng)});
+        if(maybeSwap.swapped){ L.w('LOC/SANITY/SWAP_LATLNG_ADDR',{after:maybeSwap}); }
+        if(inBR(maybeSwap)){
+          useLocation = { lat:maybeSwap.lat, lng:maybeSwap.lng, source:'address', addressConfidence: clamp(form.addrConfidence||0.85, 0, 1) };
+        }else{
+          L.w('LOC/SANITY/OUT_OF_BOUNDS_ADDR', maybeSwap);
+        }
+      }
+
+      // 3) Si adresse OK et device dispo, sanity distance
+      if(useLocation && deviceGeo){
+        const km = haversineKm(useLocation, deviceGeo);
+        if(isFinite(km) && km>100){
+          L.w('LOC/SANITY/DIST_WARN',{km});
+          let confirmed = false;
+          await new Promise(res=>{
+            Alert.alert(
+              'Endereço distante do dispositivo',
+              `Atenção: o endereço está a ~${Math.round(km)}km da sua posição. Confirmar mesmo assim?`,
+              [
+                {text:'Usar GPS (aprox.)', style:'default', onPress:()=>{ confirmed=false; res(); }},
+                {text:'Manter endereço', style:'destructive', onPress:()=>{ confirmed=true; res(); }}
+              ]
+            );
+          });
+          if(!confirmed){
+            // bascule en fallback device
+            if(deviceGeo && inBR(deviceGeo)){
+              useLocation = { lat:deviceGeo.lat, lng:deviceGeo.lng, source:'gps', addressConfidence: 0.5 };
+              L.step(tid,'LOC/FALLBACK_DEVICE',{why:'user_choice', km});
+            }else{
+              L.w('LOC/FALLBACK_DEVICE_KO','no_device_or_out_of_br');
+              useLocation = null;
+            }
+          }
+        }
+      }
+
+      // 4) Si pas d'adresse valide → fallback device si possible
+      if(!useLocation && deviceGeo && inBR(deviceGeo)){
+        useLocation = { lat:deviceGeo.lat, lng:deviceGeo.lng, source:'gps', addressConfidence: 0.5 };
+        L.step(tid,'LOC/FALLBACK_DEVICE',{why:'no_valid_address'});
+      }
+
+      // 5) Si rien d'exploitable → on bloque (pas de notif côté back)
+      if(!useLocation){
+        L.w('PAYLOAD/NO_LOCATION_BLOCK','address_and_device_missing_or_invalid');
+        Alert.alert('Endereço insuficiente','Defina um endereço via OSM ou use GPS aproximado.');
+        return;
+      }
 
       const lastSeenISO = form.lastSeenDateBR ? shortToISO(normalizeDateShort(form.lastSeenDateBR), form.lastSeenTime||'00:00') : null;
       const childDobISO = form.childDobBR ? brDateToISO(normalizeDateBR(form.childDobBR)) : null;
@@ -392,9 +562,21 @@ export default function MissingStart(){
           }
         } : undefined,
         consent: !!form.consent,
+        // >>> location utilisable par la pipeline Missing
+        location: {
+          lat: useLocation.lat,
+          lng: useLocation.lng,
+          source: useLocation.source,                // "address" | "gps"
+          addressConfidence: useLocation.addressConfidence, // 0..1
+          geohash: null                              // calcul côté CF
+        },
+        radiusMeters: 5000,
         status:'validated', statusReasons:[], statusWarnings:v.warnings||[],
-        submitMeta:{ geo: geo||null, submittedAt: Timestamp.now() }, updatedAt: Timestamp.now(),
+        submitMeta:{ geo: deviceGeo?{lat:deviceGeo.lat,lng:deviceGeo.lng,t:Date.now()}:null, submittedAt: Timestamp.now() },
+        updatedAt: Timestamp.now(),
       };
+
+      L.step(tid,'PAYLOAD/LOCATION_SET',{source:validated.location.source, confidence:validated.location.addressConfidence});
 
       // WRITE (transaction idempotente)
       L.step(tid,'WRITE/BEGIN',{doc:`missingCases/${ensuredId}`});
@@ -438,6 +620,9 @@ export default function MissingStart(){
     );
   };
 
+  // -------------------------------------------------------------------------
+  // Rendu
+  // -------------------------------------------------------------------------
   return (
     <KeyboardAvoidingView behavior={Platform.select({ios:'padding',android:undefined})} style={{flex:1}}>
       <View style={styles.page}>
@@ -455,6 +640,95 @@ export default function MissingStart(){
           <View style={styles.alertCard}>
             <TriangleAlert color="#111827" size={18} style={{marginRight:8}}/>
             <Text style={styles.alertMsg}>Uso responsável. Boa fé. VigiApp não substitui autoridades.</Text>
+          </View>
+
+          {/* MODE D'ADRESSE */}
+          <View style={[styles.card, {paddingBottom:6}]}>
+            <Text style={styles.cardTitle}>Endereço de referência</Text>
+            <Text style={styles.cardSubtitle}>Local onde foi visto pela última vez.</Text>
+
+            <View style={{flexDirection:'row', gap:10, marginTop:10}}>
+              <TouchableOpacity
+                onPress={()=>setAddressMode('osm')}
+                style={[styles.modeBtn, form.addressMode==='osm' && styles.modeBtnOn]}>
+                <Text style={styles.modeBtnTxt}>OSM</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={()=>setAddressMode('manual')}
+                style={[styles.modeBtn, form.addressMode==='manual' && styles.modeBtnOn]}>
+                <Text style={styles.modeBtnTxt}>Manual</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Rua + OSM */}
+            {form.addressMode==='osm' && (
+              <View style={{marginTop:10}}>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Rua (OSM autocomplete)"
+                  placeholderTextColor="#9aa0a6"
+                  value={streetAuto.qRua}
+                  onChangeText={txt=>{
+                    streetAuto.setQRua(txt);
+                    dispatch({type:'SET', key:'lastRua', value:txt});
+                  }}
+                />
+                {streetAuto.loading ? (
+                  <View style={styles.osmRow}><ActivityIndicator/><Text style={{color:'#cfd3db'}}>Buscando…</Text></View>
+                ):null}
+                {(streetAuto.items.length>0 && !osmPickedOnce) && (
+                  <View style={styles.dropdownMenu}>
+                    {streetAuto.items.map(it=>(
+                      <TouchableOpacity
+                        key={it.id}
+                        style={styles.dropdownItem}
+                        onPress={()=>{
+                          streetAuto.onPick(it, dispatch);
+                          setOsmPickedOnce(true); // *** Empêche la réapparition ***
+                        }}>
+                        <Text style={styles.dropdownItemTxt}>{it.labelShort}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+                <View style={{flexDirection:'row', gap:8, marginTop:8}}>
+                  <TouchableOpacity onPress={onEditAddress} style={styles.btnGhostSm}>
+                    <Text style={styles.btnGhostSmTxt}>Editar</Text>
+                  </TouchableOpacity>
+                  {(form.addrSource==='address' && isFinite(form.addrLat) && isFinite(form.addrLng)) && (
+                    <View style={styles.badgeOk}><Text style={styles.badgeOkTxt}>OSM ok</Text></View>
+                  )}
+                </View>
+              </View>
+            )}
+
+            {/* MANUEL */}
+            {form.addressMode==='manual' && (
+              <View style={{marginTop:10}}>
+                <TextInput style={styles.input} placeholder="Rua" placeholderTextColor="#9aa0a6"
+                  value={form.lastRua} onChangeText={v=>dispatch({type:'SET', key:'lastRua', value:v})}/>
+                <View style={{height:8}}/>
+                <TextInput style={styles.input} placeholder="Número" placeholderTextColor="#9aa0a6"
+                  value={form.lastNumero} onChangeText={v=>dispatch({type:'SET', key:'lastNumero', value:v})} keyboardType="number-pad"/>
+                <View style={{height:8}}/>
+                <TextInput style={styles.input} placeholder="Cidade" placeholderTextColor="#9aa0a6"
+                  value={form.lastCidade} onChangeText={v=>dispatch({type:'SET', key:'lastCidade', value:v})} autoCapitalize="words"/>
+                <View style={{height:8}}/>
+                <TextInput style={styles.input} placeholder="UF" placeholderTextColor="#9aa0a6"
+                  value={form.lastUF} onChangeText={v=>dispatch({type:'SET', key:'lastUF', value:String(v).toUpperCase()})}
+                  autoCapitalize="characters" maxLength={2}/>
+                <View style={{height:8}}/>
+                <TextInput style={styles.input} placeholder="CEP" placeholderTextColor="#9aa0a6"
+                  value={form.lastCEP} onChangeText={v=>dispatch({type:'SET', key:'lastCEP', value:v})} keyboardType="number-pad"/>
+                <View style={{height:8}}/>
+                <TouchableOpacity onPress={onManualValidate} style={styles.btnGhost}>
+                  <Text style={styles.btnTxt}>Validar endereço (usar GPS se preciso)</Text>
+                </TouchableOpacity>
+                {(form.addrSource==='gps' && isFinite(form.addrLat) && isFinite(form.addrLng)) && (
+                  <View style={[styles.badgeWarn,{marginTop:8}]}><Text style={styles.badgeWarnTxt}>GPS aproximado</Text></View>
+                )}
+              </View>
+            )}
           </View>
 
           {/* ADULTE */}
@@ -574,45 +848,6 @@ export default function MissingStart(){
                 value={form.lastSeenTime} onChangeText={v=>dispatch({type:'SET', key:'lastSeenTime', value:v})}
                 maxLength={5} keyboardType="number-pad"/>
             </View>
-
-            {/* Rua + OSM */}
-            <View style={{marginTop:10}}>
-              <TextInput style={styles.input} placeholder="Rua" placeholderTextColor="#9aa0a6"
-                value={streetAuto.qRua}
-                onChangeText={txt=>{ streetAuto.setQRua(txt); dispatch({type:'SET', key:'lastRua', value:txt}); }}/>
-              {streetAuto.loading ? (
-                <View style={styles.osmRow}><ActivityIndicator/><Text style={{color:'#cfd3db'}}>Buscando…</Text></View>
-              ):null}
-              {streetAuto.items.length>0 && (
-                <View style={styles.dropdownMenu}>
-                  {streetAuto.items.map(it=>(
-                    <TouchableOpacity key={it.id} style={styles.dropdownItem} onPress={()=>streetAuto.onPick(it, dispatch)}>
-                      <Text style={styles.dropdownItemTxt}>{it.labelShort}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-            </View>
-
-            <View style={{marginTop:10}}>
-              <TextInput style={styles.input} placeholder="Número" placeholderTextColor="#9aa0a6"
-                value={form.lastNumero} onChangeText={v=>dispatch({type:'SET', key:'lastNumero', value:v})}
-                keyboardType="number-pad"/>
-            </View>
-            <View style={{marginTop:10}}>
-              <TextInput style={styles.input} placeholder="Cidade" placeholderTextColor="#9aa0a6"
-                value={form.lastCidade} onChangeText={v=>dispatch({type:'SET', key:'lastCidade', value:v})} autoCapitalize="words"/>
-            </View>
-            <View style={{marginTop:10}}>
-              <TextInput style={styles.input} placeholder="UF" placeholderTextColor="#9aa0a6"
-                value={form.lastUF} onChangeText={v=>dispatch({type:'SET', key:'lastUF', value:String(v).toUpperCase()})}
-                autoCapitalize="characters" maxLength={2}/>
-            </View>
-            <View style={{marginTop:10}}>
-              <TextInput style={styles.input} placeholder="CEP" placeholderTextColor="#9aa0a6"
-                value={form.lastCEP} onChangeText={v=>dispatch({type:'SET', key:'lastCEP', value:v})}
-                keyboardType="number-pad"/>
-            </View>
           </View>
 
           {/* PHOTO */}
@@ -634,10 +869,12 @@ export default function MissingStart(){
             <Text style={styles.cardSubtitle}>Ajude quem vê a reconhecer.</Text>
 
             <View style={{marginTop:10}}>
+              <Text style={styles.label}>Descrição</Text>
               <TextInput style={[styles.input,styles.multiline]} placeholder="Descrição…" placeholderTextColor="#9aa0a6"
                 value={form.description} onChangeText={v=>dispatch({type:'SET', key:'description', value:v})} multiline/>
             </View>
             <View style={{marginTop:10}}>
+              <Text style={styles.label}>Informações complementares</Text>
               <TextInput style={[styles.input,styles.multiline]} placeholder="Informações complementares…" placeholderTextColor="#9aa0a6"
                 value={form.extraInfo} onChangeText={v=>dispatch({type:'SET', key:'extraInfo', value:v})} multiline/>
             </View>
@@ -684,13 +921,18 @@ const styles = StyleSheet.create({
   backBtn:{flexDirection:'row', alignItems:'center', paddingVertical:6, paddingRight:8}, backTxt:{color:'#e5e7eb', marginLeft:4, fontSize:15},
   topTitle:{color:'#e5e7eb', fontSize:16, fontWeight:'700', flex:1, textAlign:'center'},
   scroll:{padding:16, paddingBottom:40},
+
   alertCard:{flexDirection:'row', backgroundColor:'#fef3c7', padding:10, borderRadius:12, alignItems:'center', marginBottom:10},
   alertMsg:{color:'#111827', fontSize:13},
+
   card:{backgroundColor:'#0e141b', borderRadius:14, padding:14, borderWidth:1, borderColor:'#17202a', marginBottom:12},
   cardTitle:{color:'#f3f4f6', fontSize:15, fontWeight:'800'}, cardSubtitle:{color:'#9aa0a6', fontSize:12, marginTop:2},
+
   input:{borderWidth:1, borderColor:'#1f2a35', backgroundColor:'#0b1117', color:'#e5e7eb', paddingVertical:11, paddingHorizontal:12, borderRadius:12},
   multiline:{height:96, textAlignVertical:'top'},
+
   label:{color:'#cfd3db', fontSize:13, marginBottom:6},
+
   sexoRow:{flexDirection:'row', gap:10, marginTop:10}, chip:{borderRadius:18, paddingVertical:8, paddingHorizontal:12},
   chipF:{backgroundColor:'#241b24', borderWidth:2, borderColor:'#f472b6'}, chipFOn:{backgroundColor:'#f472b6', borderColor:'#f472b6'},
   chipM:{backgroundColor:'#231a1a', borderWidth:2, borderColor:'#ef4444'}, chipMOn:{backgroundColor:'#ef4444', borderColor:'#ef4444'},
@@ -702,8 +944,13 @@ const styles = StyleSheet.create({
   dropdownItem:{paddingVertical:10, paddingHorizontal:12, borderTopColor:'#15202b', borderTopWidth:StyleSheet.hairlineWidth},
   dropdownItemTxt:{color:'#cfd3db'},
 
-  btnGhost:{backgroundColor:'#0b1117', borderWidth:1, borderColor:'#1f2a35', borderRadius:12, paddingVertical:10, paddingHorizontal:12, flexDirection:'row', alignItems:'center', gap:8, justifyContent:'center'},
+  btnGhost:{backgroundColor:'#0b1117', borderWidth:1, borderColor:'#1f2a35', borderRadius:12, paddingVertical:10, paddingHorizontal:12, alignItems:'center'},
+  btnGhostSm:{backgroundColor:'#0b1117', borderWidth:1, borderColor:'#1f2a35', borderRadius:10, paddingVertical:8, paddingHorizontal:10},
+  btnGhostSmTxt:{color:'#cfd3db', fontWeight:'600'},
   btnOk:{borderColor:'#22C55E'}, btnBusy:{opacity:0.9, borderColor:'#3b82f6'}, btnTxt:{color:'#cfd3db', fontWeight:'600'},
+
+  modeBtn:{flex:1, borderWidth:1, borderColor:'#1f2a35', backgroundColor:'#0b1117', borderRadius:10, paddingVertical:10, alignItems:'center'},
+  modeBtnOn:{borderColor:'#22C55E'},
 
   pWrap:{position:'relative', marginTop:6, height:14, borderRadius:10, backgroundColor:'#0b1117', borderWidth:1, borderColor:'#1f2a35', overflow:'hidden'},
   pBar:{position:'absolute', left:0, top:0, bottom:0, backgroundColor:'#22C55E'},
@@ -720,4 +967,9 @@ const styles = StyleSheet.create({
   toastTxt:{color:'#fff', textAlign:'center', fontWeight:'700'},
 
   osmRow:{flexDirection:'row', alignItems:'center', gap:8, paddingVertical:6},
+
+  badgeOk:{paddingHorizontal:8, paddingVertical:4, backgroundColor:'#052e1a', borderRadius:8, borderWidth:1, borderColor:'#065f46'},
+  badgeOkTxt:{color:'#a7f3d0', fontWeight:'700', fontSize:12},
+  badgeWarn:{paddingHorizontal:8, paddingVertical:4, backgroundColor:'#3c1a00', borderRadius:8, borderWidth:1, borderColor:'#8a4b16'},
+  badgeWarnTxt:{color:'#fbbf24', fontWeight:'700', fontSize:12},
 });
