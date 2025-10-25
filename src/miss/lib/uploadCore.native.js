@@ -102,9 +102,7 @@ export async function uploadToStorage({ path, uri, mime, onProgress, signal }) {
     const abort = () => {
       if (!aborted) {
         aborted = true;
-        try {
-          task.cancel();
-        } catch {}
+        try { task.cancel(); } catch {}
         warn('upload cancelled');
       }
     };
@@ -120,7 +118,7 @@ export async function uploadToStorage({ path, uri, mime, onProgress, signal }) {
       const unsub = task.on(
         'state_changed',
         (snap) => {
-          const pct = snap.totalBytes
+          const pct = snap?.totalBytes
             ? Math.round((snap.bytesTransferred / snap.totalBytes) * 100)
             : 0;
           onProgress && onProgress(pct);
@@ -133,10 +131,10 @@ export async function uploadToStorage({ path, uri, mime, onProgress, signal }) {
         async () => {
           try {
             unsub();
-            const ref = storage().ref(path);
             const url = await ref.getDownloadURL();
-            log('success', url);
-            resolve({ url });
+            const out = { url, path, contentType }; // ← ICI: path + contentType garantis
+            log('success', out);
+            resolve(out);
           } catch (e) {
             err('getDownloadURL/error', e?.message || String(e));
             reject(e);
@@ -156,12 +154,14 @@ export async function uploadToStorage({ path, uri, mime, onProgress, signal }) {
         tempFile = await materializeToFile(usedUri, null, contentType);
         if (tempFile && tempFile.startsWith('file://')) {
           log('retry with cache file', tempFile);
-          const r = await doPut(tempFile);
-          // nettoyage best-effort
           try {
-            await FileSystem.deleteAsync(tempFile, { idempotent: true });
-          } catch {}
-          return r;
+            const r = await doPut(tempFile);
+            // nettoyage best-effort
+            try { await FileSystem.deleteAsync(tempFile, { idempotent: true }); } catch {}
+            return r;
+          } finally {
+            try { await FileSystem.deleteAsync(tempFile, { idempotent: true }); } catch {}
+          }
         }
       } catch (e2) {
         warn('retry(materialize) failed', e2?.message || String(e2));

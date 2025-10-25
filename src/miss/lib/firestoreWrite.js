@@ -1,83 +1,45 @@
 // src/miss/lib/firestoreWrite.js
-// Firestore (SDK modulaire v12) — écriture unique/idempotente dans missingCases
-// Corrige l'erreur: `writeMissingCaseOnce is not a function`
-// — Export Nommé (ESM) : writeMissingCaseOnce
-// — Transaction "write-once": si existe, on ne réécrit pas
-// — Métadonnées minimales: createdAt, updatedAt, caseId, version
+import { doc, runTransaction, serverTimestamp } from "firebase/firestore";
+import { db } from "../../../firebase"; // ajuste si besoin
 
-import { db } from '../../../firebase'; // ⚠️ Ajuste au besoin selon ton arborescence
-import { runTransaction, doc, Timestamp } from 'firebase/firestore';
-
-/**
- * Écrit une seule fois un dossier "Missing" sous l'ID donné.
- * - Si le document existe déjà, ne réécrit PAS (renvoie {status:'already_exists'})
- * - Garantit l'atomicité via transaction
- *
- * @param {string} caseId - ID du dossier, ex.: "mc_mh5fh1qa_o4iyt2"
- * @param {object} payload - Objet validé prêt à être persisté (déjà structuré côté UI)
- * @returns {Promise<{status: 'created'|'already_exists', id: string}>}
- */
-export async function writeMissingCaseOnce(caseId, payload) {
-  if (!caseId || typeof caseId !== 'string') {
-    throw new Error('writeMissingCaseOnce: caseId invalide');
+// Petit helper: Firestore déteste undefined → on nettoie
+function sanitize(obj) {
+  if (obj == null || typeof obj !== "object") return obj;
+  if (Array.isArray(obj)) return obj.map(sanitize).filter(v => v !== undefined);
+  const out = {};
+  for (const k of Object.keys(obj)) {
+    const v = obj[k];
+    if (v === undefined) continue;
+    // Firestore n'aime pas NaN / Infinity
+    if (typeof v === "number" && !Number.isFinite(v)) continue;
+    out[k] = sanitize(v);
   }
-  if (!payload || typeof payload !== 'object') {
-    throw new Error('writeMissingCaseOnce: payload invalide');
-  }
-
-  const ref = doc(db, 'missingCases', caseId);
-
-  const result = await runTransaction(db, async (tx) => {
-    const snap = await tx.get(ref);
-    if (snap.exists()) {
-      // Ne pas réécrire : on signale simplement
-      return { status: 'already_exists', id: caseId };
-    }
-
-    const now = Timestamp.now();
-
-    const toWrite = {
-      ...payload,
-      caseId,
-      createdAt: payload?.submitMeta?.submittedAt || now,
-      updatedAt: payload?.updatedAt || now,
-      version: 1,
-    };
-
-    tx.set(ref, toWrite); // création stricte
-    return { status: 'created', id: caseId };
-  });
-
-  return result;
+  return out;
 }
 
 /**
- * Utilitaire: upsert (écrit si absent, met à jour sinon).
- * - Non utilisé par l’écran principal, mais pratique pour scripts/outillage.
+ * Écrit une seule fois le doc missingCases/{caseId} (idempotent).
+ * - Si le doc existe: ne touche à rien, renvoie { existed: true }
+ * - Sinon: set avec timestamps serveur
  */
-export async function upsertMissingCase(caseId, partial) {
-  if (!caseId || typeof caseId !== 'string') {throw new Error('upsertMissingCase: caseId invalide');}
-  if (!partial || typeof partial !== 'object') {throw new Error('upsertMissingCase: payload invalide');}
+export async function writeMissingCaseOnce(caseId, payload) {
+  const id = String(caseId || "").trim();
+  if (!id) throw new Error("writeMissingCaseOnce: caseId manquant");
 
-  const ref = doc(db, 'missingCases', caseId);
+  const ref = doc(db, "missingCases", id);
+  const body = sanitize(payload);
 
-  return runTransaction(db, async (tx) => {
+  return await runTransaction(db, async (tx) => {
     const snap = await tx.get(ref);
-    const now = Timestamp.now();
-
-    if (!snap.exists()) {
-      tx.set(ref, {
-        ...partial,
-        caseId,
-        createdAt: now,
-        updatedAt: now,
-        version: 1,
-      });
-      return { status: 'created', id: caseId };
+    if (snap.exists()) {
+      return { id: snap.id, existed: true };
     }
-
-    const prev = snap.data() || {};
-    tx.set(ref, { ...prev, ...partial, updatedAt: now }, { merge: false });
-    return { status: 'updated', id: caseId };
+    const now = serverTimestamp();
+    tx.set(ref, {
+      ...body,
+      createdAtSV: now,
+      updatedAtSV: now,
+    });
+    return { id, created: true };
   });
 }

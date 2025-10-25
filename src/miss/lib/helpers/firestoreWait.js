@@ -1,46 +1,52 @@
 // src/miss/lib/helpers/firestoreWait.js
-// Attente d’un snapshot confirmé par le serveur (pas cache, pas pending writes)
-
-import { doc, onSnapshot } from 'firebase/firestore';
-import { db } from '../../../../firebase'; // ⚠️ ajuste le chemin selon ton arbo
+import * as FS from "firebase/firestore";
+import { db } from "../../../../firebase"; // ajuste si besoin
 
 /**
- * Attend le premier snapshot *confirmé* serveur de missingCases/{caseId}.
- * On résout uniquement quand:
- *  - le doc existe
- *  - !hasPendingWrites
- *  - !fromCache
- *
- * @param {string} caseId
- * @param {number} [timeoutMs=4000]
- * @returns {Promise<object>} données du document
+ * Attend qu'un doc "missingCases/{id}" soit visible côté serveur (fallback cache),
+ * avec un petit polling. JS pur, compatible RN/Expo.
  */
-export function waitForServerCommit(caseId, timeoutMs = 4000) {
-  const ref = doc(db, 'missingCases', caseId);
-  return new Promise((resolve, reject) => {
-    let unsub;
-    const timer = setTimeout(() => {
-      try { unsub && unsub(); } catch {}
-      reject(new Error('postWrite_readback_timeout'));
-    }, timeoutMs);
+export async function waitForServerCommit(id, timeoutMs = 5000) {
+  const ref = FS.doc(db, "missingCases", String(id));
+  const deadline = Date.now() + timeoutMs;
 
-    unsub = onSnapshot(
-      ref,
-      { includeMetadataChanges: true },
-      (snap) => {
-        const meta = snap.metadata || {};
-        // On ne valide QUE quand c’est bien côté serveur (pas cache, pas pending)
-        if (snap.exists() && !meta.hasPendingWrites && !meta.fromCache) {
-          clearTimeout(timer);
-          try { unsub && unsub(); } catch {}
-          resolve(snap.data());
-        }
-      },
-      (err) => {
-        clearTimeout(timer);
-        try { unsub && unsub(); } catch {}
-        reject(err);
+  async function tryFetchOnce(preferServer = true) {
+    try {
+      // Si l'API "server" existe, on la privilégie
+      if (preferServer && typeof FS.getDocFromServer === "function") {
+        const snap = await FS.getDocFromServer(ref);
+        if (snap.exists()) return { id: snap.id, ...snap.data() };
+      } else {
+        // Fallback standard
+        const snap = await FS.getDoc(ref);
+        if (snap.exists()) return { id: snap.id, ...snap.data() };
       }
-    );
-  });
+    } catch (_e) {
+      // on ignore, on retente plus tard
+    }
+    return null;
+  }
+
+  // 1) Premier essai (serveur si possible)
+  const first = await tryFetchOnce(true);
+  if (first) return first;
+
+  // 2) Polling léger jusqu'au timeout
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 250));
+    const got = await tryFetchOnce(true);
+    if (got) return got;
+  }
+
+  // 3) Dernière chance: cache (si exposé)
+  try {
+    if (typeof FS.getDocFromCache === "function") {
+      const snap = await FS.getDocFromCache(ref);
+      if (snap.exists()) return { id: snap.id, ...snap.data() };
+    }
+  } catch (_e) {
+    // nada
+  }
+
+  return null;
 }

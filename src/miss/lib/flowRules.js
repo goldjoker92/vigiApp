@@ -1,35 +1,25 @@
 // src/miss/lib/flowRules.js
+
 export const FLOW_RULES = {
   child: {
-    key: 'child',
-    title: 'Criança desaparecida',
-    allowDraft: false, // sans draft
-    require: { photo: true, description: true, extra: true, consent: true, legalDocs: true },
-    consentLabel: 'Confirmo que sou o responsável legal ou autorizado, agindo de boa fé.',
-    sharePrefix: '🚨 ALERTA - Criança desaparecida',
-    cf: { verify: 'verifyGuardian', publish: 'publishMissingChild' },
-    auditTag: 'MISSING_CHILD',
+    key: "child",
+    title: "Missing — Criança",
+    consentLabel: "Confirmo que sou o responsável legal e autorizo a divulgação.",
   },
   animal: {
-    key: 'animal',
-    title: 'Animal perdido',
-    allowDraft: false,
-    require: { photo: true, description: true, extra: true, consent: true },
-    consentLabel: 'Confirmo que as informações fornecidas sobre o animal são verdadeiras.',
-    sharePrefix: '🐾 Animal perdido',
-    cf: { verify: null, publish: 'publishMissingAnimal' },
-    auditTag: 'MISSING_ANIMAL',
+    key: "animal",
+    title: "Missing — Animal",
+    consentLabel: "Confirmo a divulgação das informações para ajudar a encontrar.",
   },
   object: {
-    key: 'object',
-    title: 'Objeto perdido',
-    allowDraft: false,
-    require: { photo: true, description: true, extra: true, consent: true },
-    consentLabel: 'Confirmo que as informações fornecidas sobre o objeto são verdadeiras.',
-    sharePrefix: '📦 Objeto perdido',
-    cf: { verify: null, publish: 'publishMissingObject' },
-    auditTag: 'MISSING_OBJECT',
+    key: "object",
+    title: "Missing — Objeto",
+    consentLabel: "Confirmo a divulgação das informações para ajudar a encontrar.",
   },
 };
 
-export const getFlow = (t) => FLOW_RULES[String(t || 'child')] || FLOW_RULES.child;
+// Toujours retourner un flow valide
+export function getFlow(kind) {
+  const k = String(kind || "child").toLowerCase();
+  return FLOW_RULES[k] || FLOW_RULES.child;
+}
