@@ -47,7 +47,7 @@ try {
 // --- Firestore (client)
 const db = getFirestore(app);
 console.log('ℹ️ [firebase] firestore prêt');
-console.log('ℹ️ [firebase] storageBucket =', firebaseConfig.storageBucket);
+
 
 if (__DEV__) {
   // Verbose réseau Firestore (console)

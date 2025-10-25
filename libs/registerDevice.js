@@ -6,13 +6,23 @@
 // - Upsert per-user:  /users/{uid}/devices/{deviceId}
 // - Conserve/merge: groups, cep, city (+ ajoute ceux passés en params)
 // - Stocke expoPushToken ET fcmDeviceToken (+ alias: expo, fcm) + fcmToken canon
-// - active:true, channels.publicAlerts:true, updatedAt: serverTimestamp()
-// - lat/lng forcés en Number (contrôles NaN + range) -> geohash si présent
+// - active:true, channels.{publicAlerts,missingAlerts}:true, updatedAt: serverTimestamp()
+// - lat/lng forcés en Number + range; écrit AUSSI geo:{lat,lng} pour compat trigger serveur
+// - geohash si présent
 // - deviceId: hash stable du token (safe caractères), logs horodatés
+// - Alimente users/{uid}.fcmTokens via arrayUnion (idempotent)
 // =============================================================================
 
 import { Platform } from 'react-native';
-import { doc, getDoc, setDoc, getFirestore, serverTimestamp } from 'firebase/firestore';
+import {
+  arrayUnion,
+  doc,
+  getDoc,
+  getFirestore,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+} from 'firebase/firestore';
 
 // =============================================================================
 // Geohash (précision modérée) — sans dépendances
@@ -20,40 +30,20 @@ import { doc, getDoc, setDoc, getFirestore, serverTimestamp } from 'firebase/fir
 function encodeGeohash(lat, lng, precision = 7) {
   try {
     const base32 = '0123456789bcdefghjkmnpqrstuvwxyz';
-    let idx = 0,
-      bit = 0,
-      even = true,
-      gh = '';
-    let latMin = -90,
-      latMax = 90,
-      lonMin = -180,
-      lonMax = 180;
+    let idx = 0, bit = 0, even = true, gh = '';
+    let latMin = -90, latMax = 90, lonMin = -180, lonMax = 180;
     while (gh.length < precision) {
       if (even) {
         const m = (lonMin + lonMax) / 2;
-        if (lng >= m) {
-          idx = idx * 2 + 1;
-          lonMin = m;
-        } else {
-          idx = idx * 2;
-          lonMax = m;
-        }
+        if (lng >= m) { idx = idx * 2 + 1; lonMin = m; }
+        else { idx = idx * 2; lonMax = m; }
       } else {
         const m = (latMin + latMax) / 2;
-        if (lat >= m) {
-          idx = idx * 2 + 1;
-          latMin = m;
-        } else {
-          idx = idx * 2;
-          latMax = m;
-        }
+        if (lat >= m) { idx = idx * 2 + 1; latMin = m; }
+        else { idx = idx * 2; latMax = m; }
       }
       even = !even;
-      if (++bit === 5) {
-        gh += base32.charAt(idx);
-        bit = 0;
-        idx = 0;
-      }
+      if (++bit === 5) { gh += base32.charAt(idx); bit = 0; idx = 0; }
     }
     return gh;
   } catch {
@@ -65,37 +55,18 @@ function encodeGeohash(lat, lng, precision = 7) {
 // Logs & utils
 // =============================================================================
 const ts = () => {
-  try {
-    return new Date().toISOString();
-  } catch {
-    return String(Date.now());
-  }
+  try { return new Date().toISOString(); } catch { return String(Date.now()); }
 };
-const log = (...a) => {
-  try {
-    console.log(`[registerDevice][${ts()}]`, ...a);
-  } catch {}
-};
-const warn = (...a) => {
-  try {
-    console.warn(`[registerDevice][${ts()}] ⚠️`, ...a);
-  } catch {}
-};
-const err = (...a) => {
-  try {
-    console.error(`[registerDevice][${ts()}] ❌`, ...a);
-  } catch {}
-};
+const log = (...a) => { try { console.log(`[registerDevice][${ts()}]`, ...a); } catch {} };
+const warn = (...a) => { try { console.warn(`[registerDevice][${ts()}] ⚠️`, ...a); } catch {} };
+const err = (...a) => { try { console.error(`[registerDevice][${ts()}] ❌`, ...a); } catch {} };
 const mask = (t) =>
-  !t
-    ? '(empty)'
-    : String(t).length <= 12
-      ? String(t)
-      : `${String(t).slice(0, 6)}…${String(t).slice(-4)}`;
+  !t ? '(empty)'
+     : String(t).length <= 12 ? String(t)
+     : `${String(t).slice(0, 6)}…${String(t).slice(-4)}`;
 
 function fnv1a64Hex(input) {
-  let h1 = 0x2325,
-    h2 = 0x8422;
+  let h1 = 0x2325, h2 = 0x8422;
   for (let i = 0; i < input.length; i++) {
     const c = input.charCodeAt(i);
     h1 ^= c;
@@ -135,25 +106,27 @@ function mergeGroups(existing, incoming) {
   // existing: {id:true,...} | string[] | undefined
   // incoming: string[] | undefined
   const map = {};
-  if (Array.isArray(incoming))
-    {for (const g of incoming) {if (g && typeof g === 'string') {map[g] = true;}}}
-  if (Array.isArray(existing))
-    {for (const g of existing) {if (g && typeof g === 'string') {map[g] = true;}}}
+  if (Array.isArray(incoming)) {
+    for (const g of incoming) { if (g && typeof g === 'string') { map[g] = true; } }
+  }
+  if (Array.isArray(existing)) {
+    for (const g of existing) { if (g && typeof g === 'string') { map[g] = true; } }
+  }
   if (existing && typeof existing === 'object' && !Array.isArray(existing)) {
-    for (const k of Object.keys(existing)) {if (existing[k]) {map[k] = true;}}
+    for (const k of Object.keys(existing)) { if (existing[k]) { map[k] = true; } }
   }
   return Object.keys(map).length ? map : {};
 }
 
 function pickCepCity({ cepParam, cityParam, existingCep, existingCity }) {
   const cep =
-    cepParam !== null
+    cepParam !== null && cepParam !== undefined
       ? String(cepParam).replace(/\D+/g, '').slice(0, 8)
       : existingCep
         ? String(existingCep).replace(/\D+/g, '').slice(0, 8)
         : null;
   const city =
-    cityParam !== null
+    cityParam !== null && cityParam !== undefined
       ? String(cityParam).trim()
       : existingCity
         ? String(existingCity).trim()
@@ -191,7 +164,7 @@ export async function upsertDevice(params) {
     active = true,
   } = params || {};
 
-  if (!userId) {return { ok: false, code: 'no_user', error: 'userId requis' };}
+  if (!userId) { return { ok: false, code: 'no_user', error: 'userId requis' }; }
   if (!isLikelyFCMToken(fcmDeviceToken)) {
     warn('fcmDeviceToken invalide:', mask(fcmDeviceToken));
     return { ok: false, code: 'no_fcm', error: 'fcmDeviceToken requis/valide' };
@@ -206,7 +179,7 @@ export async function upsertDevice(params) {
     let existing = null;
     try {
       const snap = await getDoc(userRef);
-      existing = snap.exists() ? snap.data() || null : null;
+      existing = snap.exists() ? (snap.data() || null) : null;
     } catch (e) {
       warn('read users/%s impossible (on continue):', userId, e?.message || e);
     }
@@ -226,10 +199,7 @@ export async function upsertDevice(params) {
     // 3) Merge groups/zone
     const mergedGroups = mergeGroups(existingGroups, groups);
     const { cep: mergedCep, city: mergedCity } = pickCepCity({
-      cepParam: cep,
-      cityParam: city,
-      existingCep,
-      existingCity,
+      cepParam: cep, cityParam: city, existingCep, existingCity,
     });
 
     // 4) Construire deviceId + payload commun
@@ -246,10 +216,13 @@ export async function upsertDevice(params) {
       expo: expoPushToken || null,
       tokenHash,
       active: !!active,
-      channels: { publicAlerts: true },
+      channels: {
+        publicAlerts: true,
+        missingAlerts: true, // ✅ canal Missing activé
+      },
       groups: Object.keys(mergedGroups || {}).length ? mergedGroups : {},
       updatedAt: now,
-      ...(hasLatLng ? { lat: latN, lng: lngN, geohash } : {}),
+      ...(hasLatLng ? { lat: latN, lng: lngN, geohash, geo: { lat: latN, lng: lngN } } : {}),
       ...(mergedCep ? { cep: mergedCep } : {}),
       ...(mergedCity ? { city: mergedCity } : {}),
     };
@@ -267,10 +240,8 @@ export async function upsertDevice(params) {
       expo: expoPushToken ? mask(expoPushToken) : null,
     });
 
-    // 5) Upsert profil user (MERGE ! ne rien écraser)
-    //    On ne touche qu’aux champs utiles si on les a (merge:true protège le reste).
+    // 5) Upsert profil user (MERGE !)
     const userPatch = {
-      // on n’écrit groups/cep/city que si on a une valeur (merged* peut être null/{} → ignoré si vide)
       ...(Object.keys(mergedGroups || {}).length ? { groups: mergedGroups } : {}),
       ...(mergedCep ? { cep: mergedCep } : {}),
       ...(mergedCity ? { city: mergedCity } : {}),
@@ -278,10 +249,12 @@ export async function upsertDevice(params) {
     };
     try {
       await setDoc(userRef, userPatch, { merge: true });
-      log('✓ FS ok users/%s (merge)', userId);
+      // Alimente aussi fcmTokens (idempotent)
+      await updateDoc(userRef, { fcmTokens: arrayUnion(fcmDeviceToken) }).catch(() => {});
+      log('✓ FS ok users/%s (merge + tokens)', userId);
     } catch (e) {
       // On continue quand même — le device sera écrit, mais on log.
-      warn('users/%s merge fail:', userId, e?.message || e);
+      warn('users/%s merge/update fail:', userId, e?.message || e);
     }
 
     // 6) Upsert global device
