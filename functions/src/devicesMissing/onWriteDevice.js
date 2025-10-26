@@ -1,13 +1,6 @@
 // =============================================================================
 // VigiApp — onWriteDevice (subscribe/unsubscribe FCM topics par tuiles)
-// -----------------------------------------------------------------------------
-// - Trigger: /devices/{deviceId} (create/update) — region: southamerica-east1
-// - Calcule 9 tuiles (centre + 8 voisines) via tilesForRadius(lat,lng)
-// - Abonne le FCM token aux topics "missing_geo_<tile>" (noms safe FCM)
-// - Désabonne l'ancien token/tuiles si la géo ou le token changent
-// - Miroir Expo : /devices_missing/{deviceId} {expoToken, tiles, userId, fcmToken}
-// - Idempotent : no-op si rien n'a changé (évite la boucle d’écritures)
-// - Tolérant aux champs manquants, logs lisibles
+// Trigger: /devices/{deviceId} — region: southamerica-east1
 // =============================================================================
 
 const { onDocumentWritten } = require('firebase-functions/v2/firestore');
@@ -22,31 +15,36 @@ function ensureInit() {
 }
 
 const REGION = 'southamerica-east1';
-const NS = '[DeviceTiles]';
+const NS = '🧩 [DeviceTiles]';
 
 const db = () => admin.firestore();
-
-// --- Tiles (doit retourner un Array<string> de 9 tuiles)
 const { tilesForRadius } = require('../libsMissing/geoTiles');
 
-// --- Logs helpers
+// --- Utils
 const nowIso = () => new Date().toISOString();
 const log  = (msg, extra = {}) => logger.info(`${NS} ${msg}`, { t: nowIso(), ...extra });
 const warn = (msg, extra = {}) => logger.warn(`${NS} ${msg}`, { t: nowIso(), ...extra });
 const err  = (msg, extra = {}) => logger.error(`${NS} ${msg}`, { t: nowIso(), ...extra });
 
-// --- Topics helpers (FCM autorise [a-zA-Z0-9-_.~%]+)
+function maskToken(tok) {
+  if (!tok) return null;
+  const s = String(tok);
+  if (s.length <= 8) return '***';
+  return `${s.slice(0,4)}…${s.slice(-4)}`;
+}
+
+// FCM topic safe
 function sanitizeTopicPart(s) {
   return String(s || '')
     .replace(/[^a-zA-Z0-9\-_.~%]/g, '-') // remplace chars interdits
     .replace(/-+/g, '-')                 // compresse
-    .slice(0, 200);                      // marge large
+    .slice(0, 200);
 }
 function tileTopic(tile) {
   return `missing_geo_${sanitizeTopicPart(tile)}`;
 }
 
-// --- Geo helpers
+// Geo
 function pickLatLng(d) {
   const lat = Number.isFinite(+d?.lat) ? +d.lat : Number.isFinite(+d?.geo?.lat) ? +d.geo.lat : null;
   const lng = Number.isFinite(+d?.lng) ? +d.lng : Number.isFinite(+d?.geo?.lng) ? +d.geo.lng : null;
@@ -55,7 +53,7 @@ function pickLatLng(d) {
   return { lat, lng };
 }
 
-// --- Arrays diff
+// Diff arrays
 function diff(a = [], b = []) {
   const A = new Set(a), B = new Set(b);
   const onlyA = [...A].filter(x => !B.has(x));
@@ -63,16 +61,18 @@ function diff(a = [], b = []) {
   return { onlyA, onlyB };
 }
 
-// --- Subscribe/Unsubscribe
 async function subscribeTiles(fcmToken, tiles) {
   let ok = 0, ko = 0;
   for (const t of tiles) {
     const topic = tileTopic(t);
+    console.log('🔔 [SUB] about to subscribe', { topic, token: maskToken(fcmToken) });
+    log('🔔 SUB_ABOUT_TO', { topic, tokenMasked: maskToken(fcmToken) });
     try {
       await admin.messaging().subscribeToTopic([fcmToken], topic);
-      ok++;
+      ok++; console.log('✅ [SUB] success', { topic }); log('✅ SUB_OK', { topic });
     } catch (e) {
-      ko++; warn('topic_sub_fail', { topic, err: e?.message || String(e) });
+      ko++; console.log('❌ [SUB] fail', { topic, err: e?.message || String(e) });
+      warn('❌ topic_sub_fail', { topic, err: e?.message || String(e) });
     }
   }
   return { ok, ko };
@@ -82,11 +82,14 @@ async function unsubscribeTiles(fcmToken, tiles) {
   let ok = 0, ko = 0;
   for (const t of tiles) {
     const topic = tileTopic(t);
+    console.log('🧹 [UNSUB] about to unsubscribe', { topic, token: maskToken(fcmToken) });
+    log('🧹 UNSUB_ABOUT_TO', { topic, tokenMasked: maskToken(fcmToken) });
     try {
       await admin.messaging().unsubscribeFromTopic([fcmToken], topic);
-      ok++;
+      ok++; console.log('✅ [UNSUB] success', { topic }); log('✅ UNSUB_OK', { topic });
     } catch (e) {
-      ko++; warn('topic_unsub_fail', { topic, err: e?.message || String(e) });
+      ko++; console.log('❌ [UNSUB] fail', { topic, err: e?.message || String(e) });
+      warn('❌ topic_unsub_fail', { topic, err: e?.message || String(e) });
     }
   }
   return { ok, ko };
@@ -101,8 +104,14 @@ exports.onWriteDevice = onDocumentWritten(
     const after  = event?.data?.after?.data() || null;
     const deviceId = event?.params?.deviceId;
 
-    // Delete => on log et on stop (pas de token fiable pour unsubscribe global)
-    if (!after) { log('DELETE', { deviceId }); return; }
+    console.log('🚀 [TRIGGER] DeviceTiles start', { region: REGION, deviceId, hasBefore: !!before, hasAfter: !!after });
+    log('🚀 TRIGGER_START', { deviceId, hasBefore: !!before, hasAfter: !!after });
+
+    if (!after) {
+      console.log('🗑️ [DELETE] Device doc deleted', { deviceId });
+      log('🗑️ DELETE', { deviceId });
+      return;
+    }
 
     const userId = after.userId || before?.userId || null;
 
@@ -114,17 +123,15 @@ exports.onWriteDevice = onDocumentWritten(
     const newExpo = after?.expoPushToken  || after?.expo  || null;
     const expoChanged = (oldExpo || null) !== (newExpo || null);
 
-    // Canaux actifs ?
     const channels  = after.channels || {};
     const missingOn = channels.missingAlerts !== false; // default true
     const active    = after.active !== false;
 
-    // Geo
     const point = pickLatLng(after);
 
-    // Cas "skip" : on garde le miroir Expo minimal pour le fanout secondaire
     if (!active || !missingOn || !newFcm || !point) {
-      warn('SKIP', { deviceId, userId, active, missingOn, hasFcm: !!newFcm, hasPoint: !!point });
+      console.log('⚠️ [SKIP] gating', { deviceId, userId, active, missingOn, hasFcm: !!newFcm, hasPoint: !!point });
+      warn('⚠️ SKIP', { deviceId, userId, active, missingOn, hasFcm: !!newFcm, hasPoint: !!point });
       try {
         await db().collection('devices_missing').doc(deviceId).set({
           userId: userId || null,
@@ -133,66 +140,75 @@ exports.onWriteDevice = onDocumentWritten(
           tiles: [],
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         }, { merge: true });
-      } catch (e) { warn('devices_missing_mirror_skip', { deviceId, err: e?.message || String(e) }); }
+        console.log('🪞 [MIRROR] write empty OK', { deviceId });
+      } catch (e) {
+        console.log('❌ [MIRROR] write empty FAIL', { deviceId, err: e?.message || String(e) });
+        warn('❌ devices_missing_mirror_skip', { deviceId, err: e?.message || String(e) });
+      }
       return;
     }
 
-    // Calcule 9 tuiles
     let newTiles = [];
     try {
       newTiles = tilesForRadius(point.lat, point.lng) || [];
       if (!Array.isArray(newTiles) || newTiles.length === 0) throw new Error('no_tiles');
     } catch (e) {
-      err('tiles_compute_fail', { deviceId, userId, err: e?.message || String(e), point });
+      console.log('💥 [TILES] compute fail', { deviceId, point, err: e?.message || String(e) });
+      err('💥 tiles_compute_fail', { deviceId, userId, err: e?.message || String(e), point });
       return;
     }
 
     const oldTiles = Array.isArray(before?.tiles) ? before.tiles : [];
-    const sameTiles = newTiles.length === oldTiles.length &&
-                      newTiles.every((t, i) => t === oldTiles[i]);
+    const sameTiles = newTiles.length === oldTiles.length && newTiles.every((t, i) => t === oldTiles[i]);
 
-    // No-op strict : rien n'a changé (ni tiles, ni tokens) => ne PAS écrire (évite boucle)
     if (!fcmChanged && !expoChanged && sameTiles) {
-      log('NOOP', { deviceId, userId });
+      console.log('😴 [NOOP] nothing changed', { deviceId, userId });
+      log('😴 NOOP', { deviceId, userId });
       return;
     }
 
-    log('BEGIN', {
+    console.log('🧭 [BEGIN] tiles update', {
+      deviceId, userId, point,
+      oldTilesCount: oldTiles.length, newTilesCount: newTiles.length,
+      fcmChanged, expoChanged,
+      tokenMasked: maskToken(newFcm),
+    });
+    log('🧭 BEGIN', {
       deviceId, userId, point,
       oldTiles: oldTiles.length, newTiles: newTiles.length,
       fcmChanged, expoChanged
     });
 
-    // Abonnements / désabonnements
     let subStats = { ok: 0, ko: 0 }, unsubStats = { ok: 0, ko: 0 };
-
     try {
       if (fcmChanged) {
-        // On désabonne l'ancien token de ses anciennes tuiles
         if (oldFcm && oldTiles.length) {
+          console.log('🧹 [UNSUB] ALL old', { deviceId, oldTilesCount: oldTiles.length, oldToken: maskToken(oldFcm) });
           await unsubscribeTiles(oldFcm, oldTiles).then(s => (unsubStats = s)).catch(() => {});
         }
-        // Et on abonne le nouveau token aux nouvelles tuiles
         if (newFcm && newTiles.length) {
+          console.log('🔔 [SUB] ALL new', { deviceId, newTilesCount: newTiles.length, newToken: maskToken(newFcm) });
           await subscribeTiles(newFcm, newTiles).then(s => (subStats = s)).catch(() => {});
         }
       } else {
         const { onlyA: toSub, onlyB: toUnsub } = diff(newTiles, oldTiles);
         if (toUnsub.length) {
+          console.log('🧹 [UNSUB] diff', { deviceId, count: toUnsub.length });
           await unsubscribeTiles(newFcm, toUnsub).then(s => (unsubStats = s)).catch(() => {});
         }
         if (toSub.length) {
+          console.log('🔔 [SUB] diff', { deviceId, count: toSub.length });
           await subscribeTiles(newFcm, toSub).then(s => (subStats = s)).catch(() => {});
         }
       }
     } catch (e) {
-      warn('subscribe_flow_error', { deviceId, err: e?.message || String(e) });
+      console.log('⚠️ [FLOW] subscribe error', { deviceId, err: e?.message || String(e) });
+      warn('⚠️ subscribe_flow_error', { deviceId, err: e?.message || String(e) });
     }
 
-    // Écritures conditionnelles (évite le retrigger inutile)
     const writes = [];
-
     if (!sameTiles) {
+      console.log('✍️ [WRITE] devices.tiles', { deviceId, newTilesCount: newTiles.length });
       writes.push(
         db().collection('devices').doc(deviceId).set({
           tiles: newTiles,
@@ -202,6 +218,7 @@ exports.onWriteDevice = onDocumentWritten(
     }
 
     if (!sameTiles || expoChanged || fcmChanged) {
+      console.log('✍️ [WRITE] devices_missing mirror', { deviceId, expoChanged, fcmChanged });
       writes.push(
         db().collection('devices_missing').doc(deviceId).set({
           userId: userId || null,
@@ -213,11 +230,22 @@ exports.onWriteDevice = onDocumentWritten(
       );
     }
 
-    try { if (writes.length) await Promise.all(writes); } catch (e) {
-      warn('tiles_write_fail', { deviceId, err: e?.message || String(e) });
+    try {
+      if (writes.length) {
+        await Promise.all(writes);
+        console.log('📦 [WRITE] OK', { deviceId, writes: writes.length });
+      }
+    } catch (e) {
+      console.log('❌ [WRITE] FAIL', { deviceId, err: e?.message || String(e) });
+      warn('❌ tiles_write_fail', { deviceId, err: e?.message || String(e) });
     }
 
-    log('END', {
+    console.log('🏁 [END] DeviceTiles', {
+      deviceId, userId,
+      subs_ok: subStats.ok, subs_ko: subStats.ko,
+      unsubs_ok: unsubStats.ok, unsubs_ko: unsubStats.ko,
+    });
+    log('🏁 END', {
       deviceId, userId,
       subs_ok: subStats.ok, subs_ko: subStats.ko,
       unsubs_ok: unsubStats.ok, unsubs_ko: unsubStats.ko,

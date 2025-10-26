@@ -1,4 +1,3 @@
-// functions/src/missing/onUpdateMissing.js
 // ============================================================================
 // Missing - Trigger Resolve (Gen2 Firestore v2)
 // Envoi lors du passage à status=resolved
@@ -15,7 +14,7 @@ function ensureInit() {
   _init = true;
 }
 
-const NS = "[Missing][Resolve]";
+const NS = "🧭 [Missing][Resolve]";
 const REGION = "southamerica-east1";
 const COLL = "missingCases";
 
@@ -30,16 +29,33 @@ let publishExpoByTiles = null;
 try {
   ({ publishFCMByTiles, publishExpoByTiles } = require("./publishMissingPush"));
 } catch (e) {
-  logger.warn(`${NS} publishMissingPush non chargé (fallback multicast FCM)`, { err: e?.message || String(e) });
+  logger.warn(`${NS} ⚠️ publishMissingPush non chargé (fallback multicast FCM)`, { err: e?.message || String(e) });
 }
 
+const nowIso = () => new Date().toISOString();
 const log = (step, extra = {}) =>
-  logger.info(`${NS} ${step}`, { t: new Date().toISOString(), ...extra });
+  logger.info(`${NS} ${step}`, { t: nowIso(), ...extra });
 
-const onUpdateMissing = onDocumentUpdated(
+function maskToken(tok) {
+  if (!tok) return null;
+  const s = String(tok);
+  if (s.length <= 8) return '***';
+  return `${s.slice(0,4)}…${s.slice(-4)}`;
+}
+
+exports.onUpdateMissing = onDocumentUpdated(
   { region: REGION, document: `${COLL}/{caseId}` },
   async (event) => {
     ensureInit();
+
+    console.log('🚀 [TRIGGER] Missing Resolve start', {
+      region: REGION,
+      coll: COLL,
+      params: event?.params || null,
+      hasBefore: !!event.data?.before?.data(),
+      hasAfter: !!event.data?.after?.data(),
+    });
+    log("🚀 TRIGGER_START", { params: event?.params || null });
 
     const before = event.data?.before?.data() || {};
     const after  = event.data?.after?.data()  || {};
@@ -48,15 +64,15 @@ const onUpdateMissing = onDocumentUpdated(
     const from = before?.status || "";
     const to   = after?.status  || "";
 
-    // Déclenche uniquement sur transition -> resolved depuis open/validated
     if (!((from === "validated" || from === "open") && to === "resolved")) {
-      log("SKIP_STATUS", { caseId, from, to });
+      console.log('⏭️ [SKIP_STATUS]', { caseId, from, to });
+      log("⏭️ SKIP_STATUS", { caseId, from, to });
       return;
     }
 
+    console.log('🧭 [BEGIN]', { caseId, from, to });
     log("BEGIN", { caseId, from, to });
 
-    // Position: after prioritaire, sinon before
     const loc = after?.location || before?.location || null;
     const dev = (after?.submitMeta?.geo || before?.submitMeta?.geo) || null;
 
@@ -81,10 +97,12 @@ const onUpdateMissing = onDocumentUpdated(
     }
 
     if (!p || !inBR(p)) {
-      logger.warn(`${NS} no_valid_point_resolve`, { caseId, src, p });
+      console.log('⚠️ [NO_VALID_POINT]', { caseId, src, p });
+      logger.warn(`${NS} ⚠️ no_valid_point_resolve`, { caseId, src, p });
       return;
     }
 
+    console.log('🧭 [POINT_OK]', { caseId, src, p, approx });
     log("POINT_OK", { caseId, src, p, approx });
 
     const title = "Missing resolvido";
@@ -94,17 +112,29 @@ const onUpdateMissing = onDocumentUpdated(
     // Envoi tile-based si dispo
     if (publishFCMByTiles || publishExpoByTiles) {
       try {
+        console.log('📡 [ABOUT_TO_SEND_TILES]', {
+          caseId, approx, src, kind, hasFCM: !!publishFCMByTiles, hasExpo: !!publishExpoByTiles
+        });
+        log("ABOUT_TO_SEND_TILES", { caseId, approx, src, kind });
+
         if (publishFCMByTiles) {
           await publishFCMByTiles({ lat: p.lat, lng: p.lng, caseId, kind, event: "resolved", title, body, approx });
+          console.log('✅ [FCM_TILES_SENT]', { caseId });
+          log("FCM_TILES_SENT", { caseId });
         }
         if (publishExpoByTiles) {
           await publishExpoByTiles({ lat: p.lat, lng: p.lng, caseId, kind, event: "resolved", title, body, approx });
+          console.log('✅ [EXPO_TILES_SENT]', { caseId });
+          log("EXPO_TILES_SENT", { caseId });
         }
+
+        console.log('🎉 [PUSH_SENT_TILES]', { caseId });
         log("PUSH_SENT_TILES", { caseId, approx, src });
         log("END", { caseId });
         return;
       } catch (e) {
-        logger.error(`${NS} tiles_push_err`, { caseId, err: e?.message || String(e) });
+        console.log('💥 [TILES_PUSH_ERR]', { caseId, err: e?.message || String(e) });
+        logger.error(`${NS} 💥 tiles_push_err`, { caseId, err: e?.message || String(e) });
       }
     }
 
@@ -112,6 +142,7 @@ const onUpdateMissing = onDocumentUpdated(
     try {
       const db = admin.firestore();
 
+      console.log('🔎 [FALLBACK] query devices', { caseId });
       const cgSnap = await db
         .collectionGroup("devices")
         .where("active", "==", true)
@@ -136,10 +167,12 @@ const onUpdateMissing = onDocumentUpdated(
       collectTokens(rootSnap);
 
       const tokens = Array.from(tokenSet);
+      console.log('🧮 [FALLBACK] selected tokens', { caseId, count: tokens.length });
       log("DEVICES_SELECTED_FALLBACK", { caseId, count: tokens.length });
 
       if (!tokens.length) {
-        logger.warn(`${NS} no_tokens_fallback`, { caseId });
+        console.log('⚠️ [FALLBACK] no tokens', { caseId });
+        logger.warn(`${NS} ⚠️ no_tokens_fallback`, { caseId });
         log("END", { caseId });
         return;
       }
@@ -149,7 +182,7 @@ const onUpdateMissing = onDocumentUpdated(
         data: {
           alertId: caseId,
           openTarget: "missingDetail",
-          channelId: "alerts-high",
+          channelId: "alerts-high", // ⚠️ vérifie que ce channel existe côté Android
           approx: approx ? "1" : "0",
           kind,
           event: "resolved",
@@ -159,20 +192,24 @@ const onUpdateMissing = onDocumentUpdated(
       const chunkSize = 500;
       let success = 0, failure = 0;
 
+      console.log('📤 [FALLBACK] about to send', { caseId, chunks: Math.ceil(tokens.length / chunkSize) });
       for (let i = 0; i < tokens.length; i += chunkSize) {
         const chunk = tokens.slice(i, i + chunkSize);
+        console.log('📦 [CHUNK] sending', { caseId, idx: i / chunkSize, size: chunk.length });
         const res = await admin.messaging().sendEachForMulticast({ tokens: chunk, ...payload });
         success += res.successCount || 0;
         failure += res.failureCount || 0;
+        console.log('🧾 [CHUNK_RESULT]', { caseId, idx: i / chunkSize, success: res.successCount, failure: res.failureCount });
       }
 
+      console.log('✅ [FALLBACK_SENT]', { caseId, success, failure });
       log("PUSH_SENT_FALLBACK", { caseId, success, failure });
     } catch (e) {
-      logger.error(`${NS} PUSH_ERR_FALLBACK`, { caseId, err: e?.message || String(e) });
+      console.log('💥 [PUSH_ERR_FALLBACK]', { caseId, err: e?.message || String(e) });
+      logger.error(`${NS} 💥 PUSH_ERR_FALLBACK`, { caseId, err: e?.message || String(e) });
     }
 
+    console.log('🏁 [END] Missing Resolve', { caseId });
     log("END", { caseId });
   }
 );
-
-module.exports = { onUpdateMissing };
