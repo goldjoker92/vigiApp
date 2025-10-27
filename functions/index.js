@@ -61,8 +61,8 @@ function tileTopic(tile) {
 function pickLatLng(d) {
   const lat = Number.isFinite(+d?.lat) ? +d.lat : Number.isFinite(+d?.geo?.lat) ? +d.geo.lat : null;
   const lng = Number.isFinite(+d?.lng) ? +d.lng : Number.isFinite(+d?.geo?.lng) ? +d.geo.lng : null;
-  if (lat === null || lng === null) return null;
-  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+  if (lat === null || lng === null) {return null;}
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {return null;}
   return { lat, lng };
 }
 
@@ -162,7 +162,7 @@ exports.onWriteDevice = onDocumentWritten(
     let newTiles = [];
     try {
       newTiles = tilesForRadius(point.lat, point.lng) || [];
-      if (!Array.isArray(newTiles) || newTiles.length === 0) throw new Error('no_tiles');
+      if (!Array.isArray(newTiles) || newTiles.length === 0) {throw new Error('no_tiles');}
     } catch (e) {
       err('tiles_compute_fail', { deviceId, userId, err: e?.message || String(e), point });
       return;
@@ -179,8 +179,8 @@ exports.onWriteDevice = onDocumentWritten(
 
     // Abonnements
     let subStats = { ok: 0, ko: 0 }, unsubStats = { ok: 0, ko: 0 };
-    try { if (toSub.length)   subStats = await subscribeTiles(fcmToken, toSub); } catch {}
-    try { if (toUnsub.length) unsubStats = await unsubscribeTiles(fcmToken, toUnsub); } catch {}
+    try { if (toSub.length)   {subStats = await subscribeTiles(fcmToken, toSub);} } catch {}
+    try { if (toUnsub.length) {unsubStats = await unsubscribeTiles(fcmToken, toUnsub);} } catch {}
 
     // Écrit les tuiles actuelles dans le doc (et miroir Expo)
     try {

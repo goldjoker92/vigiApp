@@ -1,6 +1,8 @@
+
 // app/_layout.jsx
 // ============================================================================
-// Root layout (Expo Router) + bootstrap auth anonyme au lancement
+// Root layout (Expo Router) — VERSION SANS STRIPE (déconnecté)
+// Focus: Notifications + Routing + Logs verbeux 🧭📣
 // ============================================================================
 
 import 'react-native-gesture-handler';
@@ -13,74 +15,70 @@ import * as Notifications from 'expo-notifications';
 
 import { AdBanner, AdBootstrap } from '../src/ads/ads';
 import CustomTopToast from './components/CustomTopToast';
-import { StripeBootstrap } from '../src/payments/stripe';
 
 import { useUserStore } from '../store/users';
-import { initRevenueCat } from '../services/purchases';
+// ⚠️ Stripe retiré volontairement
 
 import {
   attachNotificationListeners,
   getFcmDeviceTokenAsync,
   initNotifications,
   wireAuthGateForNotifications,
+  checkInitialNotification,
 } from '../src/notifications';
-import { attachDeviceAutoRefresh } from '../libs/registerCurrentDevice';
 
+import { attachDeviceAutoRefresh } from '../libs/registerCurrentDevice';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../firebase';
-
-// 🔐 bootstrap d’auth anonyme (assure un user pour Storage/Firestore)
 import { ensureAuthOnBoot } from '../src/authBootstrap';
 
-// Logs homogènes
-const log = (...a) => console.log('[LAYOUT]', ...a);
-const warn = (...a) => console.warn('[LAYOUT] ⚠️', ...a);
-const logN = (...a) => console.log('[NOTIF]', ...a);
-const warnN = (...a) => console.warn('[NOTIF] ⚠️', ...a);
-const logRC = (...a) => console.log('[RC]', ...a);
-const errRC = (...a) => console.error('[RC] ❌', ...a);
-const logAds = (...a) => console.log('[ADS]', ...a);
+// ============================================================================
+// Logs homogènes + émojis
+// ============================================================================
+const TAG = '[LAYOUT]';
+const log   = (...a) => console.log(`${TAG} 🧭`, ...a);
+const info  = (...a) => console.log(`${TAG} ℹ️`, ...a);
+const warn  = (...a) => console.warn(`${TAG} ⚠️`, ...a);
+const err   = (...a) => console.error(`${TAG} ❌`, ...a);
 
-// Flag global RC
-const RC_FLAG = '__VIGIAPP_RC_CONFIGURED__';
-if (globalThis[RC_FLAG] === undefined) {
-  globalThis[RC_FLAG] = false;
-}
+const TAGN  = '[NOTIF]';
+const logN  = (...a) => console.log(`${TAGN} 📣`, ...a);
+const warnN = (...a) => console.warn(`${TAGN} ⚠️`, ...a);
+const errN  = (...a) => console.error(`${TAGN} ❌`, ...a);
 
+const TAGADS = '[ADS]';
+const logAds = (...a) => console.log(`${TAGADS} 📺`, ...a);
+
+// ============================================================================
+// ErrorBoundary bavard
+// ============================================================================
 class RootErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
     this.state = { error: null };
+    info('[ROOT][ErrorBoundary] 🧱 monté');
   }
   static getDerivedStateFromError(error) {
+    console.error('[ROOT][ErrorBoundary] 🚨 getDerivedStateFromError:', error);
     return { error };
   }
-  componentDidCatch(error, info) {
-    console.error('[ROOT][ErrorBoundary]', error, info);
+  componentDidCatch(error, infox) {
+    console.error('[ROOT][ErrorBoundary] 🧯 componentDidCatch:', error, infox);
   }
   render() {
     if (this.state.error) {
       return (
-        <View
-          style={{ flex: 1, padding: 16, gap: 12, justifyContent: 'center', alignItems: 'center' }}
-        >
-          <Text style={{ fontWeight: '700', fontSize: 18 }}>Une erreur est survenue</Text>
+        <View style={{ flex: 1, padding: 16, gap: 12, justifyContent: 'center', alignItems: 'center' }}>
+          <Text style={{ fontWeight: '700', fontSize: 18 }}>Une erreur est survenue 😵‍💫</Text>
           <Text style={{ opacity: 0.8, textAlign: 'center' }}>
-            Pas de panique. On a intercepté l’écran qui plantait.
+            Pas de panique, on a intercepté l’écran qui plantait.
           </Text>
           <Pressable
             onPress={() => {
               this.setState({ error: null });
-              try {
-                router.replace('/');
-              } catch {}
+              try { router.replace('/'); } catch (e) { err('[ROOT][ErrorBoundary] replace("/"): ', e?.message || e); }
             }}
-            style={{
-              paddingVertical: 12,
-              paddingHorizontal: 16,
-              borderRadius: 10,
-              backgroundColor: '#222',
-            }}
+            style={{ paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, backgroundColor: '#222' }}
           >
             <Text style={{ color: 'white' }}>Revenir à l’accueil</Text>
           </Pressable>
@@ -91,33 +89,32 @@ class RootErrorBoundary extends React.Component {
   }
 }
 
-function RCReadyHook() {
-  logRC('RCReadyHook attached');
-  return null;
-}
-
-// --- helpers deep link → route
+// ============================================================================
+// Helpers deep link → route
+// ============================================================================
 function routeFromUrlLike(rawUrl) {
   try {
-    const s = String(rawUrl).trim();
+    const s = String(rawUrl || '').trim();
     let path = s;
+    if (!s) {return null;}
+
     if (s.startsWith('vigiapp://')) {
       const u = new URL(s);
       path = u.pathname || '';
     }
+
+    // vigiapp://public-alerts/<id>
     const m1 = path.match(/\/?public-alerts\/([^/?#]+)/i);
-    if (m1?.[1]) {
-      return { pathname: '/public-alerts/[id]', params: { id: m1[1] } };
-    }
+    if (m1?.[1]) {return { pathname: '/public-alerts/[id]', params: { id: m1[1] } };}
+
+    // vigiapp://missing-public-alerts/<id>
     const m2 = path.match(/\/?missing-public-alerts\/([^/?#]+)/i);
-    if (m2?.[1]) {
-      return { pathname: '/missing-public-alerts/[id]', params: { id: m2[1] } };
-    }
+    if (m2?.[1]) {return { pathname: '/missing-public-alerts/[id]', params: { id: m2[1] } };}
+
+    // ?alertId=<id> (fallback)
     const q = s.match(/[?&](?:alertId|id)=([^&#]+)/i);
     if (q?.[1]) {
-      if (/missing/i.test(s)) {
-        return { pathname: '/missing-public-alerts/[id]', params: { id: q[1] } };
-      }
+      if (/missing/i.test(s)) {return { pathname: '/missing-public-alerts/[id]', params: { id: q[1] } };}
       return { pathname: '/public-alerts/[id]', params: { id: q[1] } };
     }
   } catch (e) {
@@ -126,7 +123,38 @@ function routeFromUrlLike(rawUrl) {
   return null;
 }
 
-// --- InnerLayout : consomme les insets SOUS le Provider ---
+// Dédup navigation (anti double push)
+function useSafeNavigator() {
+  const lastNavRef = useRef({ key: null, ts: 0 });
+  const safeNavigateFromRawUrl = (rawUrl) => {
+    try {
+      if (!rawUrl) {return;}
+      const key = String(rawUrl);
+      const now = Date.now();
+      if (lastNavRef.current.key === key && now - lastNavRef.current.ts < 1500) {
+        warnN('⏱️ skip double navigation (1.5s) for', key);
+        return;
+      }
+      lastNavRef.current = { key, ts: now };
+
+      const route = routeFromUrlLike(rawUrl);
+      if (route) {
+        logN('🧭 router.push →', route);
+        setTimeout(() => router.push(route), 50);
+      } else {
+        logN('🔗 Linking.openURL →', rawUrl);
+        Linking.openURL(String(rawUrl)).catch((e) => warnN('Linking.openURL error:', e?.message || e));
+      }
+    } catch (e) {
+      errN('safeNavigateFromRawUrl:', e?.message || e);
+    }
+  };
+  return { safeNavigateFromRawUrl };
+}
+
+// ============================================================================
+// InnerLayout
+// ============================================================================
 function InnerLayout() {
   const [authUid, setAuthUid] = useState(null);
   const storeUid = useUserStore((s) => s?.user?.uid);
@@ -136,172 +164,165 @@ function InnerLayout() {
 
   const insets = useSafeAreaInsets();
   const BANNER_HEIGHT = 50;
+  const { safeNavigateFromRawUrl } = useSafeNavigator();
 
   const bottomOffset = useMemo(() => {
     const offset = BANNER_HEIGHT + (insets?.bottom ?? 0);
-    logAds('bottomOffset =', offset);
+    logAds('🧮 bottomOffset =', offset);
     return offset;
   }, [insets]);
 
-  // Observe l’état auth (affiche l’UID pour la télémétrie)
+  // Auth state
   useEffect(() => {
+    log('🔐 onAuthStateChanged: subscribe');
     const unsub = onAuthStateChanged(auth, (u) => {
       setAuthUid(u?.uid || null);
-      log('[AUTH] onAuthStateChanged →', u?.uid || '(null)');
+      log('🔐 onAuthStateChanged →', u?.uid || '(null)');
     });
-    return () => unsub?.();
+    return () => {
+      try { unsub?.(); log('🔐 onAuthStateChanged: unsubscribe ✅'); }
+      catch (e) { warn('🔐 onAuthStateChanged: unsubscribe error:', e?.message || e); }
+    };
   }, []);
 
+  // Notifs + Device + Cold start
   useEffect(() => {
     let detachNotif;
     let detachDevice;
     (async () => {
-      try {
-        wireAuthGateForNotifications();
-      } catch (e) {
-        warnN('auth-gate:', e?.message || e);
-      }
-      try {
-        await initNotifications();
-      } catch (e) {
-        warnN('init:', e?.message || e);
-      }
+      info('🚀 Layout effect (notifs/device) START');
 
+      // Gate auth pour ACK enrichi
       try {
+        logN('🔧 wireAuthGateForNotifications()');
+        wireAuthGateForNotifications();
+      } catch (e) { warnN('auth-gate:', e?.message || e); }
+
+      // Init notifications (permissions + channels)
+      try {
+        logN('🧰 initNotifications() — permissions + canaux');
+        await initNotifications();
+      } catch (e) { warnN('initNotifications:', e?.message || e); }
+
+      // Listeners
+      try {
+        logN('👂 attachNotificationListeners()');
         detachNotif = attachNotificationListeners({
-          onReceive: (n) => logN('onReceive(FG):', n?.request?.content?.data),
+          onReceive: (n) => {
+            try {
+              const d = n?.request?.content?.data || {};
+              logN('🟢 onReceive(FG):', d);
+            } catch (e) { warnN('onReceive log error:', e?.message || e); }
+          },
           onResponse: (r) => {
-            const data = r?.notification?.request?.content?.data || {};
-            const rawUrl = data.url || data.deepLink || data.link || data.open;
-            if (!rawUrl) {return;}
-            const route = routeFromUrlLike(rawUrl);
-            if (route) {setTimeout(() => router.push(route), 50);}
-            else {Linking.openURL(String(rawUrl)).catch(() => {});}
+            try {
+              const data = r?.notification?.request?.content?.data || {};
+              const rawUrl = data.url || data.deepLink || data.link || data.open;
+              logN('👆 TAP response → rawUrl =', rawUrl || '(none)');
+              if (rawUrl) {safeNavigateFromRawUrl(rawUrl);}
+            } catch (e) { errN('onResponse handler:', e?.message || e); }
           },
         });
-      } catch (e) {
-        warnN('listeners:', e?.message || e);
-      }
+        logN('👂 Listeners attachés ✅');
+      } catch (e) { warnN('listeners:', e?.message || e); }
 
+      // Cold start (si l’app a été ouverte via une notif)
       try {
-        const initial = await Notifications.getLastNotificationResponseAsync();
-        const data = initial?.notification?.request?.content?.data || {};
-        const rawUrl = data.url || data.deepLink || data.link || data.open;
-        if (rawUrl) {
-          const route = routeFromUrlLike(rawUrl);
-          if (route) {setTimeout(() => router.push(route), 50);}
-          else {Linking.openURL(String(rawUrl)).catch(() => {});}
-        }
-      } catch (e) {
-        warnN('initialNotif:', e?.message || e);
-      }
+        logN('🌡️ checkInitialNotification()');
+        await checkInitialNotification((resp) => {
+          const data = resp?.notification?.request?.content?.data || {};
+          const rawUrl = data.url || data.deepLink || data.link || data.open;
+          logN('🌡️ Cold start → rawUrl =', rawUrl || '(none)');
+          if (rawUrl) {safeNavigateFromRawUrl(rawUrl);}
+        });
+      } catch (e) { warnN('initialNotif:', e?.message || e); }
 
+      // FCM device token (diagnostic)
       try {
         const token = await getFcmDeviceTokenAsync();
-        if (token) {logN('FCM token ✅', token);}
-        else {warnN('FCM token indisponible');}
-      } catch (e) {
-        warnN('fcm token:', e?.message || e);
-      }
+        if (token) {logN('🔑 FCM token ✅', token);}
+        else {warnN('🔑 FCM token indisponible');}
+      } catch (e) { warnN('fcm token:', e?.message || e); }
 
-      log('[Device] userId =', userId || '(anon)');
+      // Device auto-refresh (Firestore orchestrateur)
+      info('[Device] userId =', userId || '(anon)');
       try {
         if (userId) {
           detachDevice = attachDeviceAutoRefresh({ userId, userCep, userCity, groups: [] });
-          logN('Device auto-refresh attached ✅');
+          logN('📡 Device auto-refresh attach ✅', { userId, userCep, userCity });
         } else {
-          warnN('Device auto-refresh NON lancé (pas de userId)');
+          warnN('📡 Device auto-refresh non lancé (pas de userId)');
         }
-      } catch (e) {
-        warnN('attachDeviceAutoRefresh:', e?.message || e);
-      }
+      } catch (e) { warnN('attachDeviceAutoRefresh:', e?.message || e); }
+
+      info('✅ Layout effect (notifs/device) READY');
     })();
+
     return () => {
-      try {
-        detachNotif?.();
-      } catch {}
-      try {
-        detachDevice?.();
-      } catch {}
+      info('🧹 Layout effect cleanup — start');
+      try { detachNotif?.(); logN('🧹 detachNotif OK'); } catch (e) { warnN('🧹 detachNotif error:', e?.message || e); }
+      try { detachDevice?.(); logN('🧹 detachDevice OK'); } catch (e) { warnN('🧹 detachDevice error:', e?.message || e); }
+      info('🧹 Layout effect cleanup — done');
     };
   }, [userId, userCep, userCity]);
 
-  const rcInitPromiseRef = useRef(null);
-  const [rcReady, setRcReady] = useState(globalThis[RC_FLAG] === true);
   useEffect(() => {
-    (async () => {
-      try {
-        if (globalThis[RC_FLAG] === true) {
-          setRcReady(true);
-          return;
-        }
-        if (rcInitPromiseRef.current) {
-          await rcInitPromiseRef.current;
-          setRcReady(true);
-          return;
-        }
-        rcInitPromiseRef.current = initRevenueCat(authUid || null);
-        await rcInitPromiseRef.current;
-        globalThis[RC_FLAG] = true;
-        setRcReady(true);
-      } catch (e) {
-        errRC('init:', e?.message || e);
-      } finally {
-        rcInitPromiseRef.current = null;
-      }
-    })();
-  }, [authUid]);
-
-  useEffect(() => {
-    warn('Layout mounted');
-    return () => warn('Layout unmounted');
+    warn('🧩 Layout mounted');
+    return () => warn('🧩 Layout unmounted');
   }, []);
 
   return (
-    <StripeBootstrap>
-      <View style={{ flex: 1, backgroundColor: '#101114' }}>
-        <AdBootstrap />
-        <CustomTopToast />
-        <View style={{ flex: 1, paddingBottom: bottomOffset }}>
-          <RootErrorBoundary>
-            <Suspense
-              fallback={
-                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                  <Text>Chargement…</Text>
-                </View>
-              }
-            >
-              <Slot />
-            </Suspense>
-          </RootErrorBoundary>
-        </View>
-        <View
-          style={{
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            bottom: 0,
-            paddingBottom: insets?.bottom ?? 0,
-            backgroundColor: 'transparent',
-          }}
-        >
-          <AdBanner />
-        </View>
-        {rcReady ? <RCReadyHook /> : null}
+    <View style={{ flex: 1, backgroundColor: '#101114' }}>
+      <AdBootstrap />
+      <CustomTopToast />
+      <View style={{ flex: 1, paddingBottom: (50 + (insets?.bottom ?? 0)) }}>
+        <RootErrorBoundary>
+          <Suspense
+            fallback={
+              <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                <Text>Chargement… ⏳</Text>
+              </View>
+            }
+          >
+            <Slot />
+          </Suspense>
+        </RootErrorBoundary>
       </View>
-    </StripeBootstrap>
+
+      {/* Bandeau pub bas */}
+      <View
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          bottom: 0,
+          paddingBottom: insets?.bottom ?? 0,
+          backgroundColor: 'transparent',
+        }}
+      >
+        <AdBanner />
+      </View>
+    </View>
   );
 }
 
+// ============================================================================
+// Shell Layout (SafeArea + bootstrap système + auth anonyme)
+// ============================================================================
 export default function Layout() {
-  // Fond système propre pour edge-to-edge (status/nav bars)
+  // Fond système propre pour edge-to-edge
   useEffect(() => {
-    SystemUI.setBackgroundColorAsync('#101114').catch(() => {});
+    info('🎨 SystemUI.setBackgroundColorAsync #101114');
+    SystemUI.setBackgroundColorAsync('#101114').catch((e) =>
+      warn('SystemUI.setBackgroundColorAsync error:', e?.message || e)
+    );
   }, []);
 
   // 🔐 Bootstrap auth anonyme au tout début de l’app
   useEffect(() => {
-    ensureAuthOnBoot();
+    info('🛂 ensureAuthOnBoot()');
+    try { ensureAuthOnBoot(); info('🛂 ensureAuthOnBoot OK ✅'); }
+    catch (e) { err('🛂 ensureAuthOnBoot error:', e?.message || e); }
   }, []);
 
   return (
@@ -310,4 +331,3 @@ export default function Layout() {
     </SafeAreaProvider>
   );
 }
-// ============================================================================

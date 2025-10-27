@@ -38,9 +38,9 @@ const warn = (step, extra = {}) => console.warn(`${NS} ${step}`, { t: nowIso(), 
 const err  = (step, extra = {}) => console.error(`${NS} ${step}`, { t: nowIso(), ...extra });
 
 function maskToken(tok) {
-  if (!tok) return null;
+  if (!tok) {return null;}
   const s = String(tok);
-  if (s.length <= 8) return '***';
+  if (s.length <= 8) {return '***';}
   return `${s.slice(0,4)}…${s.slice(-4)}`;
 }
 
@@ -64,7 +64,7 @@ async function publishFCMByTiles({ lat, lng, caseId, kind, event, title, body, a
   let tiles = [];
   try {
     tiles = tilesForRadius(lat, lng) || [];
-    if (!Array.isArray(tiles) || tiles.length === 0) throw new Error('no_tiles');
+    if (!Array.isArray(tiles) || tiles.length === 0) {throw new Error('no_tiles');}
   } catch (e) {
     err('💥 FCM_TILES_COMPUTE_FAIL', { caseId, err: e?.message || String(e), lat, lng });
     throw e;
@@ -130,7 +130,7 @@ async function publishExpoByTiles({ lat, lng, caseId, kind, event, title, body, 
   let tiles = [];
   try {
     tiles = tilesForRadius(lat, lng) || [];
-    if (!Array.isArray(tiles) || tiles.length === 0) throw new Error('no_tiles');
+    if (!Array.isArray(tiles) || tiles.length === 0) {throw new Error('no_tiles');}
   } catch (e) {
     err('💥 EXPO_TILES_COMPUTE_FAIL', { caseId, err: e?.message || String(e), lat, lng });
     throw e;
@@ -155,7 +155,7 @@ async function publishExpoByTiles({ lat, lng, caseId, kind, event, title, body, 
       queried += qs.size || 0;
       qs.forEach(d => {
         const tok = d.data()?.expoToken;
-        if (tok) tokens.add(tok);
+        if (tok) {tokens.add(tok);}
       });
     } catch (e) {
       warn('⚠️ EXPO_QUERY_TILE_FAIL', { caseId, tile: t, err: e?.message || String(e) });

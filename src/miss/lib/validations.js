@@ -3,8 +3,8 @@ export function validateClient(payload, { ns }) {
   const reasons = [];
 
   // Règles globales
-  if (!payload?.photoPath) reasons.push("Foto obrigatória");
-  if (!payload?.consent) reasons.push("Consentimento necessário");
+  if (!payload?.photoPath) {reasons.push("Foto obrigatória");}
+  if (!payload?.consent) {reasons.push("Consentimento necessário");}
 
   // Nom principal (enfant / animal / objet)
   if (!payload?.childFirstName && !payload?.primaryName) {

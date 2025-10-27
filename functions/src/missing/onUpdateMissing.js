@@ -9,7 +9,7 @@ const admin = require("firebase-admin");
 
 let _init = false;
 function ensureInit() {
-  if (_init) return;
+  if (_init) {return;}
   try { admin.app(); } catch { admin.initializeApp(); }
   _init = true;
 }
@@ -37,9 +37,9 @@ const log = (step, extra = {}) =>
   logger.info(`${NS} ${step}`, { t: nowIso(), ...extra });
 
 function maskToken(tok) {
-  if (!tok) return null;
+  if (!tok) {return null;}
   const s = String(tok);
-  if (s.length <= 8) return '***';
+  if (s.length <= 8) {return '***';}
   return `${s.slice(0,4)}…${s.slice(-4)}`;
 }
 
@@ -159,8 +159,8 @@ exports.onUpdateMissing = onDocumentUpdated(
       const collectTokens = (snap) => {
         snap.forEach((d) => {
           const x = d.data() || {};
-          if (x.fcmToken) tokenSet.add(x.fcmToken);
-          else if (x.fcm) tokenSet.add(x.fcm);
+          if (x.fcmToken) {tokenSet.add(x.fcmToken);}
+          else if (x.fcm) {tokenSet.add(x.fcm);}
         });
       };
       collectTokens(cgSnap);

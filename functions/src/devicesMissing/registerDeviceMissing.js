@@ -11,10 +11,10 @@ function isExpo(t){return !!t && /^ExponentPushToken\[[\w\-]+\]$/.test(t);}
 function isFcm(t){return !!t && t.includes(':APA91') && t.length>80;}
 
 exports.registerDeviceMissing = onRequest({ cors:true, region:'southamerica-east1' }, async (req,res)=>{
-  if(req.method!=='POST') return res.status(405).json({ok:false,error:'method_not_allowed'});
+  if(req.method!=='POST') {return res.status(405).json({ok:false,error:'method_not_allowed'});}
   const { userId, deviceId, platform='unknown', fcmToken=null, expoToken=null, lat=null, lng=null, tiles=null } = req.body||{};
-  if(!userId) return res.status(400).json({ok:false,error:'userId_required'});
-  if(!deviceId) return res.status(400).json({ok:false,error:'deviceId_required'});
+  if(!userId) {return res.status(400).json({ok:false,error:'userId_required'});}
+  if(!deviceId) {return res.status(400).json({ok:false,error:'deviceId_required'});}
 
   const latN= Number.isFinite(+lat)? +lat : null;
   const lngN= Number.isFinite(+lng)? +lng : null;

@@ -9,7 +9,7 @@ const admin = require('firebase-admin');
 
 let _init = false;
 function ensureInit() {
-  if (_init) return;
+  if (_init) {return;}
   try { admin.app(); } catch { admin.initializeApp(); }
   _init = true;
 }
@@ -27,9 +27,9 @@ const warn = (msg, extra = {}) => logger.warn(`${NS} ${msg}`, { t: nowIso(), ...
 const err  = (msg, extra = {}) => logger.error(`${NS} ${msg}`, { t: nowIso(), ...extra });
 
 function maskToken(tok) {
-  if (!tok) return null;
+  if (!tok) {return null;}
   const s = String(tok);
-  if (s.length <= 8) return '***';
+  if (s.length <= 8) {return '***';}
   return `${s.slice(0,4)}…${s.slice(-4)}`;
 }
 
@@ -48,8 +48,8 @@ function tileTopic(tile) {
 function pickLatLng(d) {
   const lat = Number.isFinite(+d?.lat) ? +d.lat : Number.isFinite(+d?.geo?.lat) ? +d.geo.lat : null;
   const lng = Number.isFinite(+d?.lng) ? +d.lng : Number.isFinite(+d?.geo?.lng) ? +d.geo.lng : null;
-  if (lat === null || lng === null) return null;
-  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+  if (lat === null || lng === null) {return null;}
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {return null;}
   return { lat, lng };
 }
 
@@ -151,7 +151,7 @@ exports.onWriteDevice = onDocumentWritten(
     let newTiles = [];
     try {
       newTiles = tilesForRadius(point.lat, point.lng) || [];
-      if (!Array.isArray(newTiles) || newTiles.length === 0) throw new Error('no_tiles');
+      if (!Array.isArray(newTiles) || newTiles.length === 0) {throw new Error('no_tiles');}
     } catch (e) {
       console.log('💥 [TILES] compute fail', { deviceId, point, err: e?.message || String(e) });
       err('💥 tiles_compute_fail', { deviceId, userId, err: e?.message || String(e), point });

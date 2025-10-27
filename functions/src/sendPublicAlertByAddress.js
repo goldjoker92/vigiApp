@@ -47,7 +47,7 @@ const log = {
 // ===== Helpers généraux =====
 let _inited = false;
 function ensureInit() {
-  if (_inited) return;
+  if (_inited) {return;}
   try { admin.app(); } catch { admin.initializeApp(); }
   _inited = true;
 }
@@ -55,12 +55,12 @@ const db  = () => admin.firestore();
 const fcm = () => admin.messaging();
 
 const getByPath = (obj, path, def = undefined) => {
-  if (!obj || !path) return def;
+  if (!obj || !path) {return def;}
   const parts = String(path).split('.');
   let cur = obj;
   for (const p of parts) {
-    if (cur && Object.prototype.hasOwnProperty.call(cur, p)) cur = cur[p];
-    else return def;
+    if (cur && Object.prototype.hasOwnProperty.call(cur, p)) {cur = cur[p];}
+    else {return def;}
   }
   return cur;
 };
@@ -79,7 +79,7 @@ function haversineMeters(lat1, lon1, lat2, lon2) {
 function uniqBy(arr, keyFn) {
   const seen = new Set(); const out = [];
   for (const x of arr) {
-    const k = keyFn(x); if (!k || seen.has(k)) continue;
+    const k = keyFn(x); if (!k || seen.has(k)) {continue;}
     seen.add(k); out.push(x);
   }
   return out;
@@ -94,7 +94,7 @@ async function _fetchJson(url, { timeoutMs = 900 } = {}) {
       signal: ctrl.signal,
       headers: { Accept: 'application/json', 'User-Agent': 'VigiApp-CF/send/2 (contact: support@vigiapp)' },
     });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    if (!r.ok) {throw new Error(`HTTP ${r.status}`);}
     return await r.json();
   } finally {
     clearTimeout(t);
@@ -104,22 +104,22 @@ async function _fetchJson(url, { timeoutMs = 900 } = {}) {
 // ===== Géocodage =====
 async function geocodeGoogle(q, planLogs, timeoutMs = 900) {
   const key = ENV.GMAPS_KEY;
-  if (!key) throw new Error('GMAPS_KEY missing (.env EXPO_PUBLIC_GOOGLE_MAPS_KEY)');
+  if (!key) {throw new Error('GMAPS_KEY missing (.env EXPO_PUBLIC_GOOGLE_MAPS_KEY)');}
   const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(q)}&language=pt-BR&key=${key}`;
   const json = await _fetchJson(url, { timeoutMs });
   planLogs.push({ provider: 'google', status: json.status, results: json.results?.length || 0 });
-  if (json.status !== 'OK' || !json.results?.length) throw new Error(`google:${json.status}`);
+  if (json.status !== 'OK' || !json.results?.length) {throw new Error(`google:${json.status}`);}
   const best = json.results[0]; const loc = best.geometry?.location;
-  if (!loc) throw new Error('google:no_loc');
+  if (!loc) {throw new Error('google:no_loc');}
   return { lat: loc.lat, lng: loc.lng, precision: best.geometry?.location_type || 'UNKNOWN', provider: 'google' };
 }
 async function geocodeLocationIQ(q, planLogs, timeoutMs = 900) {
   const key = ENV.LOCATIONIQ_KEY;
-  if (!key) throw new Error('LOCATIONIQ_KEY missing (.env EXPO_PUBLIC_LOCATIONIQ_KEY)');
+  if (!key) {throw new Error('LOCATIONIQ_KEY missing (.env EXPO_PUBLIC_LOCATIONIQ_KEY)');}
   const url = `https://us1.locationiq.com/v1/search?key=${key}&q=${encodeURIComponent(q)}&format=json&addressdetails=1&limit=1`;
   const json = await _fetchJson(url, { timeoutMs });
   planLogs.push({ provider: 'locationiq', results: Array.isArray(json) ? json.length : 0 });
-  if (!Array.isArray(json) || !json.length) throw new Error('locationiq:no_result');
+  if (!Array.isArray(json) || !json.length) {throw new Error('locationiq:no_result');}
   const r = json[0];
   return { lat: parseFloat(r.lat), lng: parseFloat(r.lon), precision: r.type || 'UNKNOWN', provider: 'locationiq' };
 }
@@ -127,7 +127,7 @@ async function geocodeOSM(q, planLogs, timeoutMs = 900) {
   const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=1&accept-language=pt-BR&q=${encodeURIComponent(q)}`;
   const json = await _fetchJson(url, { timeoutMs });
   planLogs.push({ provider: 'osm', results: Array.isArray(json) ? json.length : 0 });
-  if (!Array.isArray(json) || !json.length) throw new Error('osm:no_result');
+  if (!Array.isArray(json) || !json.length) {throw new Error('osm:no_result');}
   const r = json[0];
   return { lat: parseFloat(r.lat), lng: parseFloat(r.lon), precision: r.class || 'UNKNOWN', provider: 'osm' };
 }
@@ -135,10 +135,10 @@ async function geocodeOSM(q, planLogs, timeoutMs = 900) {
 // ===== CEP -> centroïde =====
 async function cepToCentroidViaCEP(cep, planLogs, timeoutMs = 900) {
   const cepNum = String(cep || '').replace(/\D+/g, '').slice(0, 8);
-  if (!cepNum) throw new Error('cep:empty');
+  if (!cepNum) {throw new Error('cep:empty');}
   const url = `https://viacep.com.br/ws/${cepNum}/json/`;
   const json = await _fetchJson(url, { timeoutMs });
-  if (json?.erro) throw new Error('viacep:not_found');
+  if (json?.erro) {throw new Error('viacep:not_found');}
   planLogs.push({ provider: 'viacep', cep: cepNum, city: json.localidade, uf: json.uf });
   const addr = [json.logradouro, json.bairro, json.localidade, json.uf, 'Brasil'].filter(Boolean).join(', ');
   try { const p = await geocodeOSM(addr, planLogs, timeoutMs); return { ...p, provider: `${p.provider}+viacep` }; }
@@ -146,7 +146,7 @@ async function cepToCentroidViaCEP(cep, planLogs, timeoutMs = 900) {
 }
 async function cepToCentroidBrasilAPI(cep, planLogs, timeoutMs = 900) {
   const cepNum = String(cep || '').replace(/\D+/g, '').slice(0, 8);
-  if (!cepNum) throw new Error('cep:empty');
+  if (!cepNum) {throw new Error('cep:empty');}
   const url = `https://brasilapi.com.br/api/cep/v2/${cepNum}`;
   const json = await _fetchJson(url, { timeoutMs });
   planLogs.push({ provider: 'brasilapi', cep: cepNum, city: json.city, state: json.state });
@@ -157,7 +157,7 @@ async function cepToCentroidBrasilAPI(cep, planLogs, timeoutMs = 900) {
 
 // ===== métriques devices =====
 async function bumpPushStats(deviceId, alertId, kind /* attempt|sent|notSent|transient */) {
-  if (!deviceId) return;
+  if (!deviceId) {return;}
   await db().collection(ENV.DEVICES_COLLECTION).doc(deviceId).set({
     [ENV.DEVICE_LAST_SEEN_FIELD]: FieldValue.serverTimestamp(),
     lastBlastAt: FieldValue.serverTimestamp(),
@@ -215,9 +215,9 @@ async function sendPublicAlertByAddress(req, res) {
   const t0 = Date.now();
 
   // Préflight & healthcheck
-  if (req.method === 'OPTIONS') return res.status(204).send('');
-  if (req.method === 'GET')     return res.status(200).send('ok');
-  if (req.method !== 'POST')    return res.status(405).json({ ok: false, code: 'method_not_allowed' });
+  if (req.method === 'OPTIONS') {return res.status(204).send('');}
+  if (req.method === 'GET')     {return res.status(200).send('ok');}
+  if (req.method !== 'POST')    {return res.status(405).json({ ok: false, code: 'method_not_allowed' });}
 
   try {
     const b = req.body || {};
@@ -302,7 +302,7 @@ async function sendPublicAlertByAddress(req, res) {
               () => geocodeOSM(addrQuery, planLogs, 900),
             ];
             for (const step of chain) {
-              try { const r = await step(); if (r) return r; } catch {}
+              try { const r = await step(); if (r) {return r;} } catch {}
             }
             return null;
           },
@@ -321,7 +321,7 @@ async function sendPublicAlertByAddress(req, res) {
               () => cepToCentroidBrasilAPI(cepNorm, planLogs, 900),
             ];
             for (const step of chain) {
-              try { const r = await step(); if (r) return r; } catch {}
+              try { const r = await step(); if (r) {return r;} } catch {}
             }
             return null;
           },
@@ -377,10 +377,10 @@ async function sendPublicAlertByAddress(req, res) {
       const geoOk = isFiniteNum(vLat) && isFiniteNum(vLng);
 
       const reasons = [];
-      if (!active) reasons.push('inactive');
-      if (!chOk)   reasons.push('channel_off');
-      if (!fcmTok) reasons.push('no_fcmToken');
-      if (!geoOk)  reasons.push('no_latlng');
+      if (!active) {reasons.push('inactive');}
+      if (!chOk)   {reasons.push('channel_off');}
+      if (!fcmTok) {reasons.push('no_fcmToken');}
+      if (!geoOk)  {reasons.push('no_latlng');}
 
       let distM = null, inRadius = false;
       if (geoOk) {
@@ -435,7 +435,7 @@ async function sendPublicAlertByAddress(req, res) {
         const code = e?.code || 'messaging/unknown';
         const isTransient = /unavailable|internal|quota|timeout/i.test(String(code));
         await bumpPushStats(t.deviceId, alertId, isTransient ? 'transient' : 'notSent');
-        if (isTransient) transient++; else notSent++;
+        if (isTransient) {transient++;} else {notSent++;}
         byCode[code] = (byCode[code] || 0) + 1;
       }
     }));

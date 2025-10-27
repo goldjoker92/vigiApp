@@ -5,7 +5,7 @@ const NS='[Missing][Expo]';
 const EXPO_URL='https://exp.host/--/api/v2/push/send';
 
 async function sendExpoBatch(messages=[]){
-  if(!messages.length) return {requested:0, ok:0, ko:0};
+  if(!messages.length) {return {requested:0, ok:0, ko:0};}
   const chunks=[]; for(let i=0;i<messages.length;i+=100){chunks.push(messages.slice(i,i+100));}
   let ok=0,ko=0,req=0;
   for(const c of chunks){

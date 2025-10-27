@@ -93,7 +93,7 @@ const BR_BOUNDS = { latMin:-34, latMax:6, lngMin:-74, lngMax:-28 };
 const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
 const toNum = v => (v===0?0:Number(v));
 const haversineKm = (a,b)=>{
-  if(!a||!b) return null;
+  if(!a||!b) {return null;}
   const R=6371, dLat=(b.lat-a.lat)*Math.PI/180, dLng=(b.lng-a.lng)*Math.PI/180;
   const s1=Math.sin(dLat/2), s2=Math.sin(dLng/2);
   const x=s1*s1 + Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*s2*s2;
@@ -261,11 +261,11 @@ async function captureGeolocationOnce(tid,{timeoutMs=6000}={}){
 // ---------------------------------------------------------------------------
 function estimateAddressConfidence({rua,numero,cidade,uf,cep}){
   let c=0;
-  if(rua) c+=0.35;
-  if(cidade) c+=0.25;
-  if(uf) c+=0.15;
-  if(numero) c+=0.15;
-  if(cep) c+=0.10;
+  if(rua) {c+=0.35;}
+  if(cidade) {c+=0.25;}
+  if(uf) {c+=0.15;}
+  if(numero) {c+=0.15;}
+  if(cep) {c+=0.10;}
   return Math.max(0, Math.min(1, c));
 }
 
@@ -333,7 +333,7 @@ export default function MissingStart(){
 
   // garder qRua aligné visuellement quand l'user modifie lastRua en manuel
   useEffect(()=>{
-    if(form.addressMode==='manual') return;
+    if(form.addressMode==='manual') {return;}
     if(!streetAuto.locked && form.lastRua && streetAuto.qRua!==form.lastRua){
       streetAuto.setQRua(form.lastRua);
     }
