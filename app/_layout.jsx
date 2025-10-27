@@ -1,23 +1,18 @@
-
 // app/_layout.jsx
 // ============================================================================
-// Root layout (Expo Router) — VERSION SANS STRIPE (déconnecté)
-// Focus: Notifications + Routing + Logs verbeux 🧭📣
+// Root layout (Expo Router) — Focus: Notifications + Routing + Logs 🧭📣
+// - Init notifs tôt (permissions + channels) une seule fois
+// - Listeners uniques (anti double attach)
+// - Cold start: reconstitution route depuis data (url OU id+type)
+// - Logs verbeux et homogènes
 // ============================================================================
 
 import 'react-native-gesture-handler';
-import React, { useEffect, useMemo, useRef, useState, Suspense } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Slot, router } from 'expo-router';
-import { View, Linking, Text, Pressable } from 'react-native';
+import { View, Text, Pressable, Linking } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as SystemUI from 'expo-system-ui';
-import * as Notifications from 'expo-notifications';
-
-import { AdBanner, AdBootstrap } from '../src/ads/ads';
-import CustomTopToast from './components/CustomTopToast';
-
-import { useUserStore } from '../store/users';
-// ⚠️ Stripe retiré volontairement
 
 import {
   attachNotificationListeners,
@@ -27,43 +22,35 @@ import {
   checkInitialNotification,
 } from '../src/notifications';
 
-import { attachDeviceAutoRefresh } from '../libs/registerCurrentDevice';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../firebase';
-import { ensureAuthOnBoot } from '../src/authBootstrap';
+
+import { AdBanner, AdBootstrap } from '../src/ads/ads';
+import CustomTopToast from './components/CustomTopToast';
 
 // ============================================================================
-// Logs homogènes + émojis
+// Logs
 // ============================================================================
 const TAG = '[LAYOUT]';
-const log   = (...a) => console.log(`${TAG} 🧭`, ...a);
-const info  = (...a) => console.log(`${TAG} ℹ️`, ...a);
-const warn  = (...a) => console.warn(`${TAG} ⚠️`, ...a);
-const err   = (...a) => console.error(`${TAG} ❌`, ...a);
+const log  = (...a) => console.log(`${TAG} 🧭`, ...a);
+const warn = (...a) => console.warn(`${TAG} ⚠️`, ...a);
+const err  = (...a) => console.error(`${TAG} ❌`, ...a);
 
-const TAGN  = '[NOTIF]';
+const TAGN = '[NOTIF]';
 const logN  = (...a) => console.log(`${TAGN} 📣`, ...a);
 const warnN = (...a) => console.warn(`${TAGN} ⚠️`, ...a);
-const errN  = (...a) => console.error(`${TAGN} ❌`, ...a);
-
-const TAGADS = '[ADS]';
-const logAds = (...a) => console.log(`${TAGADS} 📺`, ...a);
 
 // ============================================================================
-// ErrorBoundary bavard
+// ErrorBoundary minimaliste (évite l’écran blanc)
 // ============================================================================
 class RootErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
     this.state = { error: null };
-    info('[ROOT][ErrorBoundary] 🧱 monté');
   }
   static getDerivedStateFromError(error) {
-    console.error('[ROOT][ErrorBoundary] 🚨 getDerivedStateFromError:', error);
+    console.error('[ErrorBoundary] 🚨', error);
     return { error };
-  }
-  componentDidCatch(error, infox) {
-    console.error('[ROOT][ErrorBoundary] 🧯 componentDidCatch:', error, infox);
   }
   render() {
     if (this.state.error) {
@@ -71,12 +58,12 @@ class RootErrorBoundary extends React.Component {
         <View style={{ flex: 1, padding: 16, gap: 12, justifyContent: 'center', alignItems: 'center' }}>
           <Text style={{ fontWeight: '700', fontSize: 18 }}>Une erreur est survenue 😵‍💫</Text>
           <Text style={{ opacity: 0.8, textAlign: 'center' }}>
-            Pas de panique, on a intercepté l’écran qui plantait.
+            On a intercepté le plantage. Tu peux revenir à l’accueil.
           </Text>
           <Pressable
             onPress={() => {
               this.setState({ error: null });
-              try { router.replace('/'); } catch (e) { err('[ROOT][ErrorBoundary] replace("/"): ', e?.message || e); }
+              try { router.replace('/'); } catch (e) { err('router.replace("/"):', e?.message || e); }
             }}
             style={{ paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, backgroundColor: '#222' }}
           >
@@ -90,185 +77,177 @@ class RootErrorBoundary extends React.Component {
 }
 
 // ============================================================================
-// Helpers deep link → route
+// Helpers de parsing + routing (cold start uniquement)
+// NB: le routing “normal” (tap/receive) est géré dans src/notifications.js
 // ============================================================================
-function routeFromUrlLike(rawUrl) {
+function parseMaybeStringified(d0) {
   try {
-    const s = String(rawUrl || '').trim();
-    let path = s;
-    if (!s) {return null;}
-
-    if (s.startsWith('vigiapp://')) {
-      const u = new URL(s);
-      path = u.pathname || '';
+    if (!d0) return {};
+    if (typeof d0 === 'string') {
+      try { return JSON.parse(d0); } catch { return {}; }
     }
-
-    // vigiapp://public-alerts/<id>
-    const m1 = path.match(/\/?public-alerts\/([^/?#]+)/i);
-    if (m1?.[1]) {return { pathname: '/public-alerts/[id]', params: { id: m1[1] } };}
-
-    // vigiapp://missing-public-alerts/<id>
-    const m2 = path.match(/\/?missing-public-alerts\/([^/?#]+)/i);
-    if (m2?.[1]) {return { pathname: '/missing-public-alerts/[id]', params: { id: m2[1] } };}
-
-    // ?alertId=<id> (fallback)
-    const q = s.match(/[?&](?:alertId|id)=([^&#]+)/i);
-    if (q?.[1]) {
-      if (/missing/i.test(s)) {return { pathname: '/missing-public-alerts/[id]', params: { id: q[1] } };}
-      return { pathname: '/public-alerts/[id]', params: { id: q[1] } };
+    if (typeof d0?.data === 'string') {
+      try { return { ...d0, ...JSON.parse(d0.data) }; } catch { /* noop */ }
     }
-  } catch (e) {
-    warnN('routeFromUrlLike error:', e?.message || e);
+    return d0 || {};
+  } catch { return {}; }
+}
+
+function pickAny(obj, keys) {
+  if (!obj) return '';
+  for (const k of keys) {
+    const v = obj[k];
+    if (v !== undefined && v !== null && String(v) !== '') return String(v);
   }
-  return null;
+  return '';
 }
 
-// Dédup navigation (anti double push)
-function useSafeNavigator() {
-  const lastNavRef = useRef({ key: null, ts: 0 });
-  const safeNavigateFromRawUrl = (rawUrl) => {
+// Route ultra-fiable pour le *cold start* (quand Expo ne rediffuse pas l’event tap)
+function routeFromColdStartData(rawData = {}) {
+  const d = parseMaybeStringified(rawData);
+  const rawUrl =
+    pickAny(d, ['url','deepLink','deeplink','deep_link','link','open','href','route']) || '';
+
+  // 1) Si on a un deep link explicite → priorité
+  if (rawUrl && rawUrl.startsWith('vigiapp://')) {
     try {
-      if (!rawUrl) {return;}
-      const key = String(rawUrl);
-      const now = Date.now();
-      if (lastNavRef.current.key === key && now - lastNavRef.current.ts < 1500) {
-        warnN('⏱️ skip double navigation (1.5s) for', key);
-        return;
-      }
-      lastNavRef.current = { key, ts: now };
-
-      const route = routeFromUrlLike(rawUrl);
-      if (route) {
-        logN('🧭 router.push →', route);
-        setTimeout(() => router.push(route), 50);
-      } else {
-        logN('🔗 Linking.openURL →', rawUrl);
-        Linking.openURL(String(rawUrl)).catch((e) => warnN('Linking.openURL error:', e?.message || e));
-      }
+      const path = rawUrl.replace('vigiapp://', '/');
+      logN('🧭 [cold] router.push (deepLink) →', path);
+      router.push(path);
+      return true;
     } catch (e) {
-      errN('safeNavigateFromRawUrl:', e?.message || e);
+      warnN('cold deepLink route error:', e?.message || e);
     }
+  }
+
+  // 2) Sinon, on recompose depuis id + type
+  const id =
+    pickAny(d, ['alertId','caseId','id','alert_id','case_id','alertID','caseID']);
+  const category =
+    (pickAny(d, ['category','type','notifType','notification_type']) || '').toLowerCase();
+  const channel = (pickAny(d, ['channelId','channel_id']) || '').toLowerCase();
+  const openTarget = pickAny(d, ['openTarget']) || 'detail';
+
+  if (!id) {
+    logN('🌡️ [cold] pas d’id exploitable → on ne route pas');
+    return false;
+  }
+
+  const isMissing =
+    category === 'missing' ||
+    channel === 'missing-alerts-urgent' ||
+    (rawUrl && rawUrl.startsWith('vigiapp://missing/'));
+
+  if (isMissing) {
+    const path = `/missing/${encodeURIComponent(id)}`;
+    logN('🧭 [cold] router.push (MISSING) →', path);
+    router.push(path);
+    return true;
+  }
+
+  if (openTarget === 'home') {
+    const path = `/(tabs)/home?fromNotif=1&alertId=${encodeURIComponent(id)}`;
+    logN('🧭 [cold] router.push (HOME) →', path);
+    router.push(path);
+    return true;
+  }
+
+  const path = `/public-alerts/${encodeURIComponent(id)}`;
+  logN('🧭 [cold] router.push (PUBLIC) →', path);
+  router.push(path);
+  return true;
+}
+
+// Petitimus anti double navigation (au cas où)
+function useColdNavGuard() {
+  const lastRef = useRef({ k: '', ts: 0 });
+  return (data) => {
+    const key = JSON.stringify(data ?? {});
+    const now = Date.now();
+    if (lastRef.current.k === key && now - lastRef.current.ts < 1500) {
+      warnN('⏱️ [cold] skip double navigation');
+      return;
+    }
+    lastRef.current = { k: key, ts: now };
+    routeFromColdStartData(data);
   };
-  return { safeNavigateFromRawUrl };
 }
 
 // ============================================================================
-// InnerLayout
+// Inner layout
 // ============================================================================
-function InnerLayout() {
-  const [authUid, setAuthUid] = useState(null);
-  const storeUid = useUserStore((s) => s?.user?.uid);
-  const userCep = useUserStore((s) => s?.user?.cep ?? s?.profile?.cep ?? null);
-  const userCity = useUserStore((s) => s?.user?.cidade ?? s?.profile?.cidade ?? null);
-  const userId = authUid || storeUid || null;
-
+function Inner() {
   const insets = useSafeAreaInsets();
-  const BANNER_HEIGHT = 50;
-  const { safeNavigateFromRawUrl } = useSafeNavigator();
+  const coldGuard = useColdNavGuard();
 
-  const bottomOffset = useMemo(() => {
-    const offset = BANNER_HEIGHT + (insets?.bottom ?? 0);
-    logAds('🧮 bottomOffset =', offset);
-    return offset;
-  }, [insets]);
+  useEffect(() => {
+    // Fond système propre
+    SystemUI.setBackgroundColorAsync('#101114').catch((e) =>
+      warn('SystemUI.setBackgroundColorAsync:', e?.message || e)
+    );
+  }, []);
 
-  // Auth state
+  // Auth log (diagnostic) — le gating réel est dans wireAuthGateForNotifications()
   useEffect(() => {
     log('🔐 onAuthStateChanged: subscribe');
     const unsub = onAuthStateChanged(auth, (u) => {
-      setAuthUid(u?.uid || null);
       log('🔐 onAuthStateChanged →', u?.uid || '(null)');
     });
-    return () => {
-      try { unsub?.(); log('🔐 onAuthStateChanged: unsubscribe ✅'); }
-      catch (e) { warn('🔐 onAuthStateChanged: unsubscribe error:', e?.message || e); }
-    };
+    return () => { try { unsub?.(); } catch {} };
   }, []);
 
-  // Notifs + Device + Cold start
+  // Notifications: init → listeners → cold start → token
   useEffect(() => {
     let detachNotif;
-    let detachDevice;
     (async () => {
-      info('🚀 Layout effect (notifs/device) START');
-
-      // Gate auth pour ACK enrichi
       try {
         logN('🔧 wireAuthGateForNotifications()');
         wireAuthGateForNotifications();
-      } catch (e) { warnN('auth-gate:', e?.message || e); }
+      } catch (e) { warnN('wireAuthGateForNotifications:', e?.message || e); }
 
-      // Init notifications (permissions + channels)
       try {
-        logN('🧰 initNotifications() — permissions + canaux');
+        logN('🧰 initNotifications()');
         await initNotifications();
       } catch (e) { warnN('initNotifications:', e?.message || e); }
 
-      // Listeners
       try {
         logN('👂 attachNotificationListeners()');
+        // ⚠️ Pas de navigation ici: le module route déjà sur TAP.
         detachNotif = attachNotificationListeners({
           onReceive: (n) => {
-            try {
-              const d = n?.request?.content?.data || {};
-              logN('🟢 onReceive(FG):', d);
-            } catch (e) { warnN('onReceive log error:', e?.message || e); }
+            const d = n?.request?.content?.data ?? {};
+            logN('📥 onReceive(FG) data =', d);
           },
           onResponse: (r) => {
-            try {
-              const data = r?.notification?.request?.content?.data || {};
-              const rawUrl = data.url || data.deepLink || data.link || data.open;
-              logN('👆 TAP response → rawUrl =', rawUrl || '(none)');
-              if (rawUrl) {safeNavigateFromRawUrl(rawUrl);}
-            } catch (e) { errN('onResponse handler:', e?.message || e); }
+            const d = r?.notification?.request?.content?.data ?? {};
+            logN('👆 onResponse(TAP) data =', d);
+            // La navigation du TAP est gérée dans src/notifications.js (routeFromData)
           },
         });
         logN('👂 Listeners attachés ✅');
-      } catch (e) { warnN('listeners:', e?.message || e); }
+      } catch (e) { warnN('attachNotificationListeners:', e?.message || e); }
 
-      // Cold start (si l’app a été ouverte via une notif)
+      // Cold start (app tuée ouverte via notif) → on re-route ici
       try {
         logN('🌡️ checkInitialNotification()');
         await checkInitialNotification((resp) => {
-          const data = resp?.notification?.request?.content?.data || {};
-          const rawUrl = data.url || data.deepLink || data.link || data.open;
-          logN('🌡️ Cold start → rawUrl =', rawUrl || '(none)');
-          if (rawUrl) {safeNavigateFromRawUrl(rawUrl);}
+          const d0 = resp?.notification?.request?.content?.data ?? {};
+          logN('🌡️ Cold start data =', d0);
+          coldGuard(d0);
         });
-      } catch (e) { warnN('initialNotif:', e?.message || e); }
+      } catch (e) { warnN('checkInitialNotification:', e?.message || e); }
 
-      // FCM device token (diagnostic)
+      // Token FCM (diag)
       try {
-        const token = await getFcmDeviceTokenAsync();
-        if (token) {logN('🔑 FCM token ✅', token);}
-        else {warnN('🔑 FCM token indisponible');}
-      } catch (e) { warnN('fcm token:', e?.message || e); }
-
-      // Device auto-refresh (Firestore orchestrateur)
-      info('[Device] userId =', userId || '(anon)');
-      try {
-        if (userId) {
-          detachDevice = attachDeviceAutoRefresh({ userId, userCep, userCity, groups: [] });
-          logN('📡 Device auto-refresh attach ✅', { userId, userCep, userCity });
-        } else {
-          warnN('📡 Device auto-refresh non lancé (pas de userId)');
-        }
-      } catch (e) { warnN('attachDeviceAutoRefresh:', e?.message || e); }
-
-      info('✅ Layout effect (notifs/device) READY');
+        const tok = await getFcmDeviceTokenAsync();
+        if (tok) logN('🔑 FCM token:', tok);
+        else warnN('🔑 FCM token indisponible (simulateur ou permissions)');
+      } catch (e) { warnN('getFcmDeviceTokenAsync:', e?.message || e); }
     })();
 
     return () => {
-      info('🧹 Layout effect cleanup — start');
-      try { detachNotif?.(); logN('🧹 detachNotif OK'); } catch (e) { warnN('🧹 detachNotif error:', e?.message || e); }
-      try { detachDevice?.(); logN('🧹 detachDevice OK'); } catch (e) { warnN('🧹 detachDevice error:', e?.message || e); }
-      info('🧹 Layout effect cleanup — done');
+      try { detachNotif?.(); logN('🧹 detachNotif OK'); } catch (e) { warnN('🧹 detachNotif:', e?.message || e); }
     };
-  }, [userId, userCep, userCity]);
-
-  useEffect(() => {
-    warn('🧩 Layout mounted');
-    return () => warn('🧩 Layout unmounted');
   }, []);
 
   return (
@@ -277,7 +256,7 @@ function InnerLayout() {
       <CustomTopToast />
       <View style={{ flex: 1, paddingBottom: (50 + (insets?.bottom ?? 0)) }}>
         <RootErrorBoundary>
-          <Suspense
+          <React.Suspense
             fallback={
               <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
                 <Text>Chargement… ⏳</Text>
@@ -285,7 +264,7 @@ function InnerLayout() {
             }
           >
             <Slot />
-          </Suspense>
+          </React.Suspense>
         </RootErrorBoundary>
       </View>
 
@@ -307,27 +286,12 @@ function InnerLayout() {
 }
 
 // ============================================================================
-// Shell Layout (SafeArea + bootstrap système + auth anonyme)
+// Shell Layout
 // ============================================================================
 export default function Layout() {
-  // Fond système propre pour edge-to-edge
-  useEffect(() => {
-    info('🎨 SystemUI.setBackgroundColorAsync #101114');
-    SystemUI.setBackgroundColorAsync('#101114').catch((e) =>
-      warn('SystemUI.setBackgroundColorAsync error:', e?.message || e)
-    );
-  }, []);
-
-  // 🔐 Bootstrap auth anonyme au tout début de l’app
-  useEffect(() => {
-    info('🛂 ensureAuthOnBoot()');
-    try { ensureAuthOnBoot(); info('🛂 ensureAuthOnBoot OK ✅'); }
-    catch (e) { err('🛂 ensureAuthOnBoot error:', e?.message || e); }
-  }, []);
-
   return (
     <SafeAreaProvider>
-      <InnerLayout />
+      <Inner />
     </SafeAreaProvider>
   );
 }

@@ -1,8 +1,7 @@
 // app/missing-public-alerts/[id].jsx
 // -----------------------------------------------------------------------------
-// Route de détail pour les alertes "Missing" (enfants/animaux/objets perdus).
-// Ouvre le renderer commun avec channel="missing" et l'alertId du deep link.
-// Deep link CF attendu : vigiapp://missing-public-alerts/:id
+// Détail alerte Missing (animal/enfant/objet)
+// ID = caseId dans Firestore
 // -----------------------------------------------------------------------------
 
 import React from 'react';
@@ -13,10 +12,15 @@ import AlertDetailScreen from '../../src/alerts/AlertDetailScreen';
 const TAG = '[ROUTE_MISSING_ALERT]';
 
 export default function MissingAlertDetailRoute() {
-  const { id } = useLocalSearchParams();
-  const alertId = id ? String(id) : '';
+  const params = useLocalSearchParams();
+  
+  // ✅ ID Firestore des "missing" === caseId (pas alertId)
+  const caseId = params?.id ? String(params.id) : '';
+  
+  // ✅ type / “hint” pour l’UI immédiate avant fetch : animal / child / object...
+  const kindHint = params?.kind ? String(params.kind).toLowerCase() : '';
 
-  if (!alertId) {
+  if (!caseId) {
     console.warn(TAG, 'missing:id');
     return (
       <View style={S.center}>
@@ -26,11 +30,28 @@ export default function MissingAlertDetailRoute() {
     );
   }
 
-  console.log(TAG, 'open', { alertId, channel: 'missing' });
-  return <AlertDetailScreen channel="missing" alertId={alertId} />;
+  console.log(TAG, 'open', { caseId, kindHint });
+
+  return (
+    <AlertDetailScreen
+      channel="missing"
+      caseId={caseId} // ✅ ce que l'écran attend pour aller chercher Firestore
+      alertId={caseId} // ✅ rétro-compat pour tes anciens fetch
+      kindHint={kindHint} // ✅ pour afficher direct "animal" si connu
+    />
+  );
 }
 
 const S = StyleSheet.create({
-  center: { flex: 1, backgroundColor: '#0b0f14', alignItems: 'center', justifyContent: 'center' },
-  msg: { color: '#e5e7eb', marginTop: 10, fontWeight: '700' },
+  center: {
+    flex: 1,
+    backgroundColor: '#0b0f14',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  msg: {
+    color: '#e5e7eb',
+    marginTop: 10,
+    fontWeight: '700',
+  },
 });
