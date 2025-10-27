@@ -1,17 +1,19 @@
 // src/notifications.js
 // ============================================================================
-// VigiApp — Notifications (Expo + FCM) + ACK + Routing
-// - Canaux Android: "default" (DEFAULT), "public-alerts-high" (MAX, heads-up)
-//   + alias legacy "public" (MAX) pour compat (payloads existants)
-// - Handler SDK 53+ (banner + list + sound en FG)
-// - Cold start & tap → navigation (attend l’auth si besoin)
-// - ACK idempotent (receive/tap) vers Cloud Function
-// - Logs verbeux + emojis
+// VigiApp — Notifications (Expo + FCM) : Public vs Missing (no-regression build)
+// - Un seul moteur, deux domaines (public / missing) routés proprement
+// - Normalisation large des payloads (alertId|caseId|id, deepLink|deeplink|url, category|type)
+// - Expo SDK 53 handler: banner/list (sans shouldShowAlert déprécié)
+// - Android channels: default / public-alerts-high / public (legacy) / missing-alerts-urgent
+// - ACK: tap = OK (public & missing), receive = OK (public) / SKIP (missing) pour éviter les 500
+// - ACK idempotent (receive/tap) avec logs
+// - Anti-doublons listeners (hot reload / double mount) + dédoupe 60s
+// - Cold start via getLastNotificationResponseAsync()
 // ============================================================================
 
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
-import { Platform, PermissionsAndroid, Linking } from 'react-native';
+import { Platform, PermissionsAndroid } from 'react-native';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -21,14 +23,24 @@ import { auth } from '../firebase';
 // Constantes
 // ---------------------------------------------------------------------------
 export const DEFAULT_CHANNEL_ID = 'default';
-export const ALERTS_HIGH_CHANNEL_ID = 'public-alerts-high'; // 👉 nouveau ID garanti MAX
-const LEGACY_PUBLIC_ID = 'public'; // 👉 alias: on le crée en MAX aussi
+export const ALERTS_HIGH_CHANNEL_ID = 'public-alerts-high';
+const LEGACY_PUBLIC_ID = 'public';
+export const MISSING_CHANNEL_ID = 'missing-alerts-urgent';
 
 const isAndroid = Platform.OS === 'android';
 const isAndroid13Plus = isAndroid && Platform.Version >= 33;
 
-const ACK_ENDPOINT =
+// ACK endpoints
+const ACK_PUBLIC_ENDPOINT =
   'https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/ackPublicAlertReceipt';
+// Optionnel : si tu crées un jour un endpoint missing, mets l’URL ici
+const ACK_MISSING_ENDPOINT = null; // ex: 'https://.../ackMissingReceipt'
+
+// Map de routes (aligne avec ton app/)
+const ROUTES = {
+  public: (id) => `/public-alerts/${encodeURIComponent(id)}`,
+  missing: (id) => `/missing-public-alerts/${encodeURIComponent(id)}`,
+};
 
 // ---------------------------------------------------------------------------
 // Logs
@@ -39,69 +51,73 @@ const warn = (...a) => console.warn(`${TAG} ⚠️`, ...a);
 const err  = (...a) => console.error(`${TAG} ❌`, ...a);
 
 // ---------------------------------------------------------------------------
-// État interne
+// État interne (anti double init / attach / spam / auth gate)
 // ---------------------------------------------------------------------------
+let __handlerSet = false;
+let __listenersSet = false;
+let __initDone = false;
+
 let __authReady = false;
 let __pendingNotifData = null;
-let __lastHandled = { id: undefined, ts: 0 };
-const __acked = new Set(); // `${alertId}|${reason}`
+let __lastTap = { id: undefined, ts: 0 };
+
+const __acked = new Set(); // `${id}|${reason}`
+const __receivedRecently = new Map(); // id -> ts
+const RECEIVE_DEDUP_MS = 60_000; // 60s
 
 // ---------------------------------------------------------------------------
-// Handler FG (banner/list/sound en foreground)
+// Handler FG (Expo SDK 53+)
 // ---------------------------------------------------------------------------
-(() => {
-  if (!globalThis.__VIGIAPP_NOTIF_HANDLER_SET__) {
-    globalThis.__VIGIAPP_NOTIF_HANDLER_SET__ = true;
-    Notifications.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldShowBanner: true,
-        shouldShowList: true,
-        shouldPlaySound: true,
-        shouldSetBadge: false,
-      }),
-    });
-    log('Handler FG installé ✅ (banner/list/sound + compat alert)');
-  }
-})();
+function ensureNotificationHandler() {
+  if (__handlerSet) return;
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+      // Expo 53 : préférer banner/list (shouldShowAlert est déprécié)
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  });
+  __handlerSet = true;
+  log('Handler FG installé ✅ (banner/list + sound)');
+}
 
 // ---------------------------------------------------------------------------
 // Channels Android
 // ---------------------------------------------------------------------------
 async function ensureDefaultChannel() {
-  if (!isAndroid) {return;}
+  if (!isAndroid) return;
   await Notifications.setNotificationChannelAsync(DEFAULT_CHANNEL_ID, {
     name: 'Par défaut',
     description: 'Notifications générales',
     importance: Notifications.AndroidImportance.DEFAULT,
     sound: 'default',
   });
-  log(`📦 Canal "default" prêt (importance=DEFAULT)`);
+  log(`📦 Canal "default" prêt (DEFAULT)`);
 }
 
-async function ensureMaxChannel(id, label) {
-  if (!isAndroid) {return;}
+async function ensureMaxChannel(id, label, vibrationPattern = [0, 500, 300, 500]) {
+  if (!isAndroid) return;
   await Notifications.setNotificationChannelAsync(id, {
     name: label,
-    description: 'Alertes importantes et critiques',
+    description: 'Alertes importantes',
     importance: Notifications.AndroidImportance.MAX,
     sound: 'default',
     enableVibrate: true,
-    vibrationPattern: [0, 500, 300, 500],
+    vibrationPattern,
     lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     bypassDnd: true,
   });
-  log(`🚨 Canal "${id}" prêt (importance=MAX)`);
+  log(`🚨 Canal "${id}" prêt (MAX)`);
 }
 
 export async function ensureAndroidChannels() {
-  if (!isAndroid) {return;}
-  // On crée:
-  // - default: DEFAULT
-  // - public-alerts-high: MAX (nouveau)
-  // - public: MAX (alias legacy, heads-up aussi)
+  if (!isAndroid) return;
   await ensureDefaultChannel();
   await ensureMaxChannel(ALERTS_HIGH_CHANNEL_ID, 'Alertes publiques (élevé)');
   await ensureMaxChannel(LEGACY_PUBLIC_ID, 'Alertes publiques (legacy)');
+  await ensureMaxChannel(MISSING_CHANNEL_ID, 'Missing — Urgent', [0, 800, 300, 800, 300, 600]);
 
   try {
     const list = await Notifications.getNotificationChannelsAsync?.();
@@ -115,9 +131,11 @@ export async function ensureAndroidChannels() {
 // Permissions
 // ---------------------------------------------------------------------------
 async function ensureAndroid13Permission() {
-  if (!isAndroid13Plus) {return;}
+  if (!isAndroid13Plus) return;
   try {
-    const r = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
+    const r = await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
+    );
     log('🧿 POST_NOTIFICATIONS (Android 13+) →', r);
   } catch (e) {
     warn('POST_NOTIFICATIONS error:', e?.message || e);
@@ -161,9 +179,14 @@ export function wireAuthGateForNotifications(authInstance = auth) {
 }
 
 // ---------------------------------------------------------------------------
-// INIT
+// INIT (unique)
 // ---------------------------------------------------------------------------
 export async function initNotifications() {
+  if (__initDone) {
+    log('🧰 initNotifications() — déjà fait (skip)');
+    return;
+  }
+  ensureNotificationHandler();
   log('🧰 initNotifications() — permissions + canaux');
   if (isAndroid) {
     log('🔧 Préparation Android (channels + permission 13+)');
@@ -171,11 +194,12 @@ export async function initNotifications() {
     await ensureAndroid13Permission();
   }
   await ensureBasePermissions();
+  __initDone = true;
   log('✅ Notifications prêtes');
 }
 
 // ---------------------------------------------------------------------------
-// Cold start helper (exposé car ton layout l’utilise)
+// Cold start helper
 // ---------------------------------------------------------------------------
 export async function checkInitialNotification(cb) {
   try {
@@ -190,87 +214,189 @@ export async function checkInitialNotification(cb) {
 }
 
 // ---------------------------------------------------------------------------
+// Utils : normalisation / helpers
+// ---------------------------------------------------------------------------
+function toStringOrEmpty(v) {
+  if (v === undefined || v === null) return '';
+  try { return String(v); } catch { return ''; }
+}
+
+function pickAny(obj, keys) {
+  for (const k of keys) {
+    const v = obj?.[k];
+    if (v !== undefined && v !== null && String(v) !== '') return String(v);
+  }
+  return '';
+}
+
+function maybeParseData(d) {
+  // Certains providers envoient data stringifiée
+  if (typeof d === 'string') {
+    try { return JSON.parse(d); } catch { /* noop */ }
+  }
+  // Parfois data est sous-clé "data" encore stringifiée
+  if (d && typeof d.data === 'string') {
+    try { return { ...d, ...JSON.parse(d.data) }; } catch { /* noop */ }
+  }
+  return d || {};
+}
+
+// Unifie les champs hétérogènes d’un payload (logs inclus)
+function normalizePayload(raw = {}) {
+  const data = maybeParseData(raw);
+
+  const id = pickAny(data, [
+    'alertId','caseId','id',
+    'alert_id','case_id','alertID','caseID'
+  ]);
+
+  const rawUrl = pickAny(data, [
+    'url','deepLink','deeplink','deep_link','link','open','href','route'
+  ]);
+
+  const categoryOrType = pickAny(data, [
+    'category','type','notifType','notification_type'
+  ]).toLowerCase();
+
+  const channel = toStringOrEmpty(data?.channelId || data?.channel_id).toLowerCase();
+
+  const isMissing =
+    categoryOrType === 'missing' ||
+    channel === MISSING_CHANNEL_ID ||
+    (rawUrl && rawUrl.startsWith('vigiapp://missing/')) ||
+    pickAny(data, ['domain','scope']).toLowerCase() === 'missing';
+
+  const norm = { id, rawUrl, categoryOrType, channel, isMissing, _raw: data };
+  log('🧾 normalize →', norm);
+  return norm;
+}
+
+// ---------------------------------------------------------------------------
 // Routing
 // ---------------------------------------------------------------------------
 function routeFromData(data = {}) {
-  const alertId = String(data?.alertId || '');
-  if (!alertId) {return;}
+  const { id: alertId, rawUrl, isMissing, _raw } = normalizePayload(data);
+  if (!alertId) { warn('route: id manquant (alertId|caseId|id)'); return; }
 
+  // Anti double-tap trop rapproché
   const now = Date.now();
-  if (__lastHandled.id === alertId && now - (__lastHandled.ts || 0) < 1200) {
+  if (__lastTap.id === alertId && now - (__lastTap.ts || 0) < 1200) {
     warn('⏱️ double route évitée (1.2s) pour', alertId);
     return;
   }
-  __lastHandled = { id: alertId, ts: now };
+  __lastTap = { id: alertId, ts: now };
 
-  const rawUrl =
-    data.url || data.deepLink || data.link || data.open || data.href || data.route || '';
-
-  // Deep link vigiapp://...
-  if (typeof rawUrl === 'string' && rawUrl.startsWith('vigiapp://')) {
-    const path = rawUrl.replace('vigiapp://', '/');
+  // Deep link prioritaire – normalise missing → missing-public-alerts
+  const link = (rawUrl || '').trim();
+  if (link && link.startsWith('vigiapp://')) {
+    let path = link.replace('vigiapp://', '/');
+    if (/^\/missing\/[^/]+/i.test(path)) {
+      const id = path.split('/').pop();
+      path = ROUTES.missing(id);
+    }
     log('🧭 router.push (deepLink) →', path);
     router.push(path);
     return;
   }
 
-  // Fallback par type/target
-  const openTarget = String(data?.openTarget || 'detail');
+  // Domaine Missing prioritaire si détecté
+  if (isMissing) {
+    const path = ROUTES.missing(alertId);
+    log('🧭 router.push (MISSING) →', path);
+    router.push(path);
+    return;
+  }
+
+  // Fallback public (inchangé + tolérance openTarget)
+  const openTarget = String(_raw?.openTarget || data?.openTarget || 'detail');
   if (openTarget === 'home') {
     const path = `/(tabs)/home?fromNotif=1&alertId=${encodeURIComponent(alertId)}`;
     log('🧭 router.push →', path);
     router.push(path);
   } else {
-    const path = `/public-alerts/${alertId}`;
+    const path = ROUTES.public(alertId);
     log('🧭 router.push →', path);
     router.push(path);
   }
 }
 
 // ---------------------------------------------------------------------------
-// Listeners (FG + Tap)
+// Listeners (FG + Tap) — anti double attach
 // ---------------------------------------------------------------------------
 export function attachNotificationListeners({ onReceive, onResponse } = {}) {
   log('👂 attachNotificationListeners()');
+  ensureNotificationHandler();
+
+  if (__listenersSet) {
+    log('👂 Listeners déjà attachés — skip');
+    return () => {};
+  }
+  __listenersSet = true;
 
   // Réception FG
   const sub1 = Notifications.addNotificationReceivedListener((n) => {
     try {
       const content = n?.request?.content || {};
-      const d = content?.data ?? {};
-      log('📥 received(FG) → data =', d);
+      const d0 = content?.data ?? {};
+      const d = maybeParseData(d0);
+      log('📥 received(FG) → data =', JSON.stringify(d));
 
-      // Fallback local si push silencieux sans title
-      if (Platform.OS === 'android' && !content?.title) {
-        const channelId = String(d?.channelId || ALERTS_HIGH_CHANNEL_ID);
+      const { id, isMissing } = normalizePayload(d);
+
+      // Dédupe simple 60s par id si présent
+      if (id) {
+        const now = Date.now();
+        const last = __receivedRecently.get(id) || 0;
+        if (now - last < RECEIVE_DEDUP_MS) {
+          warn('🧯 dedupe(FG): ignore id', id);
+          return;
+        }
+        __receivedRecently.set(id, now);
+      }
+
+      // Fallback local ULTRA-prudent: seulement si data-only (sans title ET sans body)
+      if (Platform.OS === 'android' && !content?.title && !content?.body) {
+        const ch = String(d?.channelId || ALERTS_HIGH_CHANNEL_ID);
         Notifications.scheduleNotificationAsync({
           content: {
             title: d?.title || 'VigiApp — Alerte',
             body: d?.body || 'Nouvelle alerte',
             data: { ...d, __localFallback: 1 },
-            channelId,
+            channelId: ch,
           },
           trigger: null,
         })
-          .then((id) => log('🧩 Fallback local schedulé (FG) id=', id, 'key=', d?.alertId || 'n/a'))
+          .then((nid) => log('🧩 Fallback local schedulé (FG) id=', nid, 'key=', id || 'n/a'))
           .catch((e) => warn('fallback local notif:', e?.message || e));
       }
 
-      if (d?.alertId) {ackAlertSafe(d, 'receive');}
+      // ACK "receive": public OK, missing SKIP (évite 500)
+      if (id) {
+        if (isMissing) {
+          log('♻️ ACK receive SKIP (missing) id=', id);
+        } else {
+          ackAlertSafe({ ...d, id }, 'receive', { isMissing });
+        }
+      }
+
+      try { onReceive?.(n); } catch (e) { warn('onReceive callback error:', e?.message || e); }
     } catch (e) {
       err('received(FG) handler:', e?.message || e);
     }
-    try { onReceive?.(n); } catch (e) { warn('onReceive callback error:', e?.message || e); }
   });
 
   // Tap (BG/kill/FG)
   const sub2 = Notifications.addNotificationResponseReceivedListener((r) => {
     try {
       const n = r?.notification;
-      const d = n?.request?.content?.data ?? {};
-      log('👆 TAP response →', d);
+      const d0 = n?.request?.content?.data ?? {};
+      const d = maybeParseData(d0);
+      log('👆 TAP response →', JSON.stringify(d));
 
-      if (d?.alertId) {ackAlertSafe(d, 'tap');}
+      const { id, isMissing } = normalizePayload(d);
+
+      // ACK "tap" toujours (public & missing)
+      if (id) ackAlertSafe({ ...d, id }, 'tap', { isMissing });
 
       if (!__authReady) {
         __pendingNotifData = d;
@@ -278,21 +404,22 @@ export function attachNotificationListeners({ onReceive, onResponse } = {}) {
       } else {
         routeFromData(d);
       }
+      try { onResponse?.(r); } catch (e) { warn('onResponse callback error:', e?.message || e); }
     } catch (e) {
       err('tap handler:', e?.message || e);
     }
-    try { onResponse?.(r); } catch (e) { warn('onResponse callback error:', e?.message || e); }
   });
 
   log('👂 Listeners attachés ✅');
   return () => {
     try { sub1?.remove?.(); log('🧹 detachNotif sub1 OK'); } catch (e) { warn('🧹 detachNotif sub1 error:', e?.message || e); }
     try { sub2?.remove?.(); log('🧹 detachNotif sub2 OK'); } catch (e) { warn('🧹 detachNotif sub2 error:', e?.message || e); }
+    __listenersSet = false;
   };
 }
 
 // ---------------------------------------------------------------------------
-// Expo Push Token
+// Tokens
 // ---------------------------------------------------------------------------
 export async function registerForPushNotificationsAsync() {
   await initNotifications();
@@ -306,9 +433,6 @@ export async function registerForPushNotificationsAsync() {
   return expoToken;
 }
 
-// ---------------------------------------------------------------------------
-// FCM token (dev client / APK)
-// ---------------------------------------------------------------------------
 export async function getFcmDeviceTokenAsync() {
   try {
     if (!Device.isDevice) {
@@ -328,11 +452,13 @@ export async function getFcmDeviceTokenAsync() {
 // ---------------------------------------------------------------------------
 // ACK (idempotent)
 // ---------------------------------------------------------------------------
-function ackAlertSafe(data, reason) {
-  const alertId = String(data?.alertId || '');
-  if (!alertId) {return;}
+function ackAlertSafe(data, reason, { isMissing = false } = {}) {
+  const id =
+    (data?.alertId || data?.caseId || data?.id ||
+     data?.alert_id || data?.case_id || '').toString();
+  if (!id) { warn('ACK skip: id manquant'); return; }
 
-  const key = `${alertId}|${reason}`;
+  const key = `${id}|${reason}`;
   if (__acked.has(key)) {
     log('♻️ ACK ignoré (idempotent):', key);
     return;
@@ -340,13 +466,14 @@ function ackAlertSafe(data, reason) {
   __acked.add(key);
 
   const extra = {
-    channelId: String(data?.channelId || ''),
+    channelId: String(data?.channelId || data?.channel_id || ''),
     appOpenTarget: String(data?.openTarget || ''),
+    category: String(data?.category || data?.type || ''),
   };
-  ackAlert({ alertId, reason, extra });
+  ackAlert({ alertId: id, reason, extra, isMissing });
 }
 
-async function ackAlert({ alertId, reason = 'receive', extra = {} }) {
+async function ackAlert({ alertId, reason = 'receive', extra = {}, isMissing = false }) {
   try {
     const uid = auth?.currentUser?.uid || '';
     let fcmToken = null;
@@ -364,9 +491,14 @@ async function ackAlert({ alertId, reason = 'receive', extra = {} }) {
       fcmToken: fcmToken || '',
       platform: Platform.OS || 'unknown',
       ...extra,
+      domain: isMissing ? 'missing' : 'public',
     };
 
-    const resp = await fetch(ACK_ENDPOINT, {
+    // Route ACK vers endpoint adapté ou fallback public
+    let url = ACK_PUBLIC_ENDPOINT;
+    if (isMissing && ACK_MISSING_ENDPOINT) url = ACK_MISSING_ENDPOINT;
+
+    const resp = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -390,6 +522,7 @@ export async function fireLocalNow(data = {}) {
     trigger: null,
   });
 }
+
 export async function scheduleLocalIn(seconds = 5, data = {}) {
   const channelId = String(data?.channelId || ALERTS_HIGH_CHANNEL_ID);
   return Notifications.scheduleNotificationAsync({
@@ -397,6 +530,7 @@ export async function scheduleLocalIn(seconds = 5, data = {}) {
     trigger: { seconds },
   });
 }
+
 export async function cancelAll() {
   return Notifications.cancelAllScheduledNotificationsAsync();
 }
