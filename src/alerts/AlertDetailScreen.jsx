@@ -77,44 +77,97 @@ const C = {
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 const safeCoord = (lat, lng) => (isNum(lat) && isNum(lng) ? { latitude: lat, longitude: lng } : null);
 
+// ===== DATES (robustes + heure brésilienne UTC-3) ===========================
+const pad2 = (n) => (n < 10 ? `0${n}` : `${n}`);
+
+const parseStringDateRobust = (s) => {
+  if (typeof s !== 'string' || !s.trim()) {return null;}
+
+  // tentative directe
+  let d = new Date(s);
+  if (!Number.isNaN(d.getTime())) {return d;}
+
+  // "YYYY-MM-DDTHH:MM.000Z" → injecter secondes si manquantes
+  let m = s.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})(\.\d{3}Z)$/);
+  if (m) {
+    d = new Date(`${m[1]}:00${m[2]}`);
+    if (!Number.isNaN(d.getTime())) {return d;}
+  }
+
+  // "YYYY-MM-DDTHH:MMZ" → ajouter ":00.000Z"
+  m = s.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})Z$/);
+  if (m) {
+    d = new Date(`${m[1]}:00.000Z`);
+    if (!Number.isNaN(d.getTime())) {return d;}
+  }
+
+  // "YYYY-MM-DD" → minuit UTC
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    d = new Date(`${s}T00:00:00.000Z`);
+    if (!Number.isNaN(d.getTime())) {return d;}
+  }
+
+  return null;
+};
+
 const normalizeToDate = (v) => {
   try {
-    if (!v) return null;
-    if (v instanceof Date) return v;
-    if (typeof v?.toDate === 'function') return v.toDate();
-    if (typeof v === 'object' && 'seconds' in v) return new Date(v.seconds * 1000);
-    if (typeof v === 'number') return new Date(v);
-    if (typeof v === 'string') return new Date(v);
+    if (!v) {return null;}
+    if (v instanceof Date) {return v;}
+    if (typeof v?.toDate === 'function') {return v.toDate();} // Firestore Timestamp
+    if (typeof v === 'object' && ('seconds' in v || 'nanoseconds' in v)) {
+      const ms = (v.seconds || 0) * 1000 + Math.floor((v.nanoseconds || 0) / 1e6);
+      const d = new Date(ms);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+    if (typeof v === 'number') {
+      const ms = v > 1e12 ? v : v * 1000; // auto ms/s
+      const d = new Date(ms);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+    if (typeof v === 'string') {return parseStringDateRobust(v);}
     return null;
   } catch {
     return null;
   }
 };
-const pad = (n) => (n < 10 ? `0${n}` : `${n}`);
 
-// Date courte J/M HH:mm (local)
-const fmtDate = (inp) => {
+// JJ/MM HH:mm en heure brésilienne (UTC-3), sans Intl
+const fmtDateBr = (inp) => {
   const d = normalizeToDate(inp);
-  if (!d || Number.isNaN(d.getTime())) return '—';
-  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  if (!d) {return '—';}
+  const shifted = new Date(d.getTime() - 3 * 60 * 60 * 1000); // force UTC-3
+  const day = pad2(shifted.getUTCDate());
+  const mon = pad2(shifted.getUTCMonth() + 1);
+  const hh = pad2(shifted.getUTCHours());
+  const mm = pad2(shifted.getUTCMinutes());
+  return `${day}/${mon} ${hh}:${mm}`;
 };
 
 const relTimePt = (date) => {
   const d = normalizeToDate(date);
-  if (!d) return null;
+  if (!d) {return null;}
   const diffMs = Date.now() - d.getTime();
-  if (diffMs < 45 * 1000) return 'agora';
+  if (diffMs < 45 * 1000) {return 'agora';}
   const min = Math.round(diffMs / 60000);
-  if (min < 60) return `há ${min} min`;
+  if (min < 60) {return `há ${min} min`;}
   const h = Math.round(min / 60);
-  if (h < 24) return `há ${h} h`;
+  if (h < 24) {return `há ${h} h`;}
   const dys = Math.round(h / 24);
   return `há ${dys} d`;
 };
 
+const pickFirstValidDate = (...cands) => {
+  for (const v of cands) {
+    const d = normalizeToDate(v);
+    if (d) {return v;}
+  }
+  return null;
+};
+
 // distance (mètres)
 function haversineM(lat1, lon1, lat2, lon2) {
-  if (![lat1, lon1, lat2, lon2].every(isNum)) return NaN;
+  if (![lat1, lon1, lat2, lon2].every(isNum)) {return NaN;}
   const R = 6371000;
   const toRad = (x) => (x * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);
@@ -124,9 +177,9 @@ function haversineM(lat1, lon1, lat2, lon2) {
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 const distanciaTxt = (u, a) => {
-  if (!u || !a) return '—';
+  if (!u || !a) {return '—';}
   const d = haversineM(u.latitude, u.longitude, a.latitude, a.longitude);
-  if (!isNum(d)) return '—';
+  if (!isNum(d)) {return '—';}
   return d < 1000 ? `${Math.round(d)} m` : `${(d / 1000).toFixed(1)} km`;
 };
 
@@ -134,11 +187,9 @@ const distanciaTxt = (u, a) => {
 // Mapping Firestore (compat sans régression)
 // ---------------------------------------------------------------------------
 const pickEstado = (a) => a?.uf || a?.estado || a?.state || a?.address?.uf || a?.endereco?.uf || '—';
-
 const pickCidade = (a) => a?.cidade || a?.city || a?.address?.cidade || a?.endereco?.cidade || '—';
-
-const pickCreated = (a) => a?.createdAt || a?.date || a?.submittedAt || null;
-const pickLastReportAt = (a) => a?.lastReportAt || a?.updatedAt || null;
+const _pickCreated = (a) => a?.createdAt || a?.date || a?.submittedAt || null;
+const _pickLastReportAt = (a) => a?.lastReportAt || a?.updatedAt || null;
 
 const pickReports = (a) =>
   a?.reportsCount ??
@@ -149,26 +200,22 @@ const pickReports = (a) =>
 
 // 🔁 coords robustes (missingCases > device > anciens schémas)
 const pickCoords = (a) => {
-  // missingCases V1: location.lat/lng
   if (a?.location && isNum(a.location.lat) && isNum(a.location.lng)) {
     return safeCoord(a.location.lat, a.location.lng);
   }
-  // fallback device submitMeta.geo
   if (a?.submitMeta?.geo && isNum(a.submitMeta.geo.lat) && isNum(a.submitMeta.geo.lng)) {
     return safeCoord(a.submitMeta.geo.lat, a.submitMeta.geo.lng);
   }
-  // anciens schémas
   if (a?.location && isNum(a.location.latitude) && isNum(a.location.longitude)) {
     return safeCoord(a.location.latitude, a.location.longitude);
   }
-  if (a?.geo) return safeCoord(a.geo.lat, a.geo.lng);
-  if (a?.coords) return safeCoord(a.coords.lat, a.coords.lng);
+  if (a?.geo) {return safeCoord(a.geo.lat, a.geo.lng);}
+  if (a?.coords) {return safeCoord(a.coords.lat, a.coords.lng);}
   return safeCoord(a?.lat, a?.lng);
 };
 
 // 🏠 lib d’adresse (priorise missingCases.lastKnownAddress)
 const buildEndereco = (a = {}) => {
-  // 1) missingCases V1
   const m = a.lastKnownAddress;
   if (m && (m.rua || m.cidade || m.uf || m.cep)) {
     const rua = (m.rua || '').trim();
@@ -179,18 +226,16 @@ const buildEndereco = (a = {}) => {
 
     const left = [rua, numero].filter(Boolean).join(', ');
     const rightParts = [];
-    if (cidade) rightParts.push(uf ? `${cidade}/${uf}` : cidade);
-    if (cep) rightParts.push(cep);
+    if (cidade) {rightParts.push(uf ? `${cidade}/${uf}` : cidade);}
+    if (cep) {rightParts.push(cep);}
 
     const finalParts = [left, rightParts.join(' - ')].filter(Boolean);
-    if (finalParts.length) return finalParts.join(' - ');
+    if (finalParts.length) {return finalParts.join(' - ');}
   }
 
-  // 2) anciens champs textuels précompilés
-  if (typeof a.endereco === 'string' && a.endereco.trim()) return a.endereco.trim();
-  if (typeof a.ruaNumero === 'string' && a.ruaNumero.trim()) return a.ruaNumero.trim();
+  if (typeof a.endereco === 'string' && a.endereco.trim()) {return a.endereco.trim();}
+  if (typeof a.ruaNumero === 'string' && a.ruaNumero.trim()) {return a.ruaNumero.trim();}
 
-  // 3) schémas "address" / bruts
   const src = a.address || a.endereco || a || {};
   const rua2 = (src.rua || src.street || '').trim();
   const numero2 = (src.numero || src.number || '').trim();
@@ -237,7 +282,6 @@ const pickKind = (a = {}, channel, kindHint, tid) => {
   }
 
   const fromData = a.kind || a.tipo || a.categoria || a.type || a?.missing?.kind || a?.meta?.kind;
-
   if (fromData) {
     const k = String(fromData).toLowerCase();
     L.i(tid, 'KIND/FS', { k });
@@ -292,7 +336,7 @@ const buildShareText = (kind, channel, id) => {
 // ---------------------------------------------------------------------------
 async function fetchAlertDoc(id, channel, tid) {
   const missingFirst = [
-    'missingCases', // priorité pour channel 'missing'
+    'missingCases',
     'missingPublicAlerts',
     'missing-public-alerts',
     'missingAlerts',
@@ -343,7 +387,7 @@ export default function AlertDetailScreen({
   channel = 'public',
   alertId,
   caseId,
-  kindHint, // "animal" | "child" | "object" (depuis la notif / query param)
+  kindHint, // "animal" | "child" | "object"
 }) {
   const router = useRouter();
   const traceIdRef = useRef(newTrace('al'));
@@ -360,9 +404,10 @@ export default function AlertDetailScreen({
   // MOUNT
   useEffect(() => {
     const tid = traceIdRef.current;
+    const mountTs = mountTsRef.current;
     L.i(tid, 'MOUNT', { channel, id, kindHint });
     return () => {
-      L.w(tid, 'UNMOUNT', { alive: msSince(mountTsRef.current) });
+      L.w(tid, 'UNMOUNT', { alive: msSince(mountTs) });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -378,7 +423,7 @@ export default function AlertDetailScreen({
     (async () => {
       try {
         const data = await fetchAlertDoc(id, channel, tid);
-        if (!mounted) return;
+        if (!mounted) {return;}
         setRaw(data);
         L.ok(tid, 'DATA/SET', { present: !!data, source: data?.__source });
       } catch (e) {
@@ -389,7 +434,7 @@ export default function AlertDetailScreen({
       mounted = false;
       L.i(tid, 'FETCH/CANCELLED');
     };
-  }, [id, channel]);
+  }, [id, channel, alertId, caseId]);
 
   // Geo user
   useEffect(() => {
@@ -399,7 +444,7 @@ export default function AlertDetailScreen({
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
         L.i(tid, 'GEO/PERM', { status });
-        if (status !== 'granted') return;
+        if (status !== 'granted') {return;}
         const t0 = Date.now();
         const { coords } = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
@@ -451,9 +496,17 @@ export default function AlertDetailScreen({
       cidade: pickCidade(d || {}),
       estado: pickEstado(d || {}),
 
-      // Dates (priorité lastSeenAt pour missingCases)
-      createdAt: d?.lastSeenAt || pickCreated(d || {}),
-      lastReportAt: pickLastReportAt(d || {}),
+      // Dates (priorité lastSeenAt pour missingCases) + fallbacks robustes
+      createdAt: pickFirstValidDate(
+        d?.lastSeenAt,
+        d?.submittedAt,
+        d?.createdAt,
+        d?.date,
+        d?.updatedAt,
+        d?.submitMeta?.t
+      ),
+      lastReportAt: pickFirstValidDate(d?.lastReportAt, d?.updatedAt),
+
       expiresAt: d?.expiresAt || null,
 
       // Compteurs / statut
@@ -473,7 +526,7 @@ export default function AlertDetailScreen({
         d?.photos?.redacted ||
         d?.media?.photoRedacted ||
         d?.images?.redacted ||
-        d?.media?.photo || // parfois redacted=photo
+        d?.media?.photo ||
         null,
       photo:
         d?.photo ||
@@ -497,16 +550,25 @@ export default function AlertDetailScreen({
       addrConf: out._addrConf,
       status: out.status,
     });
+
+    L.i(traceIdRef.current, 'DATE/DEBUG', {
+      raw_lastSeenAt: d?.lastSeenAt,
+      raw_submittedAt: d?.submittedAt,
+      chosen_createdAt: String(out.createdAt ?? ''),
+      fmt: fmtDateBr(out.createdAt),
+    });
+
     return out;
   }, [raw, id, kind, kindMeta.label]);
 
-  const updatedChip = useMemo(
-    () => relTimePt(alert.lastReportAt || alert.createdAt) || null,
-    [alert.lastReportAt, alert.createdAt, tick],
-  );
+  const updatedChip = useMemo(() => {
+    // reference tick so the memo recomputes on each interval tick
+    void tick;
+    return relTimePt(alert.lastReportAt || alert.createdAt) || null;
+  }, [alert.lastReportAt, alert.createdAt, tick]);
 
   const region = useMemo(() => {
-    if (!alert.coords) return null;
+    if (!alert.coords) {return null;}
     const deltas = radiusToDeltas(alert.radiusM, alert.coords.latitude);
     const r = { ...alert.coords, ...deltas };
     L.i(traceIdRef.current, 'MAP/REGION_COMPUTED', { r });
@@ -675,11 +737,12 @@ function MissingAlertContent({ alert, userLoc, region, mapRef, onRecenter }) {
 
       <View style={S.card}>
         <Row label="📍 Último visto" value={alert.endereco} multiline color={C.warn} />
-        <Row label="🏙️ Cidade" value={alert.cidade} color={C.ok} />
-        <Row label="🗺️ Estado" value={alert.estado} color={C.mute} />
-        <Row label="🕒 Data & hora" value={fmtDate(alert.createdAt)} color={C.ok} />
+        <Row labelvalue={alert.cidade} color={C.ok} />
+        <Row label value={alert.estado} color={C.mute} />
+        {/* ➜ JJ/MM HH:mm en heure brésilienne */}
+        <Row label="🕒 Data & hora" value={fmtDateBr(alert.createdAt)} color={C.ok} />
         {alert.expiresAt ? (
-          <Row label="⏳ Expira em" value={fmtDate(alert.expiresAt)} color={C.warn} />
+          <Row label="⏳ Expira em" value={fmtDateBr(alert.expiresAt)} color={C.warn} />
         ) : null}
       </View>
 
@@ -750,7 +813,8 @@ function PublicIncidentContent({ alert, userLoc, region, mapRef, onRecenter, dis
         <Row label="🏙️ Cidade" value={alert.cidade} color={C.ok} />
         <Row label="🗺️ Estado" value={alert.estado} color={C.mute} />
         <Row label="📏 Distância" value={distance || '—'} color={C.warn} />
-        <Row label="🕒 Data & hora" value={fmtDate(alert.createdAt)} color={C.ok} />
+        {/* ➜ JJ/MM HH:mm en heure brésilienne */}
+        <Row label="🕒 Data & hora" value={fmtDateBr(alert.createdAt)} color={C.ok} />
         <Row label="👥 Declarações" value={`${alert.reports}`} color={C.ok} />
       </View>
 

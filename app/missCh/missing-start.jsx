@@ -326,8 +326,9 @@ export default function MissingStart(){
   const streetAuto=useOSMStreetAutocomplete(traceIdRef.current, { suppress: osmPickedOnce });
 
   useEffect(()=>{
+    const mountTs = mountTsRef.current;
     L.i('MOUNT', {traceId:traceIdRef.current, type, caseId:caseId||'(none)'});
-    return ()=>L.w('UNMOUNT', {alive:msSince(mountTsRef.current)});
+    return ()=>L.w('UNMOUNT', {alive:msSince(mountTs)});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 

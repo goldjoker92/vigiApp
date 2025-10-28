@@ -4,7 +4,7 @@ import { db } from "../../../firebase"; // ajuste si besoin
 
 // Petit helper: Firestore déteste undefined → on nettoie
 function sanitize(obj) {
-  if (obj == null || typeof obj !== "object") {return obj;}
+  if (obj === null || obj === undefined || typeof obj !== "object") {return obj;}
   if (Array.isArray(obj)) {return obj.map(sanitize).filter(v => v !== undefined);}
   const out = {};
   for (const k of Object.keys(obj)) {

@@ -69,7 +69,7 @@ const RECEIVE_DEDUP_MS = 60_000; // 60s
 // Handler FG (Expo SDK 53+)
 // ---------------------------------------------------------------------------
 function ensureNotificationHandler() {
-  if (__handlerSet) return;
+  if (__handlerSet) {return;}
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
       shouldPlaySound: true,
@@ -87,7 +87,7 @@ function ensureNotificationHandler() {
 // Channels Android
 // ---------------------------------------------------------------------------
 async function ensureDefaultChannel() {
-  if (!isAndroid) return;
+  if (!isAndroid) {return;}
   await Notifications.setNotificationChannelAsync(DEFAULT_CHANNEL_ID, {
     name: 'Par défaut',
     description: 'Notifications générales',
@@ -98,7 +98,7 @@ async function ensureDefaultChannel() {
 }
 
 async function ensureMaxChannel(id, label, vibrationPattern = [0, 500, 300, 500]) {
-  if (!isAndroid) return;
+  if (!isAndroid) {return;}
   await Notifications.setNotificationChannelAsync(id, {
     name: label,
     description: 'Alertes importantes',
@@ -113,7 +113,7 @@ async function ensureMaxChannel(id, label, vibrationPattern = [0, 500, 300, 500]
 }
 
 export async function ensureAndroidChannels() {
-  if (!isAndroid) return;
+  if (!isAndroid) {return;}
   await ensureDefaultChannel();
   await ensureMaxChannel(ALERTS_HIGH_CHANNEL_ID, 'Alertes publiques (élevé)');
   await ensureMaxChannel(LEGACY_PUBLIC_ID, 'Alertes publiques (legacy)');
@@ -131,7 +131,7 @@ export async function ensureAndroidChannels() {
 // Permissions
 // ---------------------------------------------------------------------------
 async function ensureAndroid13Permission() {
-  if (!isAndroid13Plus) return;
+  if (!isAndroid13Plus) {return;}
   try {
     const r = await PermissionsAndroid.request(
       PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
@@ -217,14 +217,14 @@ export async function checkInitialNotification(cb) {
 // Utils : normalisation / helpers
 // ---------------------------------------------------------------------------
 function toStringOrEmpty(v) {
-  if (v === undefined || v === null) return '';
+  if (v === undefined || v === null) {return '';}
   try { return String(v); } catch { return ''; }
 }
 
 function pickAny(obj, keys) {
   for (const k of keys) {
     const v = obj?.[k];
-    if (v !== undefined && v !== null && String(v) !== '') return String(v);
+    if (v !== undefined && v !== null && String(v) !== '') {return String(v);}
   }
   return '';
 }
@@ -396,7 +396,7 @@ export function attachNotificationListeners({ onReceive, onResponse } = {}) {
       const { id, isMissing } = normalizePayload(d);
 
       // ACK "tap" toujours (public & missing)
-      if (id) ackAlertSafe({ ...d, id }, 'tap', { isMissing });
+      if (id) {ackAlertSafe({ ...d, id }, 'tap', { isMissing });}
 
       if (!__authReady) {
         __pendingNotifData = d;
@@ -496,7 +496,7 @@ async function ackAlert({ alertId, reason = 'receive', extra = {}, isMissing = f
 
     // Route ACK vers endpoint adapté ou fallback public
     let url = ACK_PUBLIC_ENDPOINT;
-    if (isMissing && ACK_MISSING_ENDPOINT) url = ACK_MISSING_ENDPOINT;
+    if (isMissing && ACK_MISSING_ENDPOINT) {url = ACK_MISSING_ENDPOINT;}
 
     const resp = await fetch(url, {
       method: 'POST',

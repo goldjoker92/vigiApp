@@ -36,7 +36,7 @@ const nowIso = () => new Date().toISOString();
 const log = (step, extra = {}) =>
   logger.info(`${NS} ${step}`, { t: nowIso(), ...extra });
 
-function maskToken(tok) {
+function _maskToken(tok) {
   if (!tok) {return null;}
   const s = String(tok);
   if (s.length <= 8) {return '***';}

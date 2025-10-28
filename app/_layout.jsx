@@ -8,9 +8,9 @@
 // ============================================================================
 
 import 'react-native-gesture-handler';
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useCallback } from 'react';
 import { Slot, router } from 'expo-router';
-import { View, Text, Pressable, Linking } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as SystemUI from 'expo-system-ui';
 
@@ -82,7 +82,7 @@ class RootErrorBoundary extends React.Component {
 // ============================================================================
 function parseMaybeStringified(d0) {
   try {
-    if (!d0) return {};
+    if (!d0) {return {};}
     if (typeof d0 === 'string') {
       try { return JSON.parse(d0); } catch { return {}; }
     }
@@ -94,10 +94,10 @@ function parseMaybeStringified(d0) {
 }
 
 function pickAny(obj, keys) {
-  if (!obj) return '';
+  if (!obj) {return '';}
   for (const k of keys) {
     const v = obj[k];
-    if (v !== undefined && v !== null && String(v) !== '') return String(v);
+    if (v !== undefined && v !== null && String(v) !== '') {return String(v);}
   }
   return '';
 }
@@ -161,7 +161,7 @@ function routeFromColdStartData(rawData = {}) {
 // Petitimus anti double navigation (au cas où)
 function useColdNavGuard() {
   const lastRef = useRef({ k: '', ts: 0 });
-  return (data) => {
+  return useCallback((data) => {
     const key = JSON.stringify(data ?? {});
     const now = Date.now();
     if (lastRef.current.k === key && now - lastRef.current.ts < 1500) {
@@ -170,7 +170,7 @@ function useColdNavGuard() {
     }
     lastRef.current = { k: key, ts: now };
     routeFromColdStartData(data);
-  };
+  }, []);
 }
 
 // ============================================================================
@@ -240,15 +240,15 @@ function Inner() {
       // Token FCM (diag)
       try {
         const tok = await getFcmDeviceTokenAsync();
-        if (tok) logN('🔑 FCM token:', tok);
-        else warnN('🔑 FCM token indisponible (simulateur ou permissions)');
+        if (tok) {logN('🔑 FCM token:', tok);}
+        else {warnN('🔑 FCM token indisponible (simulateur ou permissions)');}
       } catch (e) { warnN('getFcmDeviceTokenAsync:', e?.message || e); }
     })();
 
     return () => {
       try { detachNotif?.(); logN('🧹 detachNotif OK'); } catch (e) { warnN('🧹 detachNotif:', e?.message || e); }
     };
-  }, []);
+  }, [coldGuard]);
 
   return (
     <View style={{ flex: 1, backgroundColor: '#101114' }}>
