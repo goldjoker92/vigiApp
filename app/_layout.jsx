@@ -1,80 +1,71 @@
 // app/_layout.jsx
 // ============================================================================
+// Root layout (Expo Router) — Focus: Notifications + Routing + Logs 🧭📣
+// - Init notifs tôt (permissions + channels) une seule fois
+// - Listeners uniques (anti double attach)
+// - Cold start: reconstitution route depuis data (url OU id+type)
+// - Logs verbeux et homogènes
+// ============================================================================
+
 import 'react-native-gesture-handler';
-import React, { useEffect, useMemo, useRef, useState, Suspense } from 'react';
+import React, { useEffect, useRef, useCallback } from 'react';
 import { Slot, router } from 'expo-router';
-import { View, Linking, Text, Pressable } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as SystemUI from 'expo-system-ui';
-import * as Notifications from 'expo-notifications';
-
-import { AdBanner, AdBootstrap } from '../src/ads/ads';
-import CustomTopToast from './components/CustomTopToast';
-import { StripeBootstrap } from '../src/payments/stripe';
-
-import { useUserStore } from '../store/users';
-import { initRevenueCat } from '../services/purchases';
 
 import {
   attachNotificationListeners,
   getFcmDeviceTokenAsync,
   initNotifications,
   wireAuthGateForNotifications,
+  checkInitialNotification,
 } from '../src/notifications';
-import { attachDeviceAutoRefresh } from '../libs/registerCurrentDevice';
 
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../firebase';
 
-// Logs homogènes
-const log = (...a) => console.log('[LAYOUT]', ...a);
-const warn = (...a) => console.warn('[LAYOUT] ⚠️', ...a);
-const logN = (...a) => console.log('[NOTIF]', ...a);
-const warnN = (...a) => console.warn('[NOTIF] ⚠️', ...a);
-const logRC = (...a) => console.log('[RC]', ...a);
-const errRC = (...a) => console.error('[RC] ❌', ...a);
-const logAds = (...a) => console.log('[ADS]', ...a);
+import { AdBanner, AdBootstrap } from '../src/ads/ads';
+import CustomTopToast from './components/CustomTopToast';
 
-// Flag global RC
-const RC_FLAG = '__VIGIAPP_RC_CONFIGURED__';
-if (globalThis[RC_FLAG] === undefined) {
-  globalThis[RC_FLAG] = false;
-}
+// ============================================================================
+// Logs
+// ============================================================================
+const TAG = '[LAYOUT]';
+const log  = (...a) => console.log(`${TAG} 🧭`, ...a);
+const warn = (...a) => console.warn(`${TAG} ⚠️`, ...a);
+const err  = (...a) => console.error(`${TAG} ❌`, ...a);
 
+const TAGN = '[NOTIF]';
+const logN  = (...a) => console.log(`${TAGN} 📣`, ...a);
+const warnN = (...a) => console.warn(`${TAGN} ⚠️`, ...a);
+
+// ============================================================================
+// ErrorBoundary minimaliste (évite l’écran blanc)
+// ============================================================================
 class RootErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
     this.state = { error: null };
   }
   static getDerivedStateFromError(error) {
+    console.error('[ErrorBoundary] 🚨', error);
     return { error };
-  }
-  componentDidCatch(error, info) {
-    console.error('[ROOT][ErrorBoundary]', error, info);
   }
   render() {
     if (this.state.error) {
       return (
-        <View
-          style={{ flex: 1, padding: 16, gap: 12, justifyContent: 'center', alignItems: 'center' }}
-        >
-          <Text style={{ fontWeight: '700', fontSize: 18 }}>Une erreur est survenue</Text>
+        <View style={{ flex: 1, padding: 16, gap: 12, justifyContent: 'center', alignItems: 'center' }}>
+          <Text style={{ fontWeight: '700', fontSize: 18 }}>Une erreur est survenue 😵‍💫</Text>
           <Text style={{ opacity: 0.8, textAlign: 'center' }}>
-            Pas de panique. On a intercepté l’écran qui plantait.
+            On a intercepté le plantage. Tu peux revenir à l’accueil.
           </Text>
           <Pressable
             onPress={() => {
               this.setState({ error: null });
-              try {
-                router.replace('/');
-              } catch {}
+              try { router.replace('/'); } catch (e) { err('router.replace("/"):', e?.message || e); }
             }}
-            style={{
-              paddingVertical: 12,
-              paddingHorizontal: 16,
-              borderRadius: 10,
-              backgroundColor: '#222',
-            }}
+            style={{ paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, backgroundColor: '#222' }}
           >
             <Text style={{ color: 'white' }}>Revenir à l’accueil</Text>
           </Pressable>
@@ -85,236 +76,222 @@ class RootErrorBoundary extends React.Component {
   }
 }
 
-function RCReadyHook() {
-  logRC('RCReadyHook attached');
-  return null;
-}
-
-// --- helpers deep link → route
-function routeFromUrlLike(rawUrl) {
-  // supporte: vigiapp://public-alerts/ID, vigiapp://missing-public-alerts/ID
-  //           /public-alerts/ID, /missing-public-alerts/ID
+// ============================================================================
+// Helpers de parsing + routing (cold start uniquement)
+// NB: le routing “normal” (tap/receive) est géré dans src/notifications.js
+// ============================================================================
+function parseMaybeStringified(d0) {
   try {
-    const s = String(rawUrl).trim();
-
-    // Tente extraction générique d’un path
-    let path = s;
-    if (s.startsWith('vigiapp://')) {
-      const u = new URL(s);
-      path = u.pathname || '';
+    if (!d0) {return {};}
+    if (typeof d0 === 'string') {
+      try { return JSON.parse(d0); } catch { return {}; }
     }
-
-    // Matche les deux familles de routes
-    const m1 = path.match(/\/?public-alerts\/([^/?#]+)/i);
-    if (m1?.[1]) {
-      return { pathname: '/public-alerts/[id]', params: { id: m1[1] } };
+    if (typeof d0?.data === 'string') {
+      try { return { ...d0, ...JSON.parse(d0.data) }; } catch { /* noop */ }
     }
-    const m2 = path.match(/\/?missing-public-alerts\/([^/?#]+)/i);
-    if (m2?.[1]) {
-      return { pathname: '/missing-public-alerts/[id]', params: { id: m2[1] } };
-    }
-
-    // Fallback legacy param style ?alertId=...
-    const q = s.match(/[?&](?:alertId|id)=([^&#]+)/i);
-    if (q?.[1]) {
-      // Par défaut vers public-alerts si pas de hint — mais on garde aussi missing si l’URL le dit
-      if (/missing/i.test(s)) {
-        return { pathname: '/missing-public-alerts/[id]', params: { id: q[1] } };
-      }
-      return { pathname: '/public-alerts/[id]', params: { id: q[1] } };
-    }
-  } catch (e) {
-    warnN('routeFromUrlLike error:', e?.message || e);
-  }
-  return null;
+    return d0 || {};
+  } catch { return {}; }
 }
 
-// --- InnerLayout : consomme les insets SOUS le Provider ---
-function InnerLayout() {
-  const [authUid, setAuthUid] = useState(null);
-  const storeUid = useUserStore((s) => s?.user?.uid);
-  const userCep = useUserStore((s) => s?.user?.cep ?? s?.profile?.cep ?? null);
-  const userCity = useUserStore((s) => s?.user?.cidade ?? s?.profile?.cidade ?? null);
-  const userId = authUid || storeUid || null;
+function pickAny(obj, keys) {
+  if (!obj) {return '';}
+  for (const k of keys) {
+    const v = obj[k];
+    if (v !== undefined && v !== null && String(v) !== '') {return String(v);}
+  }
+  return '';
+}
 
+// Route ultra-fiable pour le *cold start* (quand Expo ne rediffuse pas l’event tap)
+function routeFromColdStartData(rawData = {}) {
+  const d = parseMaybeStringified(rawData);
+  const rawUrl =
+    pickAny(d, ['url','deepLink','deeplink','deep_link','link','open','href','route']) || '';
+
+  // 1) Si on a un deep link explicite → priorité
+  if (rawUrl && rawUrl.startsWith('vigiapp://')) {
+    try {
+      const path = rawUrl.replace('vigiapp://', '/');
+      logN('🧭 [cold] router.push (deepLink) →', path);
+      router.push(path);
+      return true;
+    } catch (e) {
+      warnN('cold deepLink route error:', e?.message || e);
+    }
+  }
+
+  // 2) Sinon, on recompose depuis id + type
+  const id =
+    pickAny(d, ['alertId','caseId','id','alert_id','case_id','alertID','caseID']);
+  const category =
+    (pickAny(d, ['category','type','notifType','notification_type']) || '').toLowerCase();
+  const channel = (pickAny(d, ['channelId','channel_id']) || '').toLowerCase();
+  const openTarget = pickAny(d, ['openTarget']) || 'detail';
+
+  if (!id) {
+    logN('🌡️ [cold] pas d’id exploitable → on ne route pas');
+    return false;
+  }
+
+  const isMissing =
+    category === 'missing' ||
+    channel === 'missing-alerts-urgent' ||
+    (rawUrl && rawUrl.startsWith('vigiapp://missing/'));
+
+  if (isMissing) {
+    const path = `/missing/${encodeURIComponent(id)}`;
+    logN('🧭 [cold] router.push (MISSING) →', path);
+    router.push(path);
+    return true;
+  }
+
+  if (openTarget === 'home') {
+    const path = `/(tabs)/home?fromNotif=1&alertId=${encodeURIComponent(id)}`;
+    logN('🧭 [cold] router.push (HOME) →', path);
+    router.push(path);
+    return true;
+  }
+
+  const path = `/public-alerts/${encodeURIComponent(id)}`;
+  logN('🧭 [cold] router.push (PUBLIC) →', path);
+  router.push(path);
+  return true;
+}
+
+// Petitimus anti double navigation (au cas où)
+function useColdNavGuard() {
+  const lastRef = useRef({ k: '', ts: 0 });
+  return useCallback((data) => {
+    const key = JSON.stringify(data ?? {});
+    const now = Date.now();
+    if (lastRef.current.k === key && now - lastRef.current.ts < 1500) {
+      warnN('⏱️ [cold] skip double navigation');
+      return;
+    }
+    lastRef.current = { k: key, ts: now };
+    routeFromColdStartData(data);
+  }, []);
+}
+
+// ============================================================================
+// Inner layout
+// ============================================================================
+function Inner() {
   const insets = useSafeAreaInsets();
-  const BANNER_HEIGHT = 50;
-
-  const bottomOffset = useMemo(() => {
-    const offset = BANNER_HEIGHT + (insets?.bottom ?? 0);
-    logAds('bottomOffset =', offset);
-    return offset;
-  }, [insets]);
+  const coldGuard = useColdNavGuard();
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
-      setAuthUid(u?.uid || null);
-      log('[AUTH] onAuthStateChanged →', u?.uid || '(null)');
-    });
-    return () => unsub?.();
+    // Fond système propre
+    SystemUI.setBackgroundColorAsync('#101114').catch((e) =>
+      warn('SystemUI.setBackgroundColorAsync:', e?.message || e)
+    );
   }, []);
 
+  // Auth log (diagnostic) — le gating réel est dans wireAuthGateForNotifications()
+  useEffect(() => {
+    log('🔐 onAuthStateChanged: subscribe');
+    const unsub = onAuthStateChanged(auth, (u) => {
+      log('🔐 onAuthStateChanged →', u?.uid || '(null)');
+    });
+    return () => { try { unsub?.(); } catch {} };
+  }, []);
+
+  // Notifications: init → listeners → cold start → token
   useEffect(() => {
     let detachNotif;
-    let detachDevice;
     (async () => {
       try {
+        logN('🔧 wireAuthGateForNotifications()');
         wireAuthGateForNotifications();
-      } catch (e) {
-        warnN('auth-gate:', e?.message || e);
-      }
-      try {
-        await initNotifications();
-      } catch (e) {
-        warnN('init:', e?.message || e);
-      }
+      } catch (e) { warnN('wireAuthGateForNotifications:', e?.message || e); }
 
       try {
+        logN('🧰 initNotifications()');
+        await initNotifications();
+      } catch (e) { warnN('initNotifications:', e?.message || e); }
+
+      try {
+        logN('👂 attachNotificationListeners()');
+        // ⚠️ Pas de navigation ici: le module route déjà sur TAP.
         detachNotif = attachNotificationListeners({
-          onReceive: (n) => logN('onReceive(FG):', n?.request?.content?.data),
+          onReceive: (n) => {
+            const d = n?.request?.content?.data ?? {};
+            logN('📥 onReceive(FG) data =', d);
+          },
           onResponse: (r) => {
-            const data = r?.notification?.request?.content?.data || {};
-            const rawUrl = data.url || data.deepLink || data.link || data.open;
-            if (!rawUrl) {
-              return;
-            }
-            const route = routeFromUrlLike(rawUrl);
-            if (route) {
-              setTimeout(() => router.push(route), 50);
-            } else {
-              Linking.openURL(String(rawUrl)).catch(() => {});
-            }
+            const d = r?.notification?.request?.content?.data ?? {};
+            logN('👆 onResponse(TAP) data =', d);
+            // La navigation du TAP est gérée dans src/notifications.js (routeFromData)
           },
         });
-      } catch (e) {
-        warnN('listeners:', e?.message || e);
-      }
+        logN('👂 Listeners attachés ✅');
+      } catch (e) { warnN('attachNotificationListeners:', e?.message || e); }
 
+      // Cold start (app tuée ouverte via notif) → on re-route ici
       try {
-        const initial = await Notifications.getLastNotificationResponseAsync();
-        const data = initial?.notification?.request?.content?.data || {};
-        const rawUrl = data.url || data.deepLink || data.link || data.open;
-        if (rawUrl) {
-          const route = routeFromUrlLike(rawUrl);
-          if (route) {
-            setTimeout(() => router.push(route), 50);
-          } else {
-            Linking.openURL(String(rawUrl)).catch(() => {});
-          }
-        }
-      } catch (e) {
-        warnN('initialNotif:', e?.message || e);
-      }
+        logN('🌡️ checkInitialNotification()');
+        await checkInitialNotification((resp) => {
+          const d0 = resp?.notification?.request?.content?.data ?? {};
+          logN('🌡️ Cold start data =', d0);
+          coldGuard(d0);
+        });
+      } catch (e) { warnN('checkInitialNotification:', e?.message || e); }
 
+      // Token FCM (diag)
       try {
-        const token = await getFcmDeviceTokenAsync();
-        if (token) {
-          logN('FCM token ✅', token);
-        } else {
-          warnN('FCM token indisponible');
-        }
-      } catch (e) {
-        warnN('fcm token:', e?.message || e);
-      }
-
-      log('[Device] userId =', userId || '(anon)');
-      try {
-        if (userId) {
-          detachDevice = attachDeviceAutoRefresh({ userId, userCep, userCity, groups: [] });
-          logN('Device auto-refresh attached ✅');
-        } else {
-          warnN('Device auto-refresh NON lancé (pas de userId)');
-        }
-      } catch (e) {
-        warnN('attachDeviceAutoRefresh:', e?.message || e);
-      }
+        const tok = await getFcmDeviceTokenAsync();
+        if (tok) {logN('🔑 FCM token:', tok);}
+        else {warnN('🔑 FCM token indisponible (simulateur ou permissions)');}
+      } catch (e) { warnN('getFcmDeviceTokenAsync:', e?.message || e); }
     })();
+
     return () => {
-      try {
-        detachNotif?.();
-      } catch {}
-      try {
-        detachDevice?.();
-      } catch {}
+      try { detachNotif?.(); logN('🧹 detachNotif OK'); } catch (e) { warnN('🧹 detachNotif:', e?.message || e); }
     };
-  }, [userId, userCep, userCity]);
-
-  const rcInitPromiseRef = useRef(null);
-  const [rcReady, setRcReady] = useState(globalThis[RC_FLAG] === true);
-  useEffect(() => {
-    (async () => {
-      try {
-        if (globalThis[RC_FLAG] === true) {
-          setRcReady(true);
-          return;
-        }
-        if (rcInitPromiseRef.current) {
-          await rcInitPromiseRef.current;
-          setRcReady(true);
-          return;
-        }
-        rcInitPromiseRef.current = initRevenueCat(authUid || null);
-        await rcInitPromiseRef.current;
-        globalThis[RC_FLAG] = true;
-        setRcReady(true);
-      } catch (e) {
-        errRC('init:', e?.message || e);
-      } finally {
-        rcInitPromiseRef.current = null;
-      }
-    })();
-  }, [authUid]);
-
-  useEffect(() => {
-    warn('Layout mounted');
-    return () => warn('Layout unmounted');
-  }, []);
+  }, [coldGuard]);
 
   return (
-    <StripeBootstrap>
-      <View style={{ flex: 1, backgroundColor: '#101114' }}>
-        <AdBootstrap />
-        <CustomTopToast />
-        <View style={{ flex: 1, paddingBottom: bottomOffset }}>
-          <RootErrorBoundary>
-            <Suspense
-              fallback={
-                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                  <Text>Chargement…</Text>
-                </View>
-              }
-            >
-              <Slot />
-            </Suspense>
-          </RootErrorBoundary>
-        </View>
-        <View
-          style={{
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            bottom: 0,
-            paddingBottom: insets?.bottom ?? 0,
-            backgroundColor: 'transparent',
-          }}
-        >
-          <AdBanner />
-        </View>
-        {rcReady ? <RCReadyHook /> : null}
+    <View style={{ flex: 1, backgroundColor: '#101114' }}>
+      <AdBootstrap />
+      <CustomTopToast />
+      <View style={{ flex: 1, paddingBottom: (50 + (insets?.bottom ?? 0)) }}>
+        <RootErrorBoundary>
+          <React.Suspense
+            fallback={
+              <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                <Text>Chargement… ⏳</Text>
+              </View>
+            }
+          >
+            <Slot />
+          </React.Suspense>
+        </RootErrorBoundary>
       </View>
-    </StripeBootstrap>
+
+      {/* Bandeau pub bas */}
+      <View
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          bottom: 0,
+          paddingBottom: insets?.bottom ?? 0,
+          backgroundColor: 'transparent',
+        }}
+      >
+        <AdBanner />
+      </View>
+    </View>
   );
 }
 
+// ============================================================================
+// Shell Layout
+// ============================================================================
 export default function Layout() {
-  // Fond système propre pour edge-to-edge (status/nav bars)
-  useEffect(() => {
-    SystemUI.setBackgroundColorAsync('#101114').catch(() => {});
-  }, []);
   return (
     <SafeAreaProvider>
-      <InnerLayout />
+      <Inner />
     </SafeAreaProvider>
   );
 }
-// ============================================================================
