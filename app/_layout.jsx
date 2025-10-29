@@ -1,10 +1,6 @@
 // app/_layout.jsx
 // ============================================================================
 // Root layout (Expo Router) — Focus: Notifications + Routing + Logs 🧭📣
-// - Init notifs tôt (permissions + channels) une seule fois
-// - Listeners uniques (anti double attach)
-// - Cold start: reconstitution route depuis data (url OU id+type)
-// - Logs verbeux et homogènes
 // ============================================================================
 
 import 'react-native-gesture-handler';
@@ -20,6 +16,7 @@ import {
   initNotifications,
   wireAuthGateForNotifications,
   checkInitialNotification,
+  fireLocalNow, // ✅ ajouté ici
 } from '../src/notifications';
 
 import { onAuthStateChanged } from 'firebase/auth';
@@ -41,7 +38,7 @@ const logN  = (...a) => console.log(`${TAGN} 📣`, ...a);
 const warnN = (...a) => console.warn(`${TAGN} ⚠️`, ...a);
 
 // ============================================================================
-// ErrorBoundary minimaliste (évite l’écran blanc)
+// ErrorBoundary minimaliste
 // ============================================================================
 class RootErrorBoundary extends React.Component {
   constructor(props) {
@@ -77,38 +74,30 @@ class RootErrorBoundary extends React.Component {
 }
 
 // ============================================================================
-// Helpers de parsing + routing (cold start uniquement)
-// NB: le routing “normal” (tap/receive) est géré dans src/notifications.js
+// Helpers routing (cold start)
 // ============================================================================
 function parseMaybeStringified(d0) {
   try {
-    if (!d0) {return {};}
-    if (typeof d0 === 'string') {
-      try { return JSON.parse(d0); } catch { return {}; }
-    }
-    if (typeof d0?.data === 'string') {
-      try { return { ...d0, ...JSON.parse(d0.data) }; } catch { /* noop */ }
-    }
+    if (!d0) return {};
+    if (typeof d0 === 'string') return JSON.parse(d0);
+    if (typeof d0?.data === 'string') return { ...d0, ...JSON.parse(d0.data) };
     return d0 || {};
   } catch { return {}; }
 }
 
 function pickAny(obj, keys) {
-  if (!obj) {return '';}
+  if (!obj) return '';
   for (const k of keys) {
     const v = obj[k];
-    if (v !== undefined && v !== null && String(v) !== '') {return String(v);}
+    if (v !== undefined && v !== null && String(v) !== '') return String(v);
   }
   return '';
 }
 
-// Route ultra-fiable pour le *cold start* (quand Expo ne rediffuse pas l’event tap)
 function routeFromColdStartData(rawData = {}) {
   const d = parseMaybeStringified(rawData);
-  const rawUrl =
-    pickAny(d, ['url','deepLink','deeplink','deep_link','link','open','href','route']) || '';
+  const rawUrl = pickAny(d, ['url','deepLink','deeplink','deep_link','link','open','href','route']) || '';
 
-  // 1) Si on a un deep link explicite → priorité
   if (rawUrl && rawUrl.startsWith('vigiapp://')) {
     try {
       const path = rawUrl.replace('vigiapp://', '/');
@@ -120,13 +109,9 @@ function routeFromColdStartData(rawData = {}) {
     }
   }
 
-  // 2) Sinon, on recompose depuis id + type
-  const id =
-    pickAny(d, ['alertId','caseId','id','alert_id','case_id','alertID','caseID']);
-  const category =
-    (pickAny(d, ['category','type','notifType','notification_type']) || '').toLowerCase();
-  const channel = (pickAny(d, ['channelId','channel_id']) || '').toLowerCase();
-  const openTarget = pickAny(d, ['openTarget']) || 'detail';
+  const id = pickAny(d, ['alertId','caseId','id']);
+  const category = (pickAny(d, ['category','type']) || '').toLowerCase();
+  const channel = (pickAny(d, ['channelId']) || '').toLowerCase();
 
   if (!id) {
     logN('🌡️ [cold] pas d’id exploitable → on ne route pas');
@@ -138,27 +123,15 @@ function routeFromColdStartData(rawData = {}) {
     channel === 'missing-alerts-urgent' ||
     (rawUrl && rawUrl.startsWith('vigiapp://missing/'));
 
-  if (isMissing) {
-    const path = `/missing/${encodeURIComponent(id)}`;
-    logN('🧭 [cold] router.push (MISSING) →', path);
-    router.push(path);
-    return true;
-  }
+  const path = isMissing
+    ? `/missing/${encodeURIComponent(id)}`
+    : `/public-alerts/${encodeURIComponent(id)}`;
 
-  if (openTarget === 'home') {
-    const path = `/(tabs)/home?fromNotif=1&alertId=${encodeURIComponent(id)}`;
-    logN('🧭 [cold] router.push (HOME) →', path);
-    router.push(path);
-    return true;
-  }
-
-  const path = `/public-alerts/${encodeURIComponent(id)}`;
-  logN('🧭 [cold] router.push (PUBLIC) →', path);
+  logN('🧭 [cold] router.push →', path);
   router.push(path);
   return true;
 }
 
-// Petitimus anti double navigation (au cas où)
 function useColdNavGuard() {
   const lastRef = useRef({ k: '', ts: 0 });
   return useCallback((data) => {
@@ -174,20 +147,18 @@ function useColdNavGuard() {
 }
 
 // ============================================================================
-// Inner layout
+// Inner Layout
 // ============================================================================
 function Inner() {
   const insets = useSafeAreaInsets();
   const coldGuard = useColdNavGuard();
 
   useEffect(() => {
-    // Fond système propre
     SystemUI.setBackgroundColorAsync('#101114').catch((e) =>
       warn('SystemUI.setBackgroundColorAsync:', e?.message || e)
     );
   }, []);
 
-  // Auth log (diagnostic) — le gating réel est dans wireAuthGateForNotifications()
   useEffect(() => {
     log('🔐 onAuthStateChanged: subscribe');
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -196,7 +167,7 @@ function Inner() {
     return () => { try { unsub?.(); } catch {} };
   }, []);
 
-  // Notifications: init → listeners → cold start → token
+  // Notifications + test local
   useEffect(() => {
     let detachNotif;
     (async () => {
@@ -208,26 +179,24 @@ function Inner() {
       try {
         logN('🧰 initNotifications()');
         await initNotifications();
+        logN('✅ Notifications initialisées');
       } catch (e) { warnN('initNotifications:', e?.message || e); }
 
       try {
         logN('👂 attachNotificationListeners()');
-        // ⚠️ Pas de navigation ici: le module route déjà sur TAP.
         detachNotif = attachNotificationListeners({
           onReceive: (n) => {
             const d = n?.request?.content?.data ?? {};
-            logN('📥 onReceive(FG) data =', d);
+            logN('📥 [FG] Notification reçue =', d);
           },
           onResponse: (r) => {
             const d = r?.notification?.request?.content?.data ?? {};
-            logN('👆 onResponse(TAP) data =', d);
-            // La navigation du TAP est gérée dans src/notifications.js (routeFromData)
+            logN('👆 [TAP] Réponse notification =', d);
           },
         });
         logN('👂 Listeners attachés ✅');
       } catch (e) { warnN('attachNotificationListeners:', e?.message || e); }
 
-      // Cold start (app tuée ouverte via notif) → on re-route ici
       try {
         logN('🌡️ checkInitialNotification()');
         await checkInitialNotification((resp) => {
@@ -237,16 +206,31 @@ function Inner() {
         });
       } catch (e) { warnN('checkInitialNotification:', e?.message || e); }
 
-      // Token FCM (diag)
       try {
         const tok = await getFcmDeviceTokenAsync();
-        if (tok) {logN('🔑 FCM token:', tok);}
-        else {warnN('🔑 FCM token indisponible (simulateur ou permissions)');}
+        if (tok) logN('🔑 FCM token:', tok);
+        else warnN('🔑 FCM token indisponible (simulateur ou permissions)');
       } catch (e) { warnN('getFcmDeviceTokenAsync:', e?.message || e); }
+
+      // === TEST LOCAL NOTIF 🔔 ==========================================
+      try {
+        console.log('🚀 [TEST LOCAL] Tentative d’envoi de notification locale...');
+        await fireLocalNow({ channelId: 'public-alerts-high' });
+        console.log('✅ [TEST LOCAL] Notification locale déclenchée avec succès 🔔');
+      } catch (e) {
+        console.log('❌ [TEST LOCAL] Échec du test local:', e?.message || e);
+      }
+      // ================================================================
+
     })();
 
     return () => {
-      try { detachNotif?.(); logN('🧹 detachNotif OK'); } catch (e) { warnN('🧹 detachNotif:', e?.message || e); }
+      try {
+        detachNotif?.();
+        logN('🧹 detachNotif OK');
+      } catch (e) {
+        warnN('🧹 detachNotif:', e?.message || e);
+      }
     };
   }, [coldGuard]);
 

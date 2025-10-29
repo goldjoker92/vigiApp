@@ -1091,9 +1091,9 @@ export default function ReportScreen() {
           debug: '1',
         };
 
-        Log.info('[NOTIF][CALL] sendPublicAlertByAddress', body);
+        Log.info('[NOTIF][CALL] sendpublicalertbyaddress', body);
         const resp = await fetch(
-          'https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/sendPublicAlertByAddress',
+          'https://sendpublicalertbyaddress-pfdobxp2na-rj.a.run.app',
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
