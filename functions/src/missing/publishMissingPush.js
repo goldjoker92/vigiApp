@@ -33,15 +33,19 @@ function tileTopic(tile) {
 
 // -- Utils
 const nowIso = () => new Date().toISOString();
-const log  = (step, extra = {}) => console.log(`${NS} ${step}`, { t: nowIso(), ...extra });
+const log = (step, extra = {}) => console.log(`${NS} ${step}`, { t: nowIso(), ...extra });
 const warn = (step, extra = {}) => console.warn(`${NS} ${step}`, { t: nowIso(), ...extra });
-const err  = (step, extra = {}) => console.error(`${NS} ${step}`, { t: nowIso(), ...extra });
+const err = (step, extra = {}) => console.error(`${NS} ${step}`, { t: nowIso(), ...extra });
 
 function maskToken(tok) {
-  if (!tok) {return null;}
+  if (!tok) {
+    return null;
+  }
   const s = String(tok);
-  if (s.length <= 8) {return '***';}
-  return `${s.slice(0,4)}…${s.slice(-4)}`;
+  if (s.length <= 8) {
+    return '***';
+  }
+  return `${s.slice(0, 4)}…${s.slice(-4)}`;
 }
 
 // -- Payload commun
@@ -53,7 +57,7 @@ function makePayload({ caseId, kind, title, body, approx }) {
     approx: approx ? '1' : '0',
     deeplink: `vigiapp://missing/${caseId}`,
   };
-  const notification = (title || body) ? { title, body } : undefined;
+  const notification = title || body ? { title, body } : undefined;
   return { data, notification };
 }
 
@@ -64,7 +68,9 @@ async function publishFCMByTiles({ lat, lng, caseId, kind, event, title, body, a
   let tiles = [];
   try {
     tiles = tilesForRadius(lat, lng) || [];
-    if (!Array.isArray(tiles) || tiles.length === 0) {throw new Error('no_tiles');}
+    if (!Array.isArray(tiles) || tiles.length === 0) {
+      throw new Error('no_tiles');
+    }
   } catch (e) {
     err('💥 FCM_TILES_COMPUTE_FAIL', { caseId, err: e?.message || String(e), lat, lng });
     throw e;
@@ -78,7 +84,8 @@ async function publishFCMByTiles({ lat, lng, caseId, kind, event, title, body, a
   // Trace payload (sans spam)
   log('📦 FCM_PAYLOAD_BUILD', { caseId, hasNotification: !!payload.notification, ttl });
 
-  let ok = 0, ko = 0;
+  let ok = 0,
+    ko = 0;
   const details = [];
 
   for (const t of tiles) {
@@ -130,7 +137,9 @@ async function publishExpoByTiles({ lat, lng, caseId, kind, event, title, body, 
   let tiles = [];
   try {
     tiles = tilesForRadius(lat, lng) || [];
-    if (!Array.isArray(tiles) || tiles.length === 0) {throw new Error('no_tiles');}
+    if (!Array.isArray(tiles) || tiles.length === 0) {
+      throw new Error('no_tiles');
+    }
   } catch (e) {
     err('💥 EXPO_TILES_COMPUTE_FAIL', { caseId, err: e?.message || String(e), lat, lng });
     throw e;
@@ -153,9 +162,11 @@ async function publishExpoByTiles({ lat, lng, caseId, kind, event, title, body, 
         .get();
 
       queried += qs.size || 0;
-      qs.forEach(d => {
+      qs.forEach((d) => {
         const tok = d.data()?.expoToken;
-        if (tok) {tokens.add(tok);}
+        if (tok) {
+          tokens.add(tok);
+        }
       });
     } catch (e) {
       warn('⚠️ EXPO_QUERY_TILE_FAIL', { caseId, tile: t, err: e?.message || String(e) });
@@ -179,7 +190,10 @@ async function publishExpoByTiles({ lat, lng, caseId, kind, event, title, body, 
         requested: 0,
         ok: 0,
         ko: 0,
-        caseId, kind, event, approx
+        caseId,
+        kind,
+        event,
+        approx,
       });
     } catch (e) {
       warn('📝 WRITE_NOTIF_LOG_FAIL_EXPO_EMPTY', { caseId, err: e?.message || String(e) });
@@ -187,7 +201,7 @@ async function publishExpoByTiles({ lat, lng, caseId, kind, event, title, body, 
     return { requested: 0, ok: 0, ko: 0, details: [] };
   }
 
-  const messages = tokenArr.map(to => ({
+  const messages = tokenArr.map((to) => ({
     to,
     title: title || 'Alerta Missing',
     body: body || '',
@@ -221,7 +235,12 @@ async function publishExpoByTiles({ lat, lng, caseId, kind, event, title, body, 
     });
   } catch (e) {
     err('💥 EXPO_SEND_FAIL', { caseId, err: e?.message || String(e) });
-    stats = { requested: messages.length, ok: 0, ko: messages.length, details: [{ error: e?.message || String(e) }] };
+    stats = {
+      requested: messages.length,
+      ok: 0,
+      ko: messages.length,
+      details: [{ error: e?.message || String(e) }],
+    };
   }
 
   // Log applicatif
@@ -232,7 +251,10 @@ async function publishExpoByTiles({ lat, lng, caseId, kind, event, title, body, 
       requested: stats.requested,
       ok: stats.ok,
       ko: stats.ko,
-      caseId, kind, event, approx,
+      caseId,
+      kind,
+      event,
+      approx,
       sample: stats.details.slice(0, 10),
     });
   } catch (e) {

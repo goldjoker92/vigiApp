@@ -1,7 +1,7 @@
-// functions/src/ackPublicAlert.js
+// functions/src/ackpublicalertreceipt.js
 // =============================================================================
-// VigiApp — CF v2: ackPublicAlertReceipt
-// - Endpoint: /ackPublicAlertReceipt
+// VigiApp — CF v2: ackpublicalertreceipt
+// - Endpoint exporté: /ackpublicalertreceipt  (tout en minuscules)
 // - Idempotent: publicAlerts/{alertId}/acks/{tokenHash}
 // - Compteurs: publicAlerts.ackCount ++, devices.pushStats.ack ++ (si deviceId)
 // - Reasons: receive | tap | open
@@ -15,9 +15,7 @@ const crypto = require('crypto');
 
 let _init = false;
 function ensureInit() {
-  if (_init) {
-    return;
-  }
+  if (_init) {return;}
   try {
     admin.app();
   } catch {
@@ -43,9 +41,7 @@ const nowIso = () => {
 
 function sanitizeAlertId(s) {
   const v = String(s || '').trim();
-  if (!v || v.includes('/')) {
-    return null;
-  }
+  if (!v || v.includes('/')) {return null;}
   return v;
 }
 
@@ -56,7 +52,7 @@ function normalizeReason(r) {
   return v === 'tap' || v === 'open' ? v : 'receive';
 }
 
-const ackPublicAlertReceipt = onRequest(
+const ackpublicalertreceipt = onRequest(
   {
     region: 'southamerica-east1',
     cors: true,
@@ -111,7 +107,7 @@ const ackPublicAlertReceipt = onRequest(
           appOpenTarget,
           appVersion,
           deviceModel,
-          firstSeenAt: now, // ne sera posé qu'au premier passage (merge)
+          firstSeenAt: now, // posé au premier passage (merge)
           lastSeenAt: now,
           updatedAtISO: nowIso(),
           count: FieldValue.increment(1),
@@ -168,5 +164,4 @@ const ackPublicAlertReceipt = onRequest(
   },
 );
 
-module.exports = { ackPublicAlertReceipt };
-// ============================================================================
+module.exports = { ackpublicalertreceipt };

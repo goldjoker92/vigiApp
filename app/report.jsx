@@ -1092,14 +1092,11 @@ export default function ReportScreen() {
         };
 
         Log.info('[NOTIF][CALL] sendpublicalertbyaddress', body);
-        const resp = await fetch(
-          'https://sendpublicalertbyaddress-pfdobxp2na-rj.a.run.app',
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-          },
-        );
+        const resp = await fetch('https://sendpublicalertbyaddress-pfdobxp2na-rj.a.run.app', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
         const json = await resp.json().catch(() => null);
         Log.info('[NOTIF][RESP]', { status: resp.status, ok: resp.ok, json });
       } catch (err) {

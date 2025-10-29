@@ -30,20 +30,40 @@ import {
 function encodeGeohash(lat, lng, precision = 7) {
   try {
     const base32 = '0123456789bcdefghjkmnpqrstuvwxyz';
-    let idx = 0, bit = 0, even = true, gh = '';
-    let latMin = -90, latMax = 90, lonMin = -180, lonMax = 180;
+    let idx = 0,
+      bit = 0,
+      even = true,
+      gh = '';
+    let latMin = -90,
+      latMax = 90,
+      lonMin = -180,
+      lonMax = 180;
     while (gh.length < precision) {
       if (even) {
         const m = (lonMin + lonMax) / 2;
-        if (lng >= m) { idx = idx * 2 + 1; lonMin = m; }
-        else { idx = idx * 2; lonMax = m; }
+        if (lng >= m) {
+          idx = idx * 2 + 1;
+          lonMin = m;
+        } else {
+          idx = idx * 2;
+          lonMax = m;
+        }
       } else {
         const m = (latMin + latMax) / 2;
-        if (lat >= m) { idx = idx * 2 + 1; latMin = m; }
-        else { idx = idx * 2; latMax = m; }
+        if (lat >= m) {
+          idx = idx * 2 + 1;
+          latMin = m;
+        } else {
+          idx = idx * 2;
+          latMax = m;
+        }
       }
       even = !even;
-      if (++bit === 5) { gh += base32.charAt(idx); bit = 0; idx = 0; }
+      if (++bit === 5) {
+        gh += base32.charAt(idx);
+        bit = 0;
+        idx = 0;
+      }
     }
     return gh;
   } catch {
@@ -55,18 +75,37 @@ function encodeGeohash(lat, lng, precision = 7) {
 // Logs & utils
 // =============================================================================
 const ts = () => {
-  try { return new Date().toISOString(); } catch { return String(Date.now()); }
+  try {
+    return new Date().toISOString();
+  } catch {
+    return String(Date.now());
+  }
 };
-const log = (...a) => { try { console.log(`[registerDevice][${ts()}]`, ...a); } catch {} };
-const warn = (...a) => { try { console.warn(`[registerDevice][${ts()}] ⚠️`, ...a); } catch {} };
-const err = (...a) => { try { console.error(`[registerDevice][${ts()}] ❌`, ...a); } catch {} };
+const log = (...a) => {
+  try {
+    console.log(`[registerDevice][${ts()}]`, ...a);
+  } catch {}
+};
+const warn = (...a) => {
+  try {
+    console.warn(`[registerDevice][${ts()}] ⚠️`, ...a);
+  } catch {}
+};
+const err = (...a) => {
+  try {
+    console.error(`[registerDevice][${ts()}] ❌`, ...a);
+  } catch {}
+};
 const mask = (t) =>
-  !t ? '(empty)'
-     : String(t).length <= 12 ? String(t)
-     : `${String(t).slice(0, 6)}…${String(t).slice(-4)}`;
+  !t
+    ? '(empty)'
+    : String(t).length <= 12
+      ? String(t)
+      : `${String(t).slice(0, 6)}…${String(t).slice(-4)}`;
 
 function fnv1a64Hex(input) {
-  let h1 = 0x2325, h2 = 0x8422;
+  let h1 = 0x2325,
+    h2 = 0x8422;
   for (let i = 0; i < input.length; i++) {
     const c = input.charCodeAt(i);
     h1 ^= c;
@@ -107,13 +146,25 @@ function mergeGroups(existing, incoming) {
   // incoming: string[] | undefined
   const map = {};
   if (Array.isArray(incoming)) {
-    for (const g of incoming) { if (g && typeof g === 'string') { map[g] = true; } }
+    for (const g of incoming) {
+      if (g && typeof g === 'string') {
+        map[g] = true;
+      }
+    }
   }
   if (Array.isArray(existing)) {
-    for (const g of existing) { if (g && typeof g === 'string') { map[g] = true; } }
+    for (const g of existing) {
+      if (g && typeof g === 'string') {
+        map[g] = true;
+      }
+    }
   }
   if (existing && typeof existing === 'object' && !Array.isArray(existing)) {
-    for (const k of Object.keys(existing)) { if (existing[k]) { map[k] = true; } }
+    for (const k of Object.keys(existing)) {
+      if (existing[k]) {
+        map[k] = true;
+      }
+    }
   }
   return Object.keys(map).length ? map : {};
 }
@@ -164,7 +215,9 @@ export async function upsertDevice(params) {
     active = true,
   } = params || {};
 
-  if (!userId) { return { ok: false, code: 'no_user', error: 'userId requis' }; }
+  if (!userId) {
+    return { ok: false, code: 'no_user', error: 'userId requis' };
+  }
   if (!isLikelyFCMToken(fcmDeviceToken)) {
     warn('fcmDeviceToken invalide:', mask(fcmDeviceToken));
     return { ok: false, code: 'no_fcm', error: 'fcmDeviceToken requis/valide' };
@@ -179,7 +232,7 @@ export async function upsertDevice(params) {
     let existing = null;
     try {
       const snap = await getDoc(userRef);
-      existing = snap.exists() ? (snap.data() || null) : null;
+      existing = snap.exists() ? snap.data() || null : null;
     } catch (e) {
       warn('read users/%s impossible (on continue):', userId, e?.message || e);
     }
@@ -199,7 +252,10 @@ export async function upsertDevice(params) {
     // 3) Merge groups/zone
     const mergedGroups = mergeGroups(existingGroups, groups);
     const { cep: mergedCep, city: mergedCity } = pickCepCity({
-      cepParam: cep, cityParam: city, existingCep, existingCity,
+      cepParam: cep,
+      cityParam: city,
+      existingCep,
+      existingCity,
     });
 
     // 4) Construire deviceId + payload commun

@@ -10,7 +10,7 @@ import Constants from 'expo-constants';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { initializeAuth, getAuth, getReactNativePersistence } from 'firebase/auth';
 import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
-import { getFirestore, setLogLevel,connectFirestoreEmulator} from 'firebase/firestore';
+import { getFirestore, setLogLevel, connectFirestoreEmulator } from 'firebase/firestore';
 
 // --- Config depuis app.config.js (extra.* déjà présents chez toi)
 const extra = Constants?.expoConfig?.extra || {};
@@ -47,7 +47,6 @@ try {
 // --- Firestore (client)
 const db = getFirestore(app);
 console.log('ℹ️ [firebase] firestore prêt');
-
 
 if (__DEV__) {
   // Verbose réseau Firestore (console)

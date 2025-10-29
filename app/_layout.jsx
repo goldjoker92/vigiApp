@@ -29,12 +29,12 @@ import CustomTopToast from './components/CustomTopToast';
 // Logs
 // ============================================================================
 const TAG = '[LAYOUT]';
-const log  = (...a) => console.log(`${TAG} 🧭`, ...a);
+const log = (...a) => console.log(`${TAG} 🧭`, ...a);
 const warn = (...a) => console.warn(`${TAG} ⚠️`, ...a);
-const err  = (...a) => console.error(`${TAG} ❌`, ...a);
+const err = (...a) => console.error(`${TAG} ❌`, ...a);
 
 const TAGN = '[NOTIF]';
-const logN  = (...a) => console.log(`${TAGN} 📣`, ...a);
+const logN = (...a) => console.log(`${TAGN} 📣`, ...a);
 const warnN = (...a) => console.warn(`${TAGN} ⚠️`, ...a);
 
 // ============================================================================
@@ -52,7 +52,9 @@ class RootErrorBoundary extends React.Component {
   render() {
     if (this.state.error) {
       return (
-        <View style={{ flex: 1, padding: 16, gap: 12, justifyContent: 'center', alignItems: 'center' }}>
+        <View
+          style={{ flex: 1, padding: 16, gap: 12, justifyContent: 'center', alignItems: 'center' }}
+        >
           <Text style={{ fontWeight: '700', fontSize: 18 }}>Une erreur est survenue 😵‍💫</Text>
           <Text style={{ opacity: 0.8, textAlign: 'center' }}>
             On a intercepté le plantage. Tu peux revenir à l’accueil.
@@ -60,9 +62,18 @@ class RootErrorBoundary extends React.Component {
           <Pressable
             onPress={() => {
               this.setState({ error: null });
-              try { router.replace('/'); } catch (e) { err('router.replace("/"):', e?.message || e); }
+              try {
+                router.replace('/');
+              } catch (e) {
+                err('router.replace("/"):', e?.message || e);
+              }
             }}
-            style={{ paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, backgroundColor: '#222' }}
+            style={{
+              paddingVertical: 12,
+              paddingHorizontal: 16,
+              borderRadius: 10,
+              backgroundColor: '#222',
+            }}
           >
             <Text style={{ color: 'white' }}>Revenir à l’accueil</Text>
           </Pressable>
@@ -78,25 +89,28 @@ class RootErrorBoundary extends React.Component {
 // ============================================================================
 function parseMaybeStringified(d0) {
   try {
-    if (!d0) return {};
-    if (typeof d0 === 'string') return JSON.parse(d0);
-    if (typeof d0?.data === 'string') return { ...d0, ...JSON.parse(d0.data) };
+    if (!d0) {return {};}
+    if (typeof d0 === 'string') {return JSON.parse(d0);}
+    if (typeof d0?.data === 'string') {return { ...d0, ...JSON.parse(d0.data) };}
     return d0 || {};
-  } catch { return {}; }
+  } catch {
+    return {};
+  }
 }
 
 function pickAny(obj, keys) {
-  if (!obj) return '';
+  if (!obj) {return '';}
   for (const k of keys) {
     const v = obj[k];
-    if (v !== undefined && v !== null && String(v) !== '') return String(v);
+    if (v !== undefined && v !== null && String(v) !== '') {return String(v);}
   }
   return '';
 }
 
 function routeFromColdStartData(rawData = {}) {
   const d = parseMaybeStringified(rawData);
-  const rawUrl = pickAny(d, ['url','deepLink','deeplink','deep_link','link','open','href','route']) || '';
+  const rawUrl =
+    pickAny(d, ['url', 'deepLink', 'deeplink', 'deep_link', 'link', 'open', 'href', 'route']) || '';
 
   if (rawUrl && rawUrl.startsWith('vigiapp://')) {
     try {
@@ -109,8 +123,8 @@ function routeFromColdStartData(rawData = {}) {
     }
   }
 
-  const id = pickAny(d, ['alertId','caseId','id']);
-  const category = (pickAny(d, ['category','type']) || '').toLowerCase();
+  const id = pickAny(d, ['alertId', 'caseId', 'id']);
+  const category = (pickAny(d, ['category', 'type']) || '').toLowerCase();
   const channel = (pickAny(d, ['channelId']) || '').toLowerCase();
 
   if (!id) {
@@ -155,7 +169,7 @@ function Inner() {
 
   useEffect(() => {
     SystemUI.setBackgroundColorAsync('#101114').catch((e) =>
-      warn('SystemUI.setBackgroundColorAsync:', e?.message || e)
+      warn('SystemUI.setBackgroundColorAsync:', e?.message || e),
     );
   }, []);
 
@@ -164,7 +178,11 @@ function Inner() {
     const unsub = onAuthStateChanged(auth, (u) => {
       log('🔐 onAuthStateChanged →', u?.uid || '(null)');
     });
-    return () => { try { unsub?.(); } catch {} };
+    return () => {
+      try {
+        unsub?.();
+      } catch {}
+    };
   }, []);
 
   // Notifications + test local
@@ -174,13 +192,17 @@ function Inner() {
       try {
         logN('🔧 wireAuthGateForNotifications()');
         wireAuthGateForNotifications();
-      } catch (e) { warnN('wireAuthGateForNotifications:', e?.message || e); }
+      } catch (e) {
+        warnN('wireAuthGateForNotifications:', e?.message || e);
+      }
 
       try {
         logN('🧰 initNotifications()');
         await initNotifications();
         logN('✅ Notifications initialisées');
-      } catch (e) { warnN('initNotifications:', e?.message || e); }
+      } catch (e) {
+        warnN('initNotifications:', e?.message || e);
+      }
 
       try {
         logN('👂 attachNotificationListeners()');
@@ -195,7 +217,9 @@ function Inner() {
           },
         });
         logN('👂 Listeners attachés ✅');
-      } catch (e) { warnN('attachNotificationListeners:', e?.message || e); }
+      } catch (e) {
+        warnN('attachNotificationListeners:', e?.message || e);
+      }
 
       try {
         logN('🌡️ checkInitialNotification()');
@@ -204,13 +228,17 @@ function Inner() {
           logN('🌡️ Cold start data =', d0);
           coldGuard(d0);
         });
-      } catch (e) { warnN('checkInitialNotification:', e?.message || e); }
+      } catch (e) {
+        warnN('checkInitialNotification:', e?.message || e);
+      }
 
       try {
         const tok = await getFcmDeviceTokenAsync();
-        if (tok) logN('🔑 FCM token:', tok);
-        else warnN('🔑 FCM token indisponible (simulateur ou permissions)');
-      } catch (e) { warnN('getFcmDeviceTokenAsync:', e?.message || e); }
+        if (tok) {logN('🔑 FCM token:', tok);}
+        else {warnN('🔑 FCM token indisponible (simulateur ou permissions)');}
+      } catch (e) {
+        warnN('getFcmDeviceTokenAsync:', e?.message || e);
+      }
 
       // === TEST LOCAL NOTIF 🔔 ==========================================
       try {
@@ -221,7 +249,6 @@ function Inner() {
         console.log('❌ [TEST LOCAL] Échec du test local:', e?.message || e);
       }
       // ================================================================
-
     })();
 
     return () => {
@@ -238,7 +265,7 @@ function Inner() {
     <View style={{ flex: 1, backgroundColor: '#101114' }}>
       <AdBootstrap />
       <CustomTopToast />
-      <View style={{ flex: 1, paddingBottom: (50 + (insets?.bottom ?? 0)) }}>
+      <View style={{ flex: 1, paddingBottom: 50 + (insets?.bottom ?? 0) }}>
         <RootErrorBoundary>
           <React.Suspense
             fallback={

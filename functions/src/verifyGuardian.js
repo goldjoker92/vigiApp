@@ -1,4 +1,4 @@
-// functions/src/verifyGuardian.js
+// functions/src/verifyguardian.js
 // ============================================================================
 // VigiApp — HTTP handler pur (CommonJS)
 // - index.js enveloppe avec onRequest({ cors:true }, verifyGuardian)
@@ -8,8 +8,14 @@ const admin = require('firebase-admin');
 
 let _init = false;
 function ensureInit() {
-  if (_init) {return;}
-  try { admin.app(); } catch { admin.initializeApp(); }
+  if (_init) {
+    return;
+  }
+  try {
+    admin.app();
+  } catch {
+    admin.initializeApp();
+  }
   _init = true;
 }
 
@@ -21,14 +27,22 @@ async function verifyGuardian(req, res) {
   ensureInit();
 
   // Préflight & healthcheck
-  if (req.method === 'OPTIONS') {return res.status(204).send('');}
-  if (req.method === 'GET')     {return res.status(200).send('ok');}
-  if (req.method !== 'POST')    {return jsonErr(res, 405, 'method_not_allowed');}
+  if (req.method === 'OPTIONS') {
+    return res.status(204).send('');
+  }
+  if (req.method === 'GET') {
+    return res.status(200).send('ok');
+  }
+  if (req.method !== 'POST') {
+    return jsonErr(res, 405, 'method_not_allowed');
+  }
 
   try {
     // payload attendu: { caseId, payload: {...} }
     const { caseId, payload: _payload } = req.body || {};
-    if (!caseId) {return jsonErr(res, 400, 'missing_caseId');}
+    if (!caseId) {
+      return jsonErr(res, 400, 'missing_caseId');
+    }
 
     // TODO: logique réelle de vérification (ACL, token, schéma, etc.)
     // const db = admin.firestore(); ...
