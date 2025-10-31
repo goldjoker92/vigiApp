@@ -33,7 +33,7 @@ const httpStd   = { cors: true, memory: '256MiB', timeoutSeconds: 60 };
 
 // ===================== Triggers Missing (v2) =====================
 const { onCreateMissing } = require('./src/missing/oncreatemissing');
-const { onUpdateMissing } = require('./src/missing/onupdtemissing');
+const { onUpdateMissing } = require('./src/missing/onupdatemissing');
 
 // ===================== TRIGGERS Missing (v2) =====================
 const { onCreateMissing } = require('./src/missing/oncreatemissing');
