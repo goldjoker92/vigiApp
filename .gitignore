@@ -84,3 +84,4 @@ client/.session.json
 .husky
 .lh
 .env.sample
+_backup_camel
