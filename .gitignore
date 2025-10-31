@@ -85,3 +85,4 @@ client/.session.json
 .lh
 .env.sample
 _backup_camel
+.env.backup
