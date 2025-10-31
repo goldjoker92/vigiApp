@@ -421,7 +421,7 @@ async function sendPublicAlertByAddress(req, res) {
             for (const step of chain) {
               try {
                 const r = await step();
-                if (r) return r;
+                if (r) {return r;}
               } catch {}
             }
             return null;
