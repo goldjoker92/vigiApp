@@ -17,8 +17,8 @@ try { admin.app(); } catch { admin.initializeApp(); }
 const db = () => admin.firestore();
 
 // ===================== HTTP =====================
-const { verifyGuardian } = require('./src/verifyGuardian');
-const { sendPublicAlertByAddress } = require('./src/sendPublicAlertByAddress');
+const { verifyGuardian } = require('./src/verifyguardian');
+const { sendPublicAlertByAddress } = require('./src/sendpublicalertbyaddress');
 
 // Garde-fous pour éviter "userProvidedHandler is not a function"
 if (typeof verifyGuardian !== 'function') {
@@ -33,8 +33,8 @@ exports.verifyGuardian = onRequest({ cors: true }, verifyGuardian);
 exports.sendPublicAlertByAddress = onRequest({ cors: true }, sendPublicAlertByAddress);
 
 // ===================== Triggers Missing (v2) =====================
-const { onCreateMissing } = require('./src/missing/onCreateMissing');
-const { onUpdateMissing } = require('./src/missing/onUpdateMissing');
+const { onCreateMissing } = require('./src/missing/oncreatemissing');
+const { onUpdateMissing } = require('./src/missing/onupdtemissing');
 
 exports.onCreateMissing = onCreateMissing;
 exports.onUpdateMissing  = onUpdateMissing;
