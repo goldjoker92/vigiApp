@@ -231,7 +231,27 @@ export default function GrupoSinalizarScreen() {
 
       // 6) Geocode (Google-first)
       console.log('[SINALIZAR][PHASE] geocode.resolve', { hasKey: hk, lat: coords?.latitude, lng: coords?.longitude });
-      const rawRes = await withTimeout(resolveExactCepFromCoords(coords.latitude, coords.longitude, { googleApiKey: GOOGLE_MAPS_KEY, expectedCep: userCepRef || undefined, expectedCity: userCidade || undefined, expectedUF: userUF || undefined }), 8000, 'CEP_TIMEOUT');
+      let rawRes;
+      if (typeof resolveExactCepFromCoords === 'function') {
+        rawRes = await withTimeout(
+          resolveExactCepFromCoords(
+            coords.latitude,
+            coords.longitude,
+            {
+              googleApiKey: GOOGLE_MAPS_KEY,
+              expectedCep: userCepRef || undefined,
+              expectedCity: userCidade || undefined,
+              expectedUF: userUF || undefined
+            }
+          ),
+          8000,
+          'CEP_TIMEOUT'
+        );
+      } else {
+        console.error('[SINALIZAR][ERROR] resolveExactCepFromCoords is not a function or is undefined');
+        // Optionally, show a toast or handle the error as appropriate
+        rawRes = {};
+      }
 
       const addr = rawRes?.addr ?? rawRes?.address ?? {};
       const currentCep8 = normalizeCep(rawRes?.cep);
