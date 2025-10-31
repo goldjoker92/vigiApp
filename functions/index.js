@@ -19,11 +19,9 @@ setGlobalOptions({ region: 'southamerica-east1' });
 try { admin.app(); } catch { admin.initializeApp(); }
 const db = () => admin.firestore();
 
-// ===================== HTTP HANDLERS =====================
-// (chemins en minuscules)
+// ===================== HTTP =====================
 const { verifyGuardian } = require('./src/verifyguardian');
 const { sendPublicAlertByAddress } = require('./src/sendpublicalertbyaddress');
-const { ackpublicalertreceipt } = require('./src/ackpublicalertreceipt');
 
 // Garde-fous de chargement
 if (typeof verifyGuardian !== 'function') {throw new Error('[index] verifyGuardian export is not a function');}
@@ -33,10 +31,9 @@ if (typeof sendPublicAlertByAddress !== 'function') {throw new Error('[index] se
 const httpSmall = { cors: true, memory: '128MiB', timeoutSeconds: 30 };
 const httpStd   = { cors: true, memory: '256MiB', timeoutSeconds: 60 };
 
-// Exports HTTP (minuscules)
-exports.verifyguardian = onRequest(httpSmall, verifyGuardian);
-exports.sendpublicalertbyaddress = onRequest(httpSmall, sendPublicAlertByAddress);
-exports.ackpublicalertreceipt = ackpublicalertreceipt;
+// ===================== Triggers Missing (v2) =====================
+const { onCreateMissing } = require('./src/missing/oncreatemissing');
+const { onUpdateMissing } = require('./src/missing/onupdatemissing');
 
 // ===================== TRIGGERS Missing (v2) =====================
 const { onCreateMissing } = require('./src/missing/oncreatemissing');
@@ -201,8 +198,8 @@ exports.onwritedevice = onDocumentUpdated(
   }
 );
 
-// ===================== Log de démarrage (léger) =====================
-console.log('[Index] loaded LOW-COST', {
-  http: ['verifyguardian', 'sendpublicalertbyaddress', 'ackpublicalertreceipt'],
+// ===================== Log de démarrage =====================
+console.log('[Index] loaded', {
+  http: ['verifyguardian', 'sendpublicalertbyaddress'],
   triggers: ['oncreatemissing', 'onupdatemissing', 'onwritedevice'],
 });
