@@ -46,10 +46,14 @@ const newTrace = (p = 'al') =>
   `${p}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 const msSince = (t0) => `${Math.max(0, Date.now() - t0)}ms`;
 const L = {
-  i: (tid, step, extra = {}) => console.log(TAG, 'ℹ', step, { t: nowIso(), traceId: tid, ...extra }),
-  w: (tid, step, extra = {}) => console.warn(TAG, '⚠', step, { t: nowIso(), traceId: tid, ...extra }),
-  e: (tid, step, extra = {}) => console.error(TAG, '❌', step, { t: nowIso(), traceId: tid, ...extra }),
-  ok: (tid, step, extra = {}) => console.log(TAG, '✅', step, { t: nowIso(), traceId: tid, ...extra }),
+  i: (tid, step, extra = {}) =>
+    console.log(TAG, 'ℹ', step, { t: nowIso(), traceId: tid, ...extra }),
+  w: (tid, step, extra = {}) =>
+    console.warn(TAG, '⚠', step, { t: nowIso(), traceId: tid, ...extra }),
+  e: (tid, step, extra = {}) =>
+    console.error(TAG, '❌', step, { t: nowIso(), traceId: tid, ...extra }),
+  ok: (tid, step, extra = {}) =>
+    console.log(TAG, '✅', step, { t: nowIso(), traceId: tid, ...extra }),
 };
 
 // ---------------------------------------------------------------------------
@@ -75,36 +79,47 @@ const C = {
 // Utils
 // ---------------------------------------------------------------------------
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
-const safeCoord = (lat, lng) => (isNum(lat) && isNum(lng) ? { latitude: lat, longitude: lng } : null);
+const safeCoord = (lat, lng) =>
+  isNum(lat) && isNum(lng) ? { latitude: lat, longitude: lng } : null;
 
 // ===== DATES (robustes + heure brésilienne UTC-3) ===========================
 const pad2 = (n) => (n < 10 ? `0${n}` : `${n}`);
 
 const parseStringDateRobust = (s) => {
-  if (typeof s !== 'string' || !s.trim()) {return null;}
+  if (typeof s !== 'string' || !s.trim()) {
+    return null;
+  }
 
   // tentative directe
   let d = new Date(s);
-  if (!Number.isNaN(d.getTime())) {return d;}
+  if (!Number.isNaN(d.getTime())) {
+    return d;
+  }
 
   // "YYYY-MM-DDTHH:MM.000Z" → injecter secondes si manquantes
   let m = s.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})(\.\d{3}Z)$/);
   if (m) {
     d = new Date(`${m[1]}:00${m[2]}`);
-    if (!Number.isNaN(d.getTime())) {return d;}
+    if (!Number.isNaN(d.getTime())) {
+      return d;
+    }
   }
 
   // "YYYY-MM-DDTHH:MMZ" → ajouter ":00.000Z"
   m = s.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})Z$/);
   if (m) {
     d = new Date(`${m[1]}:00.000Z`);
-    if (!Number.isNaN(d.getTime())) {return d;}
+    if (!Number.isNaN(d.getTime())) {
+      return d;
+    }
   }
 
   // "YYYY-MM-DD" → minuit UTC
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
     d = new Date(`${s}T00:00:00.000Z`);
-    if (!Number.isNaN(d.getTime())) {return d;}
+    if (!Number.isNaN(d.getTime())) {
+      return d;
+    }
   }
 
   return null;
@@ -112,9 +127,15 @@ const parseStringDateRobust = (s) => {
 
 const normalizeToDate = (v) => {
   try {
-    if (!v) {return null;}
-    if (v instanceof Date) {return v;}
-    if (typeof v?.toDate === 'function') {return v.toDate();} // Firestore Timestamp
+    if (!v) {
+      return null;
+    }
+    if (v instanceof Date) {
+      return v;
+    }
+    if (typeof v?.toDate === 'function') {
+      return v.toDate();
+    } // Firestore Timestamp
     if (typeof v === 'object' && ('seconds' in v || 'nanoseconds' in v)) {
       const ms = (v.seconds || 0) * 1000 + Math.floor((v.nanoseconds || 0) / 1e6);
       const d = new Date(ms);
@@ -125,7 +146,9 @@ const normalizeToDate = (v) => {
       const d = new Date(ms);
       return Number.isNaN(d.getTime()) ? null : d;
     }
-    if (typeof v === 'string') {return parseStringDateRobust(v);}
+    if (typeof v === 'string') {
+      return parseStringDateRobust(v);
+    }
     return null;
   } catch {
     return null;
@@ -135,7 +158,9 @@ const normalizeToDate = (v) => {
 // JJ/MM HH:mm en heure brésilienne (UTC-3), sans Intl
 const fmtDateBr = (inp) => {
   const d = normalizeToDate(inp);
-  if (!d) {return '—';}
+  if (!d) {
+    return '—';
+  }
   const shifted = new Date(d.getTime() - 3 * 60 * 60 * 1000); // force UTC-3
   const day = pad2(shifted.getUTCDate());
   const mon = pad2(shifted.getUTCMonth() + 1);
@@ -146,13 +171,21 @@ const fmtDateBr = (inp) => {
 
 const relTimePt = (date) => {
   const d = normalizeToDate(date);
-  if (!d) {return null;}
+  if (!d) {
+    return null;
+  }
   const diffMs = Date.now() - d.getTime();
-  if (diffMs < 45 * 1000) {return 'agora';}
+  if (diffMs < 45 * 1000) {
+    return 'agora';
+  }
   const min = Math.round(diffMs / 60000);
-  if (min < 60) {return `há ${min} min`;}
+  if (min < 60) {
+    return `há ${min} min`;
+  }
   const h = Math.round(min / 60);
-  if (h < 24) {return `há ${h} h`;}
+  if (h < 24) {
+    return `há ${h} h`;
+  }
   const dys = Math.round(h / 24);
   return `há ${dys} d`;
 };
@@ -160,33 +193,43 @@ const relTimePt = (date) => {
 const pickFirstValidDate = (...cands) => {
   for (const v of cands) {
     const d = normalizeToDate(v);
-    if (d) {return v;}
+    if (d) {
+      return v;
+    }
   }
   return null;
 };
 
 // distance (mètres)
 function haversineM(lat1, lon1, lat2, lon2) {
-  if (![lat1, lon1, lat2, lon2].every(isNum)) {return NaN;}
+  if (![lat1, lon1, lat2, lon2].every(isNum)) {
+    return NaN;
+  }
   const R = 6371000;
   const toRad = (x) => (x * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
   const a =
-    Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 const distanciaTxt = (u, a) => {
-  if (!u || !a) {return '—';}
+  if (!u || !a) {
+    return '—';
+  }
   const d = haversineM(u.latitude, u.longitude, a.latitude, a.longitude);
-  if (!isNum(d)) {return '—';}
+  if (!isNum(d)) {
+    return '—';
+  }
   return d < 1000 ? `${Math.round(d)} m` : `${(d / 1000).toFixed(1)} km`;
 };
 
 // ---------------------------------------------------------------------------
 // Mapping Firestore (compat sans régression)
 // ---------------------------------------------------------------------------
-const pickEstado = (a) => a?.uf || a?.estado || a?.state || a?.address?.uf || a?.endereco?.uf || '—';
+const pickEstado = (a) =>
+  a?.uf || a?.estado || a?.state || a?.address?.uf || a?.endereco?.uf || '—';
 const pickCidade = (a) => a?.cidade || a?.city || a?.address?.cidade || a?.endereco?.cidade || '—';
 const _pickCreated = (a) => a?.createdAt || a?.date || a?.submittedAt || null;
 const _pickLastReportAt = (a) => a?.lastReportAt || a?.updatedAt || null;
@@ -209,8 +252,12 @@ const pickCoords = (a) => {
   if (a?.location && isNum(a.location.latitude) && isNum(a.location.longitude)) {
     return safeCoord(a.location.latitude, a.location.longitude);
   }
-  if (a?.geo) {return safeCoord(a.geo.lat, a.geo.lng);}
-  if (a?.coords) {return safeCoord(a.coords.lat, a.coords.lng);}
+  if (a?.geo) {
+    return safeCoord(a.geo.lat, a.geo.lng);
+  }
+  if (a?.coords) {
+    return safeCoord(a.coords.lat, a.coords.lng);
+  }
   return safeCoord(a?.lat, a?.lng);
 };
 
@@ -226,15 +273,25 @@ const buildEndereco = (a = {}) => {
 
     const left = [rua, numero].filter(Boolean).join(', ');
     const rightParts = [];
-    if (cidade) {rightParts.push(uf ? `${cidade}/${uf}` : cidade);}
-    if (cep) {rightParts.push(cep);}
+    if (cidade) {
+      rightParts.push(uf ? `${cidade}/${uf}` : cidade);
+    }
+    if (cep) {
+      rightParts.push(cep);
+    }
 
     const finalParts = [left, rightParts.join(' - ')].filter(Boolean);
-    if (finalParts.length) {return finalParts.join(' - ');}
+    if (finalParts.length) {
+      return finalParts.join(' - ');
+    }
   }
 
-  if (typeof a.endereco === 'string' && a.endereco.trim()) {return a.endereco.trim();}
-  if (typeof a.ruaNumero === 'string' && a.ruaNumero.trim()) {return a.ruaNumero.trim();}
+  if (typeof a.endereco === 'string' && a.endereco.trim()) {
+    return a.endereco.trim();
+  }
+  if (typeof a.ruaNumero === 'string' && a.ruaNumero.trim()) {
+    return a.ruaNumero.trim();
+  }
 
   const src = a.address || a.endereco || a || {};
   const rua2 = (src.rua || src.street || '').trim();
@@ -254,7 +311,10 @@ const buildEndereco = (a = {}) => {
 const radiusToDeltas = (radiusM, lat) => {
   const R_LAT = 111000;
   const latDelta = Math.max(0.0025, (Number(radiusM || 0) / R_LAT) * 2.2);
-  const lngDelta = Math.max(0.0025, latDelta / Math.max(0.25, Math.cos(((lat || 0) * Math.PI) / 180)));
+  const lngDelta = Math.max(
+    0.0025,
+    latDelta / Math.max(0.25, Math.cos(((lat || 0) * Math.PI) / 180)),
+  );
   return { latitudeDelta: latDelta, longitudeDelta: lngDelta };
 };
 
@@ -289,7 +349,13 @@ const pickKind = (a = {}, channel, kindHint, tid) => {
   }
 
   const looksMissing =
-    !!(a.photoRedacted || a.photoBlur || a?.photos?.redacted || a?.media?.photoRedacted || a?.images?.redacted) ||
+    !!(
+      a.photoRedacted ||
+      a.photoBlur ||
+      a?.photos?.redacted ||
+      a?.media?.photoRedacted ||
+      a?.images?.redacted
+    ) ||
     !!(a.childDobISO || a.fullName || a.child || a.animal || a.object) ||
     (typeof a.category === 'string' && /missing|desaparecid/i.test(a.category)) ||
     (typeof a.__source === 'string' && a.__source.toLowerCase().includes('missing'));
@@ -307,7 +373,8 @@ const pickKind = (a = {}, channel, kindHint, tid) => {
 // Deep link & share
 // ---------------------------------------------------------------------------
 const buildDeepLink = (channel, id) => {
-  const base = channel === 'missing' ? 'vigiapp://missing-public-alerts' : 'vigiapp://public-alerts';
+  const base =
+    channel === 'missing' ? 'vigiapp://missing-public-alerts' : 'vigiapp://public-alerts';
   return `${base}/${encodeURIComponent(String(id || ''))}`;
 };
 
@@ -323,11 +390,12 @@ const buildShareText = (kind, channel, id) => {
     kind === 'child'
       ? 'Criança desaparecida — clique para ver no VigiApp'
       : kind === 'animal'
-      ? 'Animal perdido — clique para ver no VigiApp'
-      : kind === 'object'
-      ? 'Objeto perdido — clique para ver no VigiApp'
-      : 'Alerta no seu bairro — abrir no VigiApp';
-  const privacy = 'A visualização completa (foto e detalhes) está protegida. Abra o VigiApp para ajudar.';
+        ? 'Animal perdido — clique para ver no VigiApp'
+        : kind === 'object'
+          ? 'Objeto perdido — clique para ver no VigiApp'
+          : 'Alerta no seu bairro — abrir no VigiApp';
+  const privacy =
+    'A visualização completa (foto e detalhes) está protegida. Abra o VigiApp para ajudar.';
   return `${intro}\n\n${privacy}\n\n${link}`;
 };
 
@@ -394,7 +462,7 @@ export default function AlertDetailScreen({
   const mountTsRef = useRef(Date.now());
 
   // ID canonique : caseId (missing) > alertId (public/fallback)
-  const id = String((caseId || alertId || '')).split('?')[0];
+  const id = String(caseId || alertId || '').split('?')[0];
 
   const [raw, setRaw] = useState(null);
   const [userLoc, setUserLoc] = useState(null);
@@ -423,7 +491,9 @@ export default function AlertDetailScreen({
     (async () => {
       try {
         const data = await fetchAlertDoc(id, channel, tid);
-        if (!mounted) {return;}
+        if (!mounted) {
+          return;
+        }
         setRaw(data);
         L.ok(tid, 'DATA/SET', { present: !!data, source: data?.__source });
       } catch (e) {
@@ -444,7 +514,9 @@ export default function AlertDetailScreen({
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
         L.i(tid, 'GEO/PERM', { status });
-        if (status !== 'granted') {return;}
+        if (status !== 'granted') {
+          return;
+        }
         const t0 = Date.now();
         const { coords } = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
@@ -503,7 +575,7 @@ export default function AlertDetailScreen({
         d?.createdAt,
         d?.date,
         d?.updatedAt,
-        d?.submitMeta?.t
+        d?.submitMeta?.t,
       ),
       lastReportAt: pickFirstValidDate(d?.lastReportAt, d?.updatedAt),
 
@@ -568,7 +640,9 @@ export default function AlertDetailScreen({
   }, [alert.lastReportAt, alert.createdAt, tick]);
 
   const region = useMemo(() => {
-    if (!alert.coords) {return null;}
+    if (!alert.coords) {
+      return null;
+    }
     const deltas = radiusToDeltas(alert.radiusM, alert.coords.latitude);
     const r = { ...alert.coords, ...deltas };
     L.i(traceIdRef.current, 'MAP/REGION_COMPUTED', { r });
@@ -607,7 +681,10 @@ export default function AlertDetailScreen({
 
   return (
     <SafeAreaView style={S.container}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+      >
         <ScrollView contentContainerStyle={{ paddingBottom: scale(96) }}>
           {/* Header */}
           <View style={S.header}>
@@ -628,7 +705,10 @@ export default function AlertDetailScreen({
                 <View
                   style={[
                     S.chip,
-                    { backgroundColor: alert._locSource === 'address' ? C.ok : C.warn, marginLeft: 6 },
+                    {
+                      backgroundColor: alert._locSource === 'address' ? C.ok : C.warn,
+                      marginLeft: 6,
+                    },
                   ]}
                 >
                   <Icon
@@ -653,9 +733,21 @@ export default function AlertDetailScreen({
             </View>
 
             {/* Action Bar */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={S.actionBarScroll}>
-              <ActionBtn label="Compartilhar" icon="share-variant" onPress={() => onShare(alert, channel)} />
-              <ActionBtn label="WhatsApp" icon="whatsapp" onPress={() => onWhatsAppShare(alert, channel)} />
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={S.actionBarScroll}
+            >
+              <ActionBtn
+                label="Compartilhar"
+                icon="share-variant"
+                onPress={() => onShare(alert, channel)}
+              />
+              <ActionBtn
+                label="WhatsApp"
+                icon="whatsapp"
+                onPress={() => onWhatsAppShare(alert, channel)}
+              />
               <ActionBtnPrimary
                 label="Tenho informações"
                 icon="hand-heart"
@@ -724,7 +816,10 @@ function MissingAlertContent({ alert, userLoc, region, mapRef, onRecenter }) {
             />
             {userLoc && <Marker coordinate={userLoc} title="Você" pinColor={C.ok} />}
           </MapView>
-          <Pressable onPress={onRecenter} style={({ pressed }) => [S.recenter, pressed && { opacity: 0.85 }]}>
+          <Pressable
+            onPress={onRecenter}
+            style={({ pressed }) => [S.recenter, pressed && { opacity: 0.85 }]}
+          >
             <Icon name="crosshairs-gps" size={scale(18)} color={C.bg} />
           </Pressable>
         </View>
@@ -771,7 +866,9 @@ function MissingAlertContent({ alert, userLoc, region, mapRef, onRecenter }) {
       </View>
 
       <View style={[S.note, { marginHorizontal: scale(20) }]}>
-        <Text style={S.noteTxt}>Informações sensíveis — VigiApp protege menores. Evite divulgação inadequada.</Text>
+        <Text style={S.noteTxt}>
+          Informações sensíveis — VigiApp protege menores. Evite divulgação inadequada.
+        </Text>
       </View>
     </>
   );
@@ -796,7 +893,10 @@ function PublicIncidentContent({ alert, userLoc, region, mapRef, onRecenter, dis
             />
             {userLoc && <Marker coordinate={userLoc} title="Você" pinColor={C.ok} />}
           </MapView>
-          <Pressable onPress={onRecenter} style={({ pressed }) => [S.recenter, pressed && { opacity: 0.85 }]}>
+          <Pressable
+            onPress={onRecenter}
+            style={({ pressed }) => [S.recenter, pressed && { opacity: 0.85 }]}
+          >
             <Icon name="crosshairs-gps" size={scale(18)} color={C.bg} />
           </Pressable>
         </View>
@@ -893,7 +993,13 @@ function ActionBtnPrimary({ label, icon, onPress, color }) {
   return (
     <Pressable onPress={onPress} accessibilityRole="button">
       {({ pressed }) => (
-        <View style={[S.actionBtnPrimary, { backgroundColor: color }, pressed && { transform: [{ scale: 0.96 }] }]}>
+        <View
+          style={[
+            S.actionBtnPrimary,
+            { backgroundColor: color },
+            pressed && { transform: [{ scale: 0.96 }] },
+          ]}
+        >
           <View style={S.btnInner}>
             <Icon name={icon} size={scale(18)} color={C.bg} />
             <Text style={S.actionTxtPrimary}>{label}</Text>
@@ -925,7 +1031,9 @@ function Row({ label, value, color, multiline = false }) {
       <Text style={[S.rowLabel, { color }]} numberOfLines={3} ellipsizeMode="clip">
         {label}
       </Text>
-      <Text style={[S.rowValue, multiline && { textAlign: 'left', lineHeight: scale(20) }]}>{value ?? '—'}</Text>
+      <Text style={[S.rowValue, multiline && { textAlign: 'left', lineHeight: scale(20) }]}>
+        {value ?? '—'}
+      </Text>
     </View>
   );
 }
@@ -956,7 +1064,11 @@ const S = StyleSheet.create({
   },
   chipText: { color: C.bg, fontWeight: '700', fontSize: scale(12) },
 
-  actionBarScroll: { paddingHorizontal: scale(20), paddingVertical: scale(8), alignItems: 'center' },
+  actionBarScroll: {
+    paddingHorizontal: scale(20),
+    paddingVertical: scale(8),
+    alignItems: 'center',
+  },
   btnInner: { flexDirection: 'row', alignItems: 'center' },
 
   actionBtn: {
@@ -1056,13 +1168,24 @@ const S = StyleSheet.create({
   },
   cardTitle: { color: C.text, fontWeight: '700', fontSize: scale(16), marginBottom: scale(8) },
 
-  row: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: scale(8), gap: scale(14) },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: scale(8),
+    gap: scale(14),
+  },
   rowLabel: { fontSize: scale(14), fontWeight: '700', width: '50%' },
   rowValue: { color: C.text, fontSize: scale(14), flex: 1, textAlign: 'right', flexShrink: 1 },
 
   body: { color: C.text, fontSize: scale(14), lineHeight: scale(20) },
 
-  skel: { height: scale(12), backgroundColor: '#22262c', borderRadius: 6, marginVertical: scale(6), width: '85%' },
+  skel: {
+    height: scale(12),
+    backgroundColor: '#22262c',
+    borderRadius: 6,
+    marginVertical: scale(6),
+    width: '85%',
+  },
 
   photoWrap: {
     marginHorizontal: scale(20),
@@ -1127,8 +1250,14 @@ function SecureWatermarkedImage({
     <Pressable onPress={onTap} accessibilityLabel="Imagem protegida">
       {() => (
         <View style={[{ width: '100%', height: Math.max(scale(240), 240) }, style]}>
-          <Image source={{ uri: imageUri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-          {isBlurred ? <BlurView intensity={62} tint="dark" style={StyleSheet.absoluteFill} /> : null}
+          <Image
+            source={{ uri: imageUri }}
+            style={{ width: '100%', height: '100%' }}
+            resizeMode="cover"
+          />
+          {isBlurred ? (
+            <BlurView intensity={62} tint="dark" style={StyleSheet.absoluteFill} />
+          ) : null}
 
           <View style={wmStyles.microWrap} pointerEvents="none">
             {microLines.map((m) => (
@@ -1137,7 +1266,11 @@ function SecureWatermarkedImage({
                 numberOfLines={1}
                 style={[
                   wmStyles.microText,
-                  { top: m.top, transform: [{ translateX: m.offsetX }, { rotate: `${m.rotate}deg` }], opacity: m.opacity },
+                  {
+                    top: m.top,
+                    transform: [{ translateX: m.offsetX }, { rotate: `${m.rotate}deg` }],
+                    opacity: m.opacity,
+                  },
                 ]}
               >
                 {wmText}
@@ -1149,7 +1282,10 @@ function SecureWatermarkedImage({
             {Array.from({ length: 12 }).map((_, i) => (
               <View
                 key={`h-${i}`}
-                style={[wmStyles.hatchLine, { top: `${(i / 12) * 100}%`, opacity: i % 2 === 0 ? 0.06 : 0.04 }]}
+                style={[
+                  wmStyles.hatchLine,
+                  { top: `${(i / 12) * 100}%`, opacity: i % 2 === 0 ? 0.06 : 0.04 },
+                ]}
               />
             ))}
           </View>
@@ -1181,7 +1317,13 @@ const wmStyles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   hatchWrap: { ...StyleSheet.absoluteFillObject },
-  hatchLine: { position: 'absolute', left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.06)' },
+  hatchLine: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
   corner: {
     position: 'absolute',
     right: scale(8),
@@ -1191,7 +1333,12 @@ const wmStyles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: 'rgba(0,0,0,0.28)',
   },
-  cornerId: { color: 'rgba(255,255,255,0.9)', fontSize: scale(11), fontWeight: '700', letterSpacing: 0.6 },
+  cornerId: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: scale(11),
+    fontWeight: '700',
+    letterSpacing: 0.6,
+  },
   cornerSmall: { color: 'rgba(255,255,255,0.7)', fontSize: scale(9), marginTop: scale(2) },
   ribbon: {
     position: 'absolute',

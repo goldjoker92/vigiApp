@@ -1091,15 +1091,12 @@ export default function ReportScreen() {
           debug: '1',
         };
 
-        Log.info('[NOTIF][CALL] sendPublicAlertByAddress', body);
-        const resp = await fetch(
-          'https://southamerica-east1-vigiapp-c7108.cloudfunctions.net/sendPublicAlertByAddress',
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-          },
-        );
+        Log.info('[NOTIF][CALL] sendpublicalertbyaddress', body);
+        const resp = await fetch('https://sendpublicalertbyaddress-pfdobxp2na-rj.a.run.app', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
         const json = await resp.json().catch(() => null);
         Log.info('[NOTIF][RESP]', { status: resp.status, ok: resp.ok, json });
       } catch (err) {

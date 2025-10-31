@@ -12,34 +12,68 @@ const warn = (...a) => console.warn(NS, ...a);
 const err = (...a) => console.error(NS, ...a);
 
 function normMime(mime) {
-  if (!mime) {return 'image/jpeg';}
+  if (!mime) {
+    return 'image/jpeg';
+  }
   const m = String(mime).toLowerCase();
-  if (m.includes('png')) {return 'image/png';}
-  if (m.includes('webp')) {return 'image/webp';}
-  if (m.includes('jpg') || m.includes('jpeg')) {return 'image/jpeg';}
-  if (m.includes('heic') || m.includes('heif')) {return 'image/heic';}
-  if (m.includes('mp4') || m.includes('video')) {return 'video/mp4';}
+  if (m.includes('png')) {
+    return 'image/png';
+  }
+  if (m.includes('webp')) {
+    return 'image/webp';
+  }
+  if (m.includes('jpg') || m.includes('jpeg')) {
+    return 'image/jpeg';
+  }
+  if (m.includes('heic') || m.includes('heif')) {
+    return 'image/heic';
+  }
+  if (m.includes('mp4') || m.includes('video')) {
+    return 'video/mp4';
+  }
   return 'application/octet-stream';
 }
 function extFrom(fileName, mime) {
   const n = String(fileName || '').toLowerCase();
-  if (n.endsWith('.png')) {return 'png';}
-  if (n.endsWith('.webp')) {return 'webp';}
-  if (n.endsWith('.heic') || n.endsWith('.heif')) {return 'heic';}
-  if (n.endsWith('.jpg') || n.endsWith('.jpeg')) {return 'jpg';}
-  if (n.endsWith('.mp4')) {return 'mp4';}
+  if (n.endsWith('.png')) {
+    return 'png';
+  }
+  if (n.endsWith('.webp')) {
+    return 'webp';
+  }
+  if (n.endsWith('.heic') || n.endsWith('.heif')) {
+    return 'heic';
+  }
+  if (n.endsWith('.jpg') || n.endsWith('.jpeg')) {
+    return 'jpg';
+  }
+  if (n.endsWith('.mp4')) {
+    return 'mp4';
+  }
   const m = String(mime || '').toLowerCase();
-  if (m.includes('png')) {return 'png';}
-  if (m.includes('webp')) {return 'webp';}
-  if (m.includes('heic') || m.includes('heif')) {return 'heic';}
-  if (m.includes('jpeg') || m.includes('jpg')) {return 'jpg';}
-  if (m.includes('mp4') || m.includes('video')) {return 'mp4';}
+  if (m.includes('png')) {
+    return 'png';
+  }
+  if (m.includes('webp')) {
+    return 'webp';
+  }
+  if (m.includes('heic') || m.includes('heif')) {
+    return 'heic';
+  }
+  if (m.includes('jpeg') || m.includes('jpg')) {
+    return 'jpg';
+  }
+  if (m.includes('mp4') || m.includes('video')) {
+    return 'mp4';
+  }
   return 'jpg';
 }
 
 async function ensureAuth() {
   const cur = auth().currentUser;
-  if (cur) {return cur;}
+  if (cur) {
+    return cur;
+  }
   try {
     const cred = await auth().signInAnonymously();
     log('auth anon OK', cred?.user?.uid);
@@ -56,8 +90,12 @@ async function ensureAuth() {
 
 // Matérialise un content:// en file:// (cache) si nécessaire
 async function materializeToFile(uri, fileName, mime) {
-  if (!uri) {return uri;}
-  if (uri.startsWith('file://')) {return uri;}
+  if (!uri) {
+    return uri;
+  }
+  if (uri.startsWith('file://')) {
+    return uri;
+  }
   try {
     const ext = extFrom(fileName, mime);
     const dest = `${FileSystem.cacheDirectory}upload_${Date.now()}.${ext}`;
@@ -80,7 +118,9 @@ async function materializeToFile(uri, fileName, mime) {
  * @param {AbortSignal} [p.signal]
  */
 export async function uploadToStorage({ path, uri, mime, onProgress, signal }) {
-  if (!path || !uri) {throw new Error('UPLOAD_ARGS_MISSING');}
+  if (!path || !uri) {
+    throw new Error('UPLOAD_ARGS_MISSING');
+  }
 
   const contentType = normMime(mime);
   log('begin', { path, mime: contentType, uri: uri.slice(0, 40) + (uri.length > 40 ? '…' : '') });
@@ -102,7 +142,9 @@ export async function uploadToStorage({ path, uri, mime, onProgress, signal }) {
     const abort = () => {
       if (!aborted) {
         aborted = true;
-        try { task.cancel(); } catch {}
+        try {
+          task.cancel();
+        } catch {}
         warn('upload cancelled');
       }
     };
@@ -157,10 +199,14 @@ export async function uploadToStorage({ path, uri, mime, onProgress, signal }) {
           try {
             const r = await doPut(tempFile);
             // nettoyage best-effort
-            try { await FileSystem.deleteAsync(tempFile, { idempotent: true }); } catch {}
+            try {
+              await FileSystem.deleteAsync(tempFile, { idempotent: true });
+            } catch {}
             return r;
           } finally {
-            try { await FileSystem.deleteAsync(tempFile, { idempotent: true }); } catch {}
+            try {
+              await FileSystem.deleteAsync(tempFile, { idempotent: true });
+            } catch {}
           }
         }
       } catch (e2) {
