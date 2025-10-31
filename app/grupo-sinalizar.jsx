@@ -201,7 +201,7 @@ export default function GrupoSinalizarScreen() {
     if (isRunningRef.current) { console.log('[SINALIZAR] Ignoré (déjà en cours)'); return; }
     isRunningRef.current = true;
 
-    let hk = false; try { hk = hasGoogleKey(); } catch {}
+    let hk = false; try { hk = typeof hasGoogleKey === 'function' ? hasGoogleKey() : false; } catch {}
     console.log('[SINALIZAR][PHASE] START', { hasGoogleKey: hk, utilsBound: typeof resolveExactCepFromCoords === 'function' });
 
     try {
