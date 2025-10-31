@@ -211,6 +211,6 @@ exports.onWriteDevice = onDocumentWritten(
 
 // ===================== Log de démarrage =====================
 console.log('[Index] loaded', {
-  http: ['verifyGuardian', 'sendPublicAlertByAddress'],
-  triggers: ['onCreateMissing', 'onUpdateMissing', 'onWriteDevice'],
+  http: ['verifyguardian', 'sendpublicalertbyaddress'],
+  triggers: ['oncreatemissing', 'onupdatemissing', 'onwritedevice'],
 });
