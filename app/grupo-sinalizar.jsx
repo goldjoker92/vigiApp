@@ -288,8 +288,7 @@ export default function GrupoSinalizarScreen() {
 
   useEffect(() => {
     if (user) { console.log('[SINALIZAR] useEffect → checkLocationAndDispatch()'); checkLocationAndDispatch(); }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [user, checkLocationAndDispatch]);
 
   return (
     <View style={styles.container}>
