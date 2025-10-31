@@ -6,19 +6,33 @@ import { app } from '../../../firebase';
 const NS = '[UPLOAD_CORE_WEB]';
 
 function normMime(mime) {
-  if (!mime) {return 'image/jpeg';}
+  if (!mime) {
+    return 'image/jpeg';
+  }
   const m = String(mime).toLowerCase();
-  if (m.includes('png')) {return 'image/png';}
-  if (m.includes('webp')) {return 'image/webp';}
-  if (m.includes('jpg') || m.includes('jpeg')) {return 'image/jpeg';}
-  if (m.includes('heic') || m.includes('heif')) {return 'image/heic';}
-  if (m.includes('mp4') || m.includes('video')) {return 'video/mp4';}
+  if (m.includes('png')) {
+    return 'image/png';
+  }
+  if (m.includes('webp')) {
+    return 'image/webp';
+  }
+  if (m.includes('jpg') || m.includes('jpeg')) {
+    return 'image/jpeg';
+  }
+  if (m.includes('heic') || m.includes('heif')) {
+    return 'image/heic';
+  }
+  if (m.includes('mp4') || m.includes('video')) {
+    return 'video/mp4';
+  }
   return 'application/octet-stream';
 }
 
 async function ensureAuth() {
   const auth = getAuth(app);
-  if (auth.currentUser) {return auth.currentUser;}
+  if (auth.currentUser) {
+    return auth.currentUser;
+  }
   try {
     const cred = await signInAnonymously(auth);
     console.log(NS, 'auth anon OK', cred?.user?.uid);
@@ -38,7 +52,9 @@ async function ensureAuth() {
  * Pour RN, ce fichier n’est pas utilisé (voir .native.js)
  */
 export async function uploadToStorage({ path, uri, mime, onProgress }) {
-  if (!path || !uri) {throw new Error('UPLOAD_ARGS_MISSING');}
+  if (!path || !uri) {
+    throw new Error('UPLOAD_ARGS_MISSING');
+  }
 
   await ensureAuth();
 

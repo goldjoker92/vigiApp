@@ -13,10 +13,10 @@ const TAG = '[ROUTE_MISSING_ALERT]';
 
 export default function MissingAlertDetailRoute() {
   const params = useLocalSearchParams();
-  
+
   // ✅ ID Firestore des "missing" === caseId (pas alertId)
   const caseId = params?.id ? String(params.id) : '';
-  
+
   // ✅ type / “hint” pour l’UI immédiate avant fetch : animal / child / object...
   const kindHint = params?.kind ? String(params.kind).toLowerCase() : '';
 

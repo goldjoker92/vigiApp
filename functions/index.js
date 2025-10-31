@@ -1,63 +1,65 @@
-// functions/index.js
 // ============================================================================
-// VigiApp — Cloud Functions v2 (Node 20)
-// HTTP (Gen2 onRequest) + Triggers Firestore (v2)
+// VigiApp — Cloud Functions v2 (Node 20) — INDEX LOW-COST
+// HTTP (onRequest) + Firestore Triggers (onDocumentUpdated)
+// - Région unique
+// - Logs légers (console.* uniquement)
+// - Garde-fous anti-boucle / anti-bruit
+// - Fallback safe si une lib manque (geoTiles)
 // ============================================================================
 
 const { onRequest } = require('firebase-functions/v2/https');
-const { onDocumentWritten } = require('firebase-functions/v2/firestore');
-const { setGlobalOptions, logger } = require('firebase-functions/v2');
+const { onDocumentUpdated } = require('firebase-functions/v2/firestore');
+const { setGlobalOptions } = require('firebase-functions/v2');
 const admin = require('firebase-admin');
 
-// Région par défaut (v2) — s'applique aux HTTP et aux triggers qui n'override pas.
+// ---------- Région & options globales ----------
 setGlobalOptions({ region: 'southamerica-east1' });
 
-// Admin App idempotent
+// ---------- Admin idempotent ----------
 try { admin.app(); } catch { admin.initializeApp(); }
 const db = () => admin.firestore();
 
-// ===================== HTTP =====================
-const { verifyGuardian } = require('./src/verifyGuardian');
-const { sendPublicAlertByAddress } = require('./src/sendPublicAlertByAddress');
+// ===================== HTTP HANDLERS =====================
+// (chemins en minuscules)
+const { verifyGuardian } = require('./src/verifyguardian');
+const { sendPublicAlertByAddress } = require('./src/sendpublicalertbyaddress');
+const { ackpublicalertreceipt } = require('./src/ackpublicalertreceipt');
 
-// Garde-fous pour éviter "userProvidedHandler is not a function"
-if (typeof verifyGuardian !== 'function') {
-  throw new Error('[index] verifyGuardian export is not a function');
-}
-if (typeof sendPublicAlertByAddress !== 'function') {
-  throw new Error('[index] sendPublicAlertByAddress export is not a function');
-}
+// Garde-fous de chargement
+if (typeof verifyGuardian !== 'function') {throw new Error('[index] verifyGuardian export is not a function');}
+if (typeof sendPublicAlertByAddress !== 'function') {throw new Error('[index] sendPublicAlertByAddress export is not a function');}
 
-// Exports HTTP (CORS v2)
-exports.verifyGuardian = onRequest({ cors: true }, verifyGuardian);
-exports.sendPublicAlertByAddress = onRequest({ cors: true }, sendPublicAlertByAddress);
+// Profils HTTP sobres
+const httpSmall = { cors: true, memory: '128MiB', timeoutSeconds: 30 };
+const httpStd   = { cors: true, memory: '256MiB', timeoutSeconds: 60 };
 
-// ===================== Triggers Missing (v2) =====================
-const { onCreateMissing } = require('./src/missing/onCreateMissing');
-const { onUpdateMissing } = require('./src/missing/onUpdateMissing');
+// Exports HTTP (minuscules)
+exports.verifyguardian = onRequest(httpSmall, verifyGuardian);
+exports.sendpublicalertbyaddress = onRequest(httpSmall, sendPublicAlertByAddress);
+exports.ackpublicalertreceipt = ackpublicalertreceipt;
 
-exports.onCreateMissing = onCreateMissing;
-exports.onUpdateMissing  = onUpdateMissing;
+// ===================== TRIGGERS Missing (v2) =====================
+const { onCreateMissing } = require('./src/missing/oncreatemissing');
+const { onUpdateMissing } = require('./src/missing/onupdatemissing');
 
-// ===================== Helpers communs =====================
-const NS = '[DeviceTiles]';
-const nowIso = () => new Date().toISOString();
-const log  = (step, extra = {}) => logger.info(`${NS} ${step}`, { t: nowIso(), ...extra });
-const warn = (step, extra = {}) => logger.warn(`${NS} ${step}`, { t: nowIso(), ...extra });
-const err  = (step, extra = {}) => logger.error(`${NS} ${step}`, { t: nowIso(), ...extra });
+// Triggers en minuscules (aligné avec ton déploiement)
+exports.oncreatemissing = onCreateMissing;
+exports.onupdatemissing = onUpdateMissing;
 
-// Noms de topics FCM: [a-zA-Z0-9-_.~%]+ — on nettoie agressivement par sûreté.
+// ===================== Helpers communs (LOW COST) =====================
+// Topics FCM sûrs
 function sanitizeTopicPart(s) {
   return String(s || '')
-    .replace(/[^a-zA-Z0-9\-_.~%]/g, '-')   // remplace chars interdits
-    .replace(/-+/g, '-')                    // compresse
-    .slice(0, 200);                         // marge large
+    .toLowerCase()
+    .replace(/[^a-zA-Z0-9\-_.~%]/g, '-')
+    .replace(/-+/g, '-')
+    .slice(0, 200);
 }
 function tileTopic(tile) {
   return `missing_geo_${sanitizeTopicPart(tile)}`;
 }
 
-// Récup lat/lng depuis {lat,lng} ou {geo:{lat,lng}}
+// Lat/Lng depuis {lat,lng} ou {geo:{lat,lng}} (+ bornes)
 function pickLatLng(d) {
   const lat = Number.isFinite(+d?.lat) ? +d.lat : Number.isFinite(+d?.geo?.lat) ? +d.geo.lat : null;
   const lng = Number.isFinite(+d?.lng) ? +d.lng : Number.isFinite(+d?.geo?.lng) ? +d.geo.lng : null;
@@ -66,151 +68,141 @@ function pickLatLng(d) {
   return { lat, lng };
 }
 
+// Diff simple
 function diff(a = [], b = []) {
   const A = new Set(a), B = new Set(b);
-  const onlyA = [...A].filter(x => !B.has(x));
-  const onlyB = [...B].filter(x => !A.has(x));
-  return { onlyA, onlyB };
+  return {
+    toSub:   [...A].filter((x) => !B.has(x)),
+    toUnsub: [...B].filter((x) => !A.has(x)),
+  };
 }
 
-// ===================== Tiles helper =====================
-// Doit retourner un Array<string> de 9 tuiles (centre + 8 voisines)
-const { tilesForRadius } = require('./src/libsMissing/geoTiles');
+// Chargement tolérant de geoTiles (évite un crash boot si le module est manquant)
+let tilesForRadius = () => [];
+try {
+  const mod = require('./src/libsMissing/geoTiles');
+  if (typeof mod?.tilesForRadius === 'function') {tilesForRadius = mod.tilesForRadius;}
+  else {console.debug('[index] geoTiles loaded but tilesForRadius missing, using noop');}
+} catch (e) {
+  console.debug('[index] geoTiles not found, using noop:', e?.message);
+}
 
-// ===================== Trigger: devices onWrite (v2) =====================
-// Déclenché sur /devices/{deviceId} (create/update/delete).
-// - Calcule 9 tuiles via tilesForRadius(lat,lng)
-// - Abonne le token FCM aux topics "missing_geo_<tile>" (noms FCM safe)
-// - Désabonne d’anciennes tuiles si la géo a bougé
-// - Miroir Expo: /devices_missing/{deviceId} {expoToken, tiles, userId, fcmToken}
-// - Idempotent, tolérant aux champs manquants, logs lisibles
+// (Un)subscribe sobres (sans spam de logs)
 async function subscribeTiles(fcmToken, tiles) {
-  let ok = 0, ko = 0;
-  for (const t of tiles) {
-    const topic = tileTopic(t);
-    try {
-      await admin.messaging().subscribeToTopic([fcmToken], topic);
-      ok++;
-    } catch (e) {
-      ko++; warn('topic_sub_fail', { topic, err: e?.message || String(e) });
-    }
-  }
-  return { ok, ko };
+  for (const t of tiles) { try { await admin.messaging().subscribeToTopic([fcmToken], tileTopic(t)); } catch (_) {} }
 }
 async function unsubscribeTiles(fcmToken, tiles) {
-  let ok = 0, ko = 0;
-  for (const t of tiles) {
-    const topic = tileTopic(t);
-    try {
-      await admin.messaging().unsubscribeFromTopic([fcmToken], topic);
-      ok++;
-    } catch (e) {
-      ko++; warn('topic_unsub_fail', { topic, err: e?.message || String(e) });
-    }
-  }
-  return { ok, ko };
+  for (const t of tiles) { try { await admin.messaging().unsubscribeFromTopic([fcmToken], tileTopic(t)); } catch (_) {} }
 }
 
-exports.onWriteDevice = onDocumentWritten(
-  { document: 'devices/{deviceId}' }, // région héritée de setGlobalOptions
+// ===================== Trigger: devices (LOW COST) =====================
+// Kill switch (mets à false pour couper instantanément sans retirer la fonction)
+const DEVICE_TILES_ENABLED = true;
+
+// État minimal pertinent pour comparaison idempotente
+function stateOf(d) {
+  const p = pickLatLng(d);
+  return {
+    lat: p?.lat ?? null,
+    lng: p?.lng ?? null,
+    fcm: d?.fcmToken ?? d?.fcm ?? null,
+    expo: d?.expoPushToken ?? d?.expo ?? null,
+    missingOn: d?.channels?.missingAlerts !== false, // défaut ON
+    active: d?.active !== false,                     // défaut ON
+  };
+}
+function stable(o) {
+  // JSON stable (clés triées)
+  return JSON.stringify(Object.keys(o).sort().reduce((acc, k) => (acc[k] = o[k], acc), {}));
+}
+
+// ⚠️ IMPORTANT: on passe en onDocumentUpdated (et on garde le NOM "onwritedevice")
+exports.onwritedevice = onDocumentUpdated(
+  { document: 'devices/{deviceId}', region: 'southamerica-east1' },
   async (event) => {
-    const before = event?.data?.before?.data() || null;
-    const after  = event?.data?.after?.data() || null;
-    const deviceId = event?.params?.deviceId;
+    if (!DEVICE_TILES_ENABLED) {return;}
 
-    if (!after) { // delete
-      log('DELETE', { deviceId });
-      // Optionnel: nettoyer le miroir /devices_missing si besoin
+    const before = event.data.before.data() || {};
+    const after  = event.data.after.data()  || {};
+    const deviceId = event.params.deviceId;
+
+    // 1) Early return si rien d'utile n'a changé (FCM/position/expo/flags)
+    const Sbefore = stateOf(before);
+    const Safter  = stateOf(after);
+    if (stable(Sbefore) === stable(Safter)) {return;}
+
+    // 2) Gating strict: inactif / missing OFF / pas de FCM / pas de position -> miroir vide et sortie
+    const posOk = Safter.lat !== null && Safter.lng !== null;
+    if (!Safter.active || !Safter.missingOn || !Safter.fcm || !posOk) {
       try {
         await db().collection('devices_missing').doc(deviceId).set({
-          tiles: [],
-          fcmToken: null,
-          expoToken: null,
-          userId: before?.userId || null,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        }, { merge: true });
-      } catch (e) { warn('devices_missing_mirror_delete', { deviceId, err: e?.message || String(e) }); }
-      return;
-    }
-
-    const userId = after.userId || before?.userId || null;
-    const fcmToken = after.fcmToken || after.fcm || null;
-    const expoToken = after.expoPushToken || after.expo || null;
-
-    // Canaux actifs ?
-    const channels = after.channels || {};
-    const missingOn = channels.missingAlerts !== false; // par défaut true si non défini
-    const active = after.active !== false;
-
-    const point = pickLatLng(after);
-    if (!active || !missingOn || !fcmToken || !point) {
-      warn('SKIP', { deviceId, userId, active, missingOn, hasFcm: !!fcmToken, hasPoint: !!point });
-      // Miroir Expo minimal malgré tout (utile pour autres fanouts)
-      try {
-        await db().collection('devices_missing').doc(deviceId).set({
-          userId: userId || null,
-          fcmToken: fcmToken || null,
-          expoToken: expoToken || null,
+          userId: after.userId ?? before.userId ?? null,
+          fcmToken: Safter.fcm ?? null,
+          expoToken: Safter.expo ?? null,
           tiles: [],
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         }, { merge: true });
-      } catch (e) { warn('devices_missing_mirror_skip', { deviceId, err: e?.message || String(e) }); }
+      } catch (_) {}
       return;
     }
 
-    // Calcule 9 tuiles (même logique que publish)
+    // 3) Calcul des tiles — si échec, on sort silencieusement
     let newTiles = [];
     try {
-      newTiles = tilesForRadius(point.lat, point.lng) || [];
-      if (!Array.isArray(newTiles) || newTiles.length === 0) {throw new Error('no_tiles');}
-    } catch (e) {
-      err('tiles_compute_fail', { deviceId, userId, err: e?.message || String(e), point });
-      return;
-    }
+      newTiles = tilesForRadius(Safter.lat, Safter.lng) || [];
+      if (!Array.isArray(newTiles) || newTiles.length === 0) {return;}
+    } catch { return; }
 
     const oldTiles = Array.isArray(before?.tiles) ? before.tiles : [];
-    const { onlyA: toSub, onlyB: toUnsub } = diff(newTiles, oldTiles);
+    const sameTiles = newTiles.length === oldTiles.length && newTiles.every((t, i) => t === oldTiles[i]);
 
-    log('BEGIN', {
-      deviceId, userId, point,
-      oldCount: oldTiles.length, newCount: newTiles.length,
-      toSub: toSub.length, toUnsub: toUnsub.length,
-    });
-
-    // Abonnements
-    let subStats = { ok: 0, ko: 0 }, unsubStats = { ok: 0, ko: 0 };
-    try { if (toSub.length)   {subStats = await subscribeTiles(fcmToken, toSub);} } catch {}
-    try { if (toUnsub.length) {unsubStats = await unsubscribeTiles(fcmToken, toUnsub);} } catch {}
-
-    // Écrit les tuiles actuelles dans le doc (et miroir Expo)
+    // 4) (Un)subscribe minimal: si token change → reset total ; sinon diff
     try {
-      await db().collection('devices').doc(deviceId).set({
-        tiles: newTiles,
-        tilesUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      }, { merge: true });
-
-      await db().collection('devices_missing').doc(deviceId).set({
-        userId: userId || null,
-        fcmToken: fcmToken || null,
-        expoToken: expoToken || null,
-        tiles: newTiles,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      }, { merge: true });
-    } catch (e) {
-      warn('tiles_write_fail', { deviceId, err: e?.message || String(e) });
+      if (Sbefore.fcm && Safter.fcm && Sbefore.fcm !== Safter.fcm) {
+        if (oldTiles.length) {await unsubscribeTiles(Sbefore.fcm, oldTiles);}
+        await subscribeTiles(Safter.fcm, newTiles);
+      } else if (!sameTiles) {
+        const { toSub, toUnsub } = diff(newTiles, oldTiles);
+        if (toUnsub.length) {await unsubscribeTiles(Safter.fcm, toUnsub);}
+        if (toSub.length)   {await subscribeTiles(Safter.fcm, toSub);}
+      }
+    } catch (_) {
+      // éviter les boucles / logs bruyants
     }
 
-    log('END', {
-      deviceId,
-      userId,
-      subs_ok: subStats.ok, subs_ko: subStats.ko,
-      unsubs_ok: unsubStats.ok, unsubs_ko: unsubStats.ko,
-    });
+    // 5) Écritures Firestore **minimales** (évite retriggers)
+    const writes = [];
+
+    // On n'écrit devices.tiles QUE si ça change
+    if (!sameTiles) {
+      writes.push(
+        db().collection('devices').doc(deviceId).set({
+          tiles: newTiles,
+          tilesUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true })
+      );
+    }
+
+    // Miroir compact pour debug/admin (utile si token/expo changent)
+    writes.push(
+      db().collection('devices_missing').doc(deviceId).set({
+        userId: after.userId ?? before.userId ?? null,
+        fcmToken: Safter.fcm ?? null,
+        expoToken: Safter.expo ?? null,
+        tiles: newTiles,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true })
+    );
+
+    if (writes.length) { try { await Promise.all(writes); } catch (_) {} }
+
+    // Log discret (décommenter si besoin de tracer un cas précis)
+    // console.debug('onwritedevice OK', deviceId);
   }
 );
 
-// ===================== Log de démarrage =====================
-console.log('[Index] loaded', {
-  http: ['verifyGuardian', 'sendPublicAlertByAddress'],
-  triggers: ['onCreateMissing', 'onUpdateMissing', 'onWriteDevice'],
+// ===================== Log de démarrage (léger) =====================
+console.log('[Index] loaded LOW-COST', {
+  http: ['verifyguardian', 'sendpublicalertbyaddress', 'ackpublicalertreceipt'],
+  triggers: ['oncreatemissing', 'onupdatemissing', 'onwritedevice'],
 });
