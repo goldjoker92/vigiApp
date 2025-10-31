@@ -36,8 +36,6 @@ const { onCreateMissing } = require('./src/missing/oncreatemissing');
 const { onUpdateMissing } = require('./src/missing/onupdatemissing');
 
 // ===================== TRIGGERS Missing (v2) =====================
-const { onCreateMissing } = require('./src/missing/oncreatemissing');
-const { onUpdateMissing } = require('./src/missing/onupdatemissing');
 
 // Triggers en minuscules (aligné avec ton déploiement)
 exports.oncreatemissing = onCreateMissing;
