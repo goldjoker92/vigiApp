@@ -49,6 +49,7 @@ import { validateClient } from '../../src/miss/lib/validations';
 import PlaygroundMini from '../../src/miss/lib/dev/PlaygroundMini';
 import { writeMissingCaseOnce } from '../../src/miss/lib/firestoreWrite';
 import { waitForServerCommit } from '../../src/miss/lib/helpers/firestoreWait';
+import { fireLocalNow } from 'src/notifications';
 
 // ---------------------------------------------------------------------------
 // LOG utils
@@ -1482,8 +1483,8 @@ export default function MissingStart() {
               style={[styles.primaryBtn, { backgroundColor: canSubmit ? '#22C55E' : '#374151' }]}
               onPress={guard('submit', () =>
                 withBackoff(onSubmit, { attempts: 2, baseDelay: 600 }),
+                 fireLocalNow({ channelId: 'public-alerts-high' })
               )}
-              disabled={!canSubmit || running('submit') || Object.values(uploading).some(Boolean)}
             >
               <Text style={styles.primaryTxt}>{running('submit') ? 'Enviando…' : 'Enviar'}</Text>
             </TouchableOpacity>
